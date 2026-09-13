@@ -1148,17 +1148,27 @@
   }
 
   /**
-   * Extracts the author's first comment or root caption row from the post's comment stream.
-   * On Instagram, the author often adds context, story details, or links in their first comment,
-   * or Instagram renders the post caption as the root/first comment in the comment stream.
+   * Scans all comments in the post/reels comment thread and extracts all comments authored by the creator.
+   * Creators frequently share context across their first comment, pinned notes, and follow-up replies.
    */
-  function extractAuthorFirstComment(container, postAuthor = '') {
-    if (!container) return '';
+  function extractAllAuthorComments(container, postAuthor = '') {
+    if (!container) return [];
     const cleanAuthor = (postAuthor || extractPostAuthor(container) || '').trim().replace(/^@/, '');
+    if (!cleanAuthor) return [];
 
-    // Strategy 1: Find comment items specifically authored by cleanAuthor outside the header
-    if (cleanAuthor) {
-      const authorLinks = container.querySelectorAll(`
+    const foundComments = [];
+    const seenTexts = new Set();
+
+    // Check candidate roots: the post container and any active comments dialog
+    const roots = [container];
+    const commentsDialog = document.querySelector('div[role="dialog"]');
+    if (commentsDialog && commentsDialog !== container) {
+      roots.push(commentsDialog);
+    }
+
+    for (const root of roots) {
+      // 1. Find all author links in the comments area outside header/form
+      const authorLinks = root.querySelectorAll(`
         a[href*="/${cleanAuthor}/"],
         a[href*="/${cleanAuthor}"],
         a[href$="/${cleanAuthor}"]
@@ -1183,65 +1193,79 @@
 
         const commentText = extractCommentTextFromContainer(commentItem, cleanAuthor);
         if (commentText && commentText.length > 2 && !isCommentMetadata(commentText, cleanAuthor)) {
-          return commentText;
+          const lower = commentText.toLowerCase();
+          if (!seenTexts.has(lower)) {
+            seenTexts.add(lower);
+            foundComments.push(commentText);
+          }
+        }
+      }
+
+      // 2. Scan root comment rows (where Instagram caption row or pinned comments might lack explicit username anchor)
+      const topItems = root.querySelectorAll(
+        'ul > div, ul > li, .ig-comments-section > div, .ig-comments-section > li'
+      );
+
+      for (let i = 0; i < Math.min(topItems.length, 6); i++) {
+        const item = topItems[i];
+        if (
+          item.closest('header') ||
+          item.closest('.ig-post-header') ||
+          item.closest('form') ||
+          item.closest('.instareply-card-overlay')
+        ) {
+          continue;
+        }
+
+        const authorEl = item.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong');
+        const itemAuthor = authorEl ? authorEl.textContent.trim().replace(/^@/, '') : '';
+
+        const isAuthorMatch = itemAuthor && (
+          itemAuthor.toLowerCase() === cleanAuthor.toLowerCase() ||
+          itemAuthor.toLowerCase().includes(cleanAuthor.toLowerCase())
+        );
+
+        const hasReplyBtn = Boolean(
+          Array.from(item.querySelectorAll('button, [role="button"], span')).some(b => {
+            const t = b.textContent?.trim().toLowerCase();
+            return t === 'reply';
+          })
+        );
+
+        if (isAuthorMatch || (!hasReplyBtn && i === 0)) {
+          const text = extractCommentTextFromContainer(item, itemAuthor || cleanAuthor);
+          if (text && text.length > 2 && !isCommentMetadata(text, cleanAuthor)) {
+            const lower = text.toLowerCase();
+            if (!seenTexts.has(lower)) {
+              seenTexts.add(lower);
+              if (!hasReplyBtn && i === 0) {
+                foundComments.unshift(text);
+              } else {
+                foundComments.push(text);
+              }
+            }
+          }
         }
       }
     }
 
-    // Strategy 2: Scan the top comment rows in the comment list container
-    // In Instagram, the root/first comment in the scrollable list is by the post author
-    const commentContainers = container.querySelectorAll(
-      'ul > div, ul > li, .ig-comments-section > div, .ig-comments-section > li, div[role="dialog"] ul li, article ul li'
-    );
+    return foundComments;
+  }
 
-    for (let i = 0; i < Math.min(commentContainers.length, 5); i++) {
-      const item = commentContainers[i];
-      if (
-        item.closest('header') ||
-        item.closest('.ig-post-header') ||
-        item.closest('form') ||
-        item.closest('.instareply-card-overlay')
-      ) {
-        continue;
-      }
-
-      // Check if this item is authored by cleanAuthor or does not have a "Reply" button (Instagram caption row)
-      const authorEl = item.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong');
-      const itemAuthor = authorEl ? authorEl.textContent.trim().replace(/^@/, '') : '';
-
-      const isAuthorMatch = cleanAuthor && itemAuthor && (
-        itemAuthor.toLowerCase() === cleanAuthor.toLowerCase() ||
-        itemAuthor.toLowerCase().includes(cleanAuthor.toLowerCase())
-      );
-
-      // Check if it's the root caption row (Instagram caption row typically has no Reply button)
-      const hasReplyBtn = Boolean(
-        Array.from(item.querySelectorAll('button, [role="button"], span')).some(b => {
-          const t = b.textContent?.trim().toLowerCase();
-          return t === 'reply';
-        })
-      );
-
-      if (isAuthorMatch || (!hasReplyBtn && i === 0)) {
-        const text = extractCommentTextFromContainer(item, itemAuthor || cleanAuthor);
-        if (text && text.length > 2 && !isCommentMetadata(text, cleanAuthor)) {
-          return text;
-        }
-      }
-    }
-
-    return '';
+  function extractAuthorFirstComment(container, postAuthor = '') {
+    const all = extractAllAuthorComments(container, postAuthor);
+    return all.length > 0 ? all[0] : '';
   }
 
   /**
-   * Robust multi-layer extraction of the Instagram post caption and author's first comment
+   * Robust multi-layer extraction of the Instagram post caption and all author comments
    */
   function extractPostCaption(container, knownAuthor = '') {
     if (!container) return '';
     const author = (knownAuthor || extractPostAuthor(container) || '').trim();
 
-    // 1. First comment row in comment stream or author's first comment
-    const authorFirstComment = extractAuthorFirstComment(container, author);
+    // 1. Scan and extract all comments authored by the creator in the comment stream
+    const authorComments = extractAllAuthorComments(container, author);
 
     let standardCaption = '';
 
@@ -1331,18 +1355,31 @@
       }
     }
 
-    // Combine standard caption and author's first comment if both exist and differ
-    if (authorFirstComment && standardCaption) {
-      if (standardCaption.includes(authorFirstComment)) {
-        return standardCaption;
-      }
-      if (authorFirstComment.includes(standardCaption)) {
-        return authorFirstComment;
-      }
-      return `${standardCaption}\n\n[Author's Note / First Comment]: ${authorFirstComment}`;
+    // Deduplicate author comments against standardCaption
+    const uniqueAuthorComments = authorComments.filter(c => {
+      if (!standardCaption) return true;
+      const lowerC = c.toLowerCase();
+      const lowerStd = standardCaption.toLowerCase();
+      return !lowerStd.includes(lowerC) && !lowerC.includes(lowerStd);
+    });
+
+    if (uniqueAuthorComments.length === 0) {
+      return standardCaption || (authorComments[0] || '');
     }
 
-    return authorFirstComment || standardCaption || '';
+    if (!standardCaption) {
+      if (uniqueAuthorComments.length === 1) {
+        return uniqueAuthorComments[0];
+      }
+      return uniqueAuthorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
+    }
+
+    if (uniqueAuthorComments.length === 1) {
+      return `${standardCaption}\n\n[Author's Comment]:\n${uniqueAuthorComments[0]}`;
+    }
+
+    const commentsBlock = uniqueAuthorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
+    return `${standardCaption}\n\n${commentsBlock}`;
   }
 
   /**
