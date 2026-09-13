@@ -110,12 +110,33 @@
    */
   function isInsideFloatingChat(el) {
     if (!el) return false;
-    if (el.closest && el.closest('.ig-dm-card, .ig-dm-composer, div[role="dialog"]')) {
+
+    // Explicitly exclude comment forms, articles, post cards, and comments dialogs
+    if (el.closest('form') || el.closest('article') || el.closest('.ig-post-card')) {
+      return false;
+    }
+
+    const dialog = el.closest('div[role="dialog"]');
+    if (dialog) {
+      // Check if dialog is a comments dialog or post modal
+      const heading = dialog.querySelector('h1, h2, [role="heading"]');
+      const headingText = (heading?.textContent || '').toLowerCase();
+      if (
+        headingText.includes('comment') ||
+        dialog.querySelector('textarea, div[aria-label*="comment" i], div[placeholder*="comment" i]')
+      ) {
+        return false;
+      }
+    }
+
+    // Check for explicit DM floating widget markers
+    if (el.closest && el.closest('.ig-pip-window, .ig-dm-card, .ig-dm-composer')) {
       return true;
     }
+
     let curr = el;
     while (curr && curr !== document.body) {
-      if (curr.classList && (curr.classList.contains('ig-dm-card') || curr.classList.contains('ig-dm-composer'))) {
+      if (curr.classList && (curr.classList.contains('ig-pip-window') || curr.classList.contains('ig-dm-card') || curr.classList.contains('ig-dm-composer'))) {
         return true;
       }
       if (window.getComputedStyle) {
@@ -124,7 +145,8 @@
           (s.position === 'fixed' || s.position === 'absolute') &&
           parseInt(s.bottom, 10) <= 80 &&
           curr.offsetWidth >= 220 && curr.offsetWidth <= 550 &&
-          curr.offsetHeight >= 200
+          curr.offsetHeight >= 200 &&
+          !curr.querySelector('div[aria-label*="comment" i], textarea[aria-label*="comment" i]')
         ) {
           return true;
         }
@@ -156,7 +178,7 @@
         return;
       }
 
-      // 2. Exclude post comment forms
+      // 2. Exclude post comment forms and comment dialogs
       const form = el.closest('form');
       if (form) {
         const formText = (form.textContent || '').toLowerCase();
@@ -165,11 +187,21 @@
         }
       }
 
-      // 3. Positive identification for DM:
       const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
       const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
       const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
 
+      // Exclude comment dialogs and comment inputs
+      if (
+        ariaLabel.includes('comment') ||
+        placeholder.includes('comment') ||
+        ariaPlaceholder.includes('comment') ||
+        el.closest('div[role="dialog"]')?.querySelector('h1, h2, [role="heading"]')?.textContent?.toLowerCase().includes('comment')
+      ) {
+        return;
+      }
+
+      // 3. Positive identification for DM:
       // Walk up ancestors up to 6 levels to catch Lexical editor placeholder text
       let ancestor = el.parentElement;
       let ancestorText = '';
@@ -213,12 +245,12 @@
   }
 
   /**
-   * Prunes duplicate shortcut buttons across forms and DM composer bars
+   * Prunes duplicate shortcut buttons across forms, dialogs, and DM composer bars
    */
   function pruneDuplicateShortcutButtons() {
-    // Check all comment forms
-    document.querySelectorAll('form').forEach((form) => {
-      const btns = form.querySelectorAll('.instareply-shortcut-btn');
+    // Check all comment forms and dialogs
+    document.querySelectorAll('form, div[role="dialog"]').forEach((container) => {
+      const btns = container.querySelectorAll('.instareply-shortcut-btn');
       if (btns.length > 1) {
         for (let i = 1; i < btns.length; i++) {
           btns[i].remove();
@@ -236,6 +268,16 @@
             btns[i].remove();
           }
         }
+      }
+    });
+
+    // Purge any button mistakenly placed in dialog headers or next to close buttons
+    document.querySelectorAll('.instareply-shortcut-btn').forEach((btn) => {
+      if (
+        btn.closest('h1, h2, h3, header') ||
+        btn.parentElement?.querySelector('svg[aria-label*="Close" i], svg[aria-label*="close" i]')
+      ) {
+        btn.remove();
       }
     });
   }
@@ -583,39 +625,74 @@
   }
 
   /**
-   * Inserts the shortcut button into a comment form
+   * Locates the immediate comment input bar container or form
+   * (e.g., in Reels or post modals without a <form> tag)
+   */
+  function findCommentInputContainer(inputEl) {
+    if (!inputEl) return null;
+    const form = inputEl.closest('form');
+    if (form) return form;
+
+    // In Reels or dialogs without <form>, find the immediate comment row or pill
+    let curr = inputEl.parentElement;
+    let pillContainer = curr;
+
+    while (curr && curr !== document.body) {
+      if (curr.getAttribute('role') === 'dialog' || curr.tagName.toLowerCase() === 'article') {
+        break;
+      }
+      // Check if curr is a container holding the input and action icons (⚡, 😊, Post)
+      const actions = curr.querySelectorAll('button, [role="button"], svg');
+      const hasExternalActions = Array.from(actions).some(a => !inputEl.contains(a) && !a.closest('.instareply-shortcut-btn'));
+      if (hasExternalActions) {
+        pillContainer = curr;
+        break;
+      }
+      if (curr.clientHeight > 0 && curr.clientHeight < 120) {
+        pillContainer = curr;
+      } else if (curr.clientHeight >= 120) {
+        break;
+      }
+      curr = curr.parentElement;
+    }
+
+    return pillContainer;
+  }
+
+  /**
+   * Inserts the shortcut button into a comment input bar (Feed, Post modal, or Reels)
    * Sits cleanly on the horizontal row before the action icons (lightning/emoji/post),
-   * ensuring it NEVER stacks vertically or overlaps any buttons.
+   * ensuring it NEVER stacks vertically, overlaps buttons, or escapes to dialog headers.
    */
   function insertShortcutIntoComment(btn, inputEl) {
-    const form = inputEl.closest('form') || inputEl.closest('article') || inputEl.closest('div[role="dialog"]');
-    if (!form) {
+    const container = findCommentInputContainer(inputEl);
+    if (!container) {
       inputEl.insertAdjacentElement('afterend', btn);
       return;
     }
 
     // Guard against duplicates
-    if (form.querySelector('.instareply-shortcut-btn')) return;
+    if (container.querySelector('.instareply-shortcut-btn')) return;
 
     // Reset any DM-specific absolute styles so it functions as an inline flex-row sibling
     btn.classList.remove('instareply-dm-shortcut-btn');
     btn.style.position = 'relative';
     btn.style.transform = 'none';
 
-    // 1. Locate the top-level input column/container inside the form
+    // 1. Locate the top-level input column/container inside the container
     let inputColumn = inputEl;
-    while (inputColumn.parentElement && inputColumn.parentElement !== form && !inputColumn.parentElement.contains(form)) {
+    while (inputColumn.parentElement && inputColumn.parentElement !== container && !inputColumn.parentElement.contains(container)) {
       inputColumn = inputColumn.parentElement;
     }
 
-    // 2. Find any action buttons in the form (Post, Emoji, Lightning, etc.)
-    const allButtons = Array.from(form.querySelectorAll('button, [role="button"]'))
-      .filter(b => b !== btn && !inputEl.contains(b));
+    // 2. Find any action buttons or icons in the container (Post, Emoji, Lightning, etc.)
+    const allActions = Array.from(container.querySelectorAll('button, [role="button"], svg'))
+      .filter(b => b !== btn && !inputEl.contains(b) && !b.closest('.instareply-shortcut-btn'));
 
     // Check if there is an existing submit/post button
-    let postBtn = form.querySelector('button[type="submit"], .ig-post-btn');
+    let postBtn = container.querySelector('button[type="submit"], .ig-post-btn');
     if (!postBtn) {
-      for (const b of allButtons) {
+      for (const b of allActions) {
         const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
         if (txt === 'post' || txt === '發佈' || txt === '发布' || txt === '投稿' || txt === 'publicar' || txt === 'publier' || txt === 'posten' || txt === 'condividi') {
           postBtn = b;
@@ -624,30 +701,28 @@
       }
     }
 
-    // 3. Find the action container on the right side of the form
-    // We want to insert `btn` BEFORE the right-side action cluster as a sibling in the main flex container,
-    // so it NEVER enters the narrow 24px icon wrapper!
-    let actionTarget = postBtn || (allButtons.length > 0 ? allButtons[0] : null);
+    // 3. Find the action container on the right side of the container
+    let actionTarget = postBtn || (allActions.length > 0 ? allActions[0] : null);
 
     if (actionTarget) {
-      // Walk up from actionTarget to find the top-level sibling of inputColumn inside form
+      // Walk up from actionTarget to find its wrapper that is a sibling of inputColumn inside container
       let actionColumn = actionTarget;
       while (
         actionColumn.parentElement &&
-        actionColumn.parentElement !== form &&
+        actionColumn.parentElement !== container &&
         !actionColumn.parentElement.contains(inputEl)
       ) {
         actionColumn = actionColumn.parentElement;
       }
 
-      if (actionColumn && actionColumn !== form && actionColumn.parentElement) {
+      if (actionColumn && actionColumn !== container && actionColumn.parentElement) {
         actionColumn.insertAdjacentElement('beforebegin', btn);
         return;
       }
     }
 
-    // 4. Fallback: place immediately after the input's column in the form flex row
-    if (inputColumn && inputColumn !== form && inputColumn.parentElement) {
+    // 4. Fallback: place immediately after the input's column in the flex row
+    if (inputColumn && inputColumn !== container && inputColumn.parentElement) {
       inputColumn.insertAdjacentElement('afterend', btn);
     } else {
       inputEl.insertAdjacentElement('afterend', btn);
@@ -717,10 +792,10 @@
   function injectShortcutButton(inputEl, contextType) {
     if (!inputEl) return;
 
-    // Check if the parent form already has an InstaReply button
-    const form = inputEl.closest('form');
-    if (form) {
-      const existingBtns = form.querySelectorAll('.instareply-shortcut-btn');
+    // Check if the parent comment container or form already has an InstaReply button
+    const commentContainer = findCommentInputContainer(inputEl);
+    if (commentContainer) {
+      const existingBtns = commentContainer.querySelectorAll('.instareply-shortcut-btn');
       if (existingBtns.length > 0) {
         // Prune any extra duplicates
         for (let i = 1; i < existingBtns.length; i++) {
@@ -934,13 +1009,61 @@
    * Opens or toggles the AI Reply Assistant Card
    */
   /**
+   * Finds the currently visible active Reel on the page
+   */
+  function findActiveReelContainer() {
+    // 1. Look for active article on the page containing video
+    const articles = Array.from(document.querySelectorAll('article'));
+    for (const a of articles) {
+      if (a.querySelector('video')) {
+        const rect = a.getBoundingClientRect();
+        if (rect.bottom > 0 && rect.top < window.innerHeight) {
+          return a;
+        }
+      }
+    }
+    if (articles.length > 0) return articles[0];
+
+    // 2. Find currently visible video
+    const videos = Array.from(document.querySelectorAll('video'));
+    for (const v of videos) {
+      const rect = v.getBoundingClientRect();
+      if (rect.width > 80 && rect.height > 80 && rect.bottom > 0 && rect.top < window.innerHeight) {
+        let p = v.parentElement;
+        while (p && p !== document.body) {
+          if (
+            p.tagName.toLowerCase() === 'article' ||
+            p.getAttribute('role') === 'region' ||
+            p.classList.contains('ig-post-card') ||
+            (p.getAttribute('tabindex') === '0' && p.clientHeight > 300)
+          ) {
+            return p;
+          }
+          p = p.parentElement;
+        }
+        return v.parentElement || v;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Finds the closest Instagram post or dialog container for a given element
    */
   function findPostContainer(el) {
     if (el && el.closest) {
       // 1. Direct modal dialog
       const parentModal = el.closest('div[role="dialog"]');
-      if (parentModal) return parentModal;
+      if (parentModal) {
+        // If parentModal is a post modal (contains header or video), return it
+        if (parentModal.querySelector('header, .ig-post-header, video')) {
+          return parentModal;
+        }
+        // If parentModal is a comments drawer (Reels), look for the active Reel behind it
+        const activeReel = findActiveReelContainer();
+        if (activeReel) return activeReel;
+        return parentModal;
+      }
 
       // 2. Direct parent article / feed post
       const parentArticle = el.closest('article') || el.closest('.ig-post-card');
@@ -949,10 +1072,18 @@
 
     // 3. Check if an active modal dialog is open on the screen
     const openModal = document.querySelector('div[role="dialog"] article') || document.querySelector('div[role="dialog"]');
-    if (openModal) return openModal;
+    if (openModal) {
+      if (openModal.querySelector('header, .ig-post-header, video')) {
+        return openModal;
+      }
+      const activeReel = findActiveReelContainer();
+      if (activeReel) return activeReel;
+      return openModal;
+    }
 
-    // 4. If an element was clicked but was outside an article/dialog, DO NOT randomly pick the first article on page!
-    if (el) return null;
+    // 4. If an element was clicked but was outside an article/dialog, check active Reel
+    const activeReel = findActiveReelContainer();
+    if (activeReel) return activeReel;
 
     // 5. Fallback only if on a dedicated single-post URL
     if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
@@ -1459,9 +1590,36 @@
 
     // Locate post container to extract post caption, author, and visuals
     const postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
-    const postAuthor = postContainer ? extractPostAuthor(postContainer) : '';
-    const postCaption = postContainer ? extractPostCaption(postContainer, postAuthor) : '';
-    const postVisuals = postContainer ? extractPostVisuals(postContainer) : { description: '', thumbnailUrl: '', mediaType: 'image' };
+    let postAuthor = postContainer ? extractPostAuthor(postContainer) : '';
+    let postCaption = postContainer ? extractPostCaption(postContainer, postAuthor) : '';
+    let postVisuals = postContainer ? extractPostVisuals(postContainer) : { description: '', thumbnailUrl: '', mediaType: 'image' };
+
+    // In Reels or dialogs, if postAuthor or postCaption was not inside the comments drawer, check active Reel
+    const activeReel = findActiveReelContainer();
+    if (activeReel && activeReel !== postContainer) {
+      if (!postAuthor) postAuthor = extractPostAuthor(activeReel);
+      if (!postCaption) postCaption = extractPostCaption(activeReel, postAuthor);
+      if (!postVisuals.thumbnailUrl && !postVisuals.description) {
+        const rv = extractPostVisuals(activeReel);
+        if (rv.thumbnailUrl || rv.description) postVisuals = rv;
+      }
+    }
+
+    // Also fallback to Open Graph meta tags for Reel pages
+    if ((!postAuthor || !postCaption) && (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/'))) {
+      if (!postAuthor) {
+        const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
+        const m = ogTitle.match(/@([a-zA-Z0-9._]+)/);
+        if (m) postAuthor = m[1];
+      }
+      if (!postCaption) {
+        const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
+        const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{5,})[”"']/);
+        if (quoteMatch && quoteMatch[1]) {
+          postCaption = cleanCaptionText(quoteMatch[1]);
+        }
+      }
+    }
 
     // Extract Context
     let context;
@@ -1540,6 +1698,33 @@
         postAuthor = extractPostAuthor(article);
         postCaption = extractPostCaption(article, postAuthor);
         postVisuals = extractPostVisuals(article);
+
+        // In Reels, if postAuthor or postCaption was not inside the comments drawer, check active Reel
+        const activeReel = findActiveReelContainer();
+        if (activeReel && activeReel !== article) {
+          if (!postAuthor) postAuthor = extractPostAuthor(activeReel);
+          if (!postCaption) postCaption = extractPostCaption(activeReel, postAuthor);
+          if (!postVisuals.thumbnailUrl && !postVisuals.description) {
+            const rv = extractPostVisuals(activeReel);
+            if (rv.thumbnailUrl || rv.description) postVisuals = rv;
+          }
+        }
+
+        // Also fallback to Open Graph meta tags for Reel pages
+        if ((!postAuthor || !postCaption) && (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/'))) {
+          if (!postAuthor) {
+            const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
+            const m = ogTitle.match(/@([a-zA-Z0-9._]+)/);
+            if (m) postAuthor = m[1];
+          }
+          if (!postCaption) {
+            const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
+            const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{5,})[”"']/);
+            if (quoteMatch && quoteMatch[1]) {
+              postCaption = cleanCaptionText(quoteMatch[1]);
+            }
+          }
+        }
 
         // 1. Check if there is an author tagged in the input (e.g., "@username hello")
         const mentionMatch = userDraftHint.match(/^@([a-zA-Z0-9._]+)/);
@@ -2248,12 +2433,12 @@
   function findFloatingChatContainer(el) {
     if (!el) return null;
     if (el.closest) {
-      const modal = el.closest('.ig-pip-window, .ig-dm-card, div[role="dialog"]');
+      const modal = el.closest('.ig-pip-window, .ig-dm-card');
       if (modal) return modal;
     }
     let curr = el;
     while (curr && curr !== document.body) {
-      if (curr.classList && (curr.classList.contains('ig-pip-window') || curr.classList.contains('ig-dm-card'))) {
+      if (curr.classList && (curr.classList.contains('ig-pip-window') || curr.classList.contains('ig-dm-card') || curr.classList.contains('ig-dm-composer'))) {
         return curr;
       }
       if (window.getComputedStyle) {
@@ -2262,7 +2447,8 @@
           (s.position === 'fixed' || s.position === 'absolute') &&
           parseInt(s.bottom, 10) <= 80 &&
           curr.offsetWidth >= 220 && curr.offsetWidth <= 550 &&
-          curr.offsetHeight >= 200
+          curr.offsetHeight >= 200 &&
+          !curr.querySelector('div[aria-label*="comment" i], textarea[aria-label*="comment" i]')
         ) {
           return curr;
         }
