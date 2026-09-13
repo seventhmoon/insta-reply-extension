@@ -775,6 +775,7 @@ You MUST respond with valid JSON matching this exact structure:
   "sentiment": "positive" | "neutral" | "negative" | "question" | "praise" | "complaint",
   "sentimentLabel": "Friendly & Positive" (short 2-4 word summary with sentiment emoji),
   "topics": ["Key Topic 1", "Key Topic 2"],
+  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood)",
   "reply": "Your drafted reply text here"
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
@@ -795,6 +796,7 @@ function parseAIResponse(rawText) {
       sentiment: json.sentiment || 'neutral',
       sentimentLabel: json.sentimentLabel || formatSentimentLabel(json.sentiment),
       topics: Array.isArray(json.topics) ? json.topics : [],
+      visualAnalysis: json.visualAnalysis || '',
       reply: json.reply || clean
     };
   } catch (err) {
@@ -804,6 +806,7 @@ function parseAIResponse(rawText) {
       sentiment: 'neutral',
       sentimentLabel: '✨ Analyzed',
       topics: [],
+      visualAnalysis: '',
       reply: rawText.replace(/\{[\s\S]*"reply"\s*:\s*"([^"]+)"[\s\S]*\}/, '$1').trim()
     };
   }

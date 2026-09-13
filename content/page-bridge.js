@@ -92,7 +92,7 @@
       }
 
       // Create Prompt Session with safety/language attestation and initialPrompts
-      const systemInstruction = "You are an expert Instagram assistant. Respond in valid JSON with fields: sentiment (positive, question, negative, neutral), sentimentLabel, topics (string array), reply (the text to post).";
+      const systemInstruction = "You are an expert Instagram assistant. Respond in valid JSON with fields: sentiment (positive, question, negative, neutral), sentimentLabel, topics (string array), visualAnalysis (brief 1-sentence description of what you see in the post visuals), reply (the text to post).";
 
       const sessionOptions = {
         ...capabilityOptions,
@@ -152,6 +152,7 @@ Respond with valid JSON:
   "sentiment": "positive",
   "sentimentLabel": "🟢 Positive",
   "topics": ["photography", "presets"],
+  "visualAnalysis": "Brief 1-sentence description of what you see in the post visuals",
   "reply": "Draft reply here"
 }`;
 

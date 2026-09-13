@@ -580,7 +580,8 @@
 
   /**
    * Inserts the shortcut button into a comment form
-   * Places it on the right side immediately before the "Post" button
+   * Sits cleanly on the horizontal row before the action icons (lightning/emoji/post),
+   * ensuring it NEVER stacks vertically or overlaps any buttons.
    */
   function insertShortcutIntoComment(btn, inputEl) {
     const form = inputEl.closest('form') || inputEl.closest('article') || inputEl.closest('div[role="dialog"]');
@@ -592,17 +593,26 @@
     // Guard against duplicates
     if (form.querySelector('.instareply-shortcut-btn')) return;
 
-    // 1. Find the Post button inside the form
-    const allButtons = Array.from(form.querySelectorAll('button, [role="button"]'));
-    let postBtn = form.querySelector('button[type="submit"], .ig-post-btn');
+    // Reset any DM-specific absolute styles so it functions as an inline flex-row sibling
+    btn.classList.remove('instareply-dm-shortcut-btn');
+    btn.style.position = 'relative';
+    btn.style.transform = 'none';
 
+    // 1. Locate the top-level input column/container inside the form
+    let inputColumn = inputEl;
+    while (inputColumn.parentElement && inputColumn.parentElement !== form && !inputColumn.parentElement.contains(form)) {
+      inputColumn = inputColumn.parentElement;
+    }
+
+    // 2. Find any action buttons in the form (Post, Emoji, Lightning, etc.)
+    const allButtons = Array.from(form.querySelectorAll('button, [role="button"]'))
+      .filter(b => b !== btn && !inputEl.contains(b));
+
+    // Check if there is an existing submit/post button
+    let postBtn = form.querySelector('button[type="submit"], .ig-post-btn');
     if (!postBtn) {
       for (const b of allButtons) {
         const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
-        // Skip emoji button
-        if (txt.includes('😊') || b.getAttribute('title')?.toLowerCase().includes('emoji') || b.getAttribute('aria-label')?.toLowerCase().includes('emoji')) {
-          continue;
-        }
         if (txt === 'post' || txt === '發佈' || txt === '发布' || txt === '投稿' || txt === 'publicar' || txt === 'publier' || txt === 'posten' || txt === 'condividi') {
           postBtn = b;
           break;
@@ -610,28 +620,33 @@
       }
     }
 
-    if (!postBtn && allButtons.length > 0) {
-      for (let i = allButtons.length - 1; i >= 0; i--) {
-        const b = allButtons[i];
-        const isEmoji = b.getAttribute('title')?.toLowerCase().includes('emoji') ||
-                        b.getAttribute('aria-label')?.toLowerCase().includes('emoji') ||
-                        (b.innerText || '').includes('😊');
-        if (!isEmoji) {
-          postBtn = b;
-          break;
-        }
+    // 3. Find the action container on the right side of the form
+    // We want to insert `btn` BEFORE the right-side action cluster as a sibling in the main flex container,
+    // so it NEVER enters the narrow 24px icon wrapper!
+    let actionTarget = postBtn || (allButtons.length > 0 ? allButtons[0] : null);
+
+    if (actionTarget) {
+      // Walk up from actionTarget to find the top-level sibling of inputColumn inside form
+      let actionColumn = actionTarget;
+      while (
+        actionColumn.parentElement &&
+        actionColumn.parentElement !== form &&
+        !actionColumn.parentElement.contains(inputEl)
+      ) {
+        actionColumn = actionColumn.parentElement;
+      }
+
+      if (actionColumn && actionColumn !== form && actionColumn.parentElement) {
+        actionColumn.insertAdjacentElement('beforebegin', btn);
+        return;
       }
     }
 
-    if (postBtn && postBtn !== btn && form.contains(postBtn)) {
-      postBtn.insertAdjacentElement('beforebegin', btn);
+    // 4. Fallback: place immediately after the input's column in the form flex row
+    if (inputColumn && inputColumn !== form && inputColumn.parentElement) {
+      inputColumn.insertAdjacentElement('afterend', btn);
     } else {
-      const wrapper = inputEl.parentElement;
-      if (wrapper && wrapper !== form) {
-        wrapper.insertAdjacentElement('afterend', btn);
-      } else {
-        form.appendChild(btn);
-      }
+      inputEl.insertAdjacentElement('afterend', btn);
     }
   }
 
@@ -1139,31 +1154,42 @@
     }
 
     // 2. Scan media images for visual descriptions and thumbnails
-    const images = Array.from(container.querySelectorAll('img'));
-    for (const img of images) {
-      if (
-        img.closest('.instareply-card-overlay') ||
-        img.alt?.toLowerCase().includes('profile picture') ||
-        img.alt?.toLowerCase().includes('avatar')
-      ) {
-        continue;
+    const images = Array.from(container.querySelectorAll('img')).filter(img => {
+      if (img.closest('.instareply-card-overlay')) return false;
+      const alt = (img.getAttribute('alt') || '').toLowerCase();
+      if (alt.includes('profile picture') || alt.includes('avatar')) return false;
+      if (!img.src || img.src.startsWith('data:image/svg')) return false;
+      return true;
+    });
+
+    if (images.length > 0) {
+      // Sort images by rendered/natural area to prioritize the main post photo over icons
+      const sorted = [...images].sort((a, b) => {
+        const areaA = (a.naturalWidth || a.clientWidth || 50) * (a.naturalHeight || a.clientHeight || 50);
+        const areaB = (b.naturalWidth || b.clientWidth || 50) * (b.naturalHeight || b.clientHeight || 50);
+        return areaB - areaA;
+      });
+
+      if (!thumbnailUrl && sorted[0]?.src) {
+        thumbnailUrl = sorted[0].src;
       }
 
-      if (!thumbnailUrl && img.src && !img.src.startsWith('data:image/svg')) {
-        thumbnailUrl = img.src;
-      }
-
-      const alt = img.getAttribute('alt') || '';
-      if (alt) {
-        // Instagram auto-generated alt text: "May be an image of night, city, and street"
-        const mayBeMatch = alt.match(/May be an image of\s*([^.]+)/i) ||
-                           alt.match(/May be a (?:photo|graphic|video) of\s*([^.]+)/i);
-        if (mayBeMatch && mayBeMatch[1]) {
-          description = `May be an image of ${mayBeMatch[1].trim()}`;
-          break;
-        } else if (alt.length > 15 && !alt.toLowerCase().includes('profile picture')) {
-          description = alt.trim();
-          break;
+      // Check all candidate images for auto-generated alt text (multi-language support)
+      for (const img of sorted) {
+        const alt = img.getAttribute('alt') || '';
+        if (alt) {
+          // English: "May be an image of..."
+          // Japanese: "画像に含まれている可能性があるもの:..." or "写真:..."
+          // Chinese: "可能包含：..."
+          // Spanish: "Puede ser una imagen de..."
+          const match = alt.match(/(?:May be an? (?:image|photo|graphic|video) of|画像に含まれている可能性があるもの:?|可能包含：?|Puede ser una imagen de)\s*([^.]+)/i);
+          if (match && match[1]) {
+            description = match[1].trim();
+            break;
+          } else if (alt.length > 15 && !alt.toLowerCase().includes('profile picture')) {
+            description = alt.trim();
+            break;
+          }
         }
       }
     }
@@ -1605,6 +1631,37 @@
     if (insightBar) {
       insightBar.innerHTML = pillsHTML;
     }
+
+    // Update or dynamically insert AI Visual Analysis ("What does the AI see in this post")
+    if (data.visualAnalysis) {
+      const visionTextEl = activeCard.querySelector('.instareply-vision-text');
+      if (visionTextEl) {
+        visionTextEl.textContent = `"${data.visualAnalysis}"`;
+      } else {
+        const cardBody = activeCard.querySelector('.instareply-card-body');
+        const insightBarEl = activeCard.querySelector('.instareply-insight-bar');
+        if (cardBody) {
+          const banner = document.createElement('div');
+          banner.className = 'instareply-context-banner instareply-visual-banner';
+          banner.title = 'Post Image & AI Vision Analysis';
+          banner.innerHTML = `
+            ${lastContextData?.postVisuals?.thumbnailUrl ? `
+              <img src="${escapeHTML(lastContextData.postVisuals.thumbnailUrl)}" class="instareply-visual-thumb" alt="Post thumbnail">
+            ` : `<span class="instareply-banner-icon">👁️</span>`}
+            <div class="instareply-context-text">
+              <strong style="color: #a78bfa;">👁️ AI Vision:</strong> <span class="instareply-vision-text">"${escapeHTML(data.visualAnalysis)}"</span>
+            </div>
+            <button type="button" class="instareply-unbind-btn" id="instareply-unbind-visual" title="Unbind image context">&times;</button>
+          `;
+          if (insightBarEl && insightBarEl.nextSibling) {
+            cardBody.insertBefore(banner, insightBarEl.nextSibling);
+          } else {
+            cardBody.prepend(banner);
+          }
+          setupUnbindButtons(activeCard);
+        }
+      }
+    }
   }
 
   /**
@@ -1673,13 +1730,13 @@
         </div>
 
         <!-- Detected Image/Video Visual Context Banner -->
-        ${context.postVisuals?.description ? `
-          <div class="instareply-context-banner instareply-visual-banner" title="Detected Post Visual Content">
+        ${(context.postVisuals?.thumbnailUrl || context.postVisuals?.description) ? `
+          <div class="instareply-context-banner instareply-visual-banner" title="Post Image & AI Vision Analysis">
             ${context.postVisuals.thumbnailUrl ? `
               <img src="${escapeHTML(context.postVisuals.thumbnailUrl)}" class="instareply-visual-thumb" alt="Post thumbnail">
-            ` : `<span class="instareply-banner-icon">🖼️</span>`}
+            ` : `<span class="instareply-banner-icon">👁️</span>`}
             <div class="instareply-context-text">
-              <strong>Visual:</strong> "${escapeHTML(context.postVisuals.description)}"
+              <strong style="color: #a78bfa;">👁️ AI Vision:</strong> <span class="instareply-vision-text">${context.postVisuals.description ? `"${escapeHTML(context.postVisuals.description)}"` : 'Analyzing post visual content...'}</span>
             </div>
             <button type="button" class="instareply-unbind-btn" id="instareply-unbind-visual" title="Unbind image context">&times;</button>
           </div>
