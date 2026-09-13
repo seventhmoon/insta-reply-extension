@@ -1698,6 +1698,79 @@
   }
 
   /**
+   * Sets up or refreshes event listeners on context unbind buttons (visual, post caption, comment target)
+   */
+  function setupUnbindButtons(card) {
+    if (!card) return;
+
+    // Unbind Visual Context button
+    const unbindVisualBtn = card.querySelector('#instareply-unbind-visual');
+    if (unbindVisualBtn && !unbindVisualBtn._hasClickListener) {
+      unbindVisualBtn._hasClickListener = true;
+      unbindVisualBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (lastContextData) {
+          lastContextData.postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
+        }
+        const banner = unbindVisualBtn.closest('.instareply-context-banner');
+        if (banner) {
+          banner.style.opacity = '0';
+          banner.style.transform = 'translateY(-4px)';
+          setTimeout(() => banner.remove(), 180);
+        }
+        currentVariation = 0;
+        executeReplyGeneration();
+      });
+    }
+
+    // Unbind Post Context button
+    const unbindPostBtn = card.querySelector('#instareply-unbind-post');
+    if (unbindPostBtn && !unbindPostBtn._hasClickListener) {
+      unbindPostBtn._hasClickListener = true;
+      unbindPostBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (lastContextData) {
+          lastContextData.postCaption = '';
+          lastContextData.postAuthor = '';
+        }
+        const banner = unbindPostBtn.closest('.instareply-context-banner');
+        if (banner) {
+          banner.style.opacity = '0';
+          banner.style.transform = 'translateY(-4px)';
+          setTimeout(() => banner.remove(), 180);
+        }
+        currentVariation = 0;
+        executeReplyGeneration();
+      });
+    }
+
+    // Unbind Comment Context button
+    const unbindCommentBtn = card.querySelector('#instareply-unbind-comment');
+    if (unbindCommentBtn && !unbindCommentBtn._hasClickListener) {
+      unbindCommentBtn._hasClickListener = true;
+      unbindCommentBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (lastContextData) {
+          lastContextData.incomingText = '';
+          lastContextData.author = '';
+          lastContextData.isSpecificCommentReply = false;
+        }
+        const banner = unbindCommentBtn.closest('.instareply-context-banner');
+        if (banner) {
+          banner.style.opacity = '0';
+          banner.style.transform = 'translateY(-4px)';
+          setTimeout(() => banner.remove(), 180);
+        }
+        currentVariation = 0;
+        executeReplyGeneration();
+      });
+    }
+  }
+
+  /**
    * Constructs the Floating AI Card DOM
    */
   function createCardDOM(context) {
@@ -1832,68 +1905,8 @@
       </div>
     `;
 
-    // Unbind Visual Context button
-    const unbindVisualBtn = card.querySelector('#instareply-unbind-visual');
-    if (unbindVisualBtn) {
-      unbindVisualBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (lastContextData) {
-          lastContextData.postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
-        }
-        const banner = unbindVisualBtn.closest('.instareply-context-banner');
-        if (banner) {
-          banner.style.opacity = '0';
-          banner.style.transform = 'translateY(-4px)';
-          setTimeout(() => banner.remove(), 180);
-        }
-        currentVariation = 0;
-        executeReplyGeneration();
-      });
-    }
-
-    // Unbind Post Context button
-    const unbindPostBtn = card.querySelector('#instareply-unbind-post');
-    if (unbindPostBtn) {
-      unbindPostBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (lastContextData) {
-          lastContextData.postCaption = '';
-          lastContextData.postAuthor = '';
-        }
-        const banner = unbindPostBtn.closest('.instareply-context-banner');
-        if (banner) {
-          banner.style.opacity = '0';
-          banner.style.transform = 'translateY(-4px)';
-          setTimeout(() => banner.remove(), 180);
-        }
-        currentVariation = 0;
-        executeReplyGeneration();
-      });
-    }
-
-    // Unbind Comment Context button
-    const unbindCommentBtn = card.querySelector('#instareply-unbind-comment');
-    if (unbindCommentBtn) {
-      unbindCommentBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (lastContextData) {
-          lastContextData.incomingText = '';
-          lastContextData.author = '';
-          lastContextData.isSpecificCommentReply = false;
-        }
-        const banner = unbindCommentBtn.closest('.instareply-context-banner');
-        if (banner) {
-          banner.style.opacity = '0';
-          banner.style.transform = 'translateY(-4px)';
-          setTimeout(() => banner.remove(), 180);
-        }
-        currentVariation = 0;
-        executeReplyGeneration();
-      });
-    }
+    // Setup unbind context buttons
+    setupUnbindButtons(card);
 
     // Stance button clicks
     card.querySelectorAll('.instareply-stance-btn').forEach(btn => {
