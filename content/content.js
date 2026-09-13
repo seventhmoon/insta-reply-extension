@@ -2028,7 +2028,37 @@
   }
 
   /**
-   * Position the floating card directly above or below the trigger
+   * Helper to locate the outer floating mini-window / dialog container
+   */
+  function findFloatingChatContainer(el) {
+    if (!el) return null;
+    if (el.closest) {
+      const modal = el.closest('.ig-pip-window, .ig-dm-card, div[role="dialog"]');
+      if (modal) return modal;
+    }
+    let curr = el;
+    while (curr && curr !== document.body) {
+      if (curr.classList && (curr.classList.contains('ig-pip-window') || curr.classList.contains('ig-dm-card'))) {
+        return curr;
+      }
+      if (window.getComputedStyle) {
+        const s = window.getComputedStyle(curr);
+        if (
+          (s.position === 'fixed' || s.position === 'absolute') &&
+          parseInt(s.bottom, 10) <= 80 &&
+          curr.offsetWidth >= 220 && curr.offsetWidth <= 550 &&
+          curr.offsetHeight >= 200
+        ) {
+          return curr;
+        }
+      }
+      curr = curr.parentElement;
+    }
+    return null;
+  }
+
+  /**
+   * Position the floating card directly above, below, or beside the trigger
    */
   function positionCard(card, triggerBtn, inputEl) {
     const target = triggerBtn || inputEl;
@@ -2036,10 +2066,39 @@
     const cardWidth = card.offsetWidth || 390;
     const cardHeight = card.offsetHeight || 330;
 
-    // Check if target is inside a fixed container (e.g. floating PIP mini-window)
-    const isFixed = isInsideFloatingChat(target) || isFixedElement(target);
+    const inFloatingChat = isInsideFloatingChat(target);
+    const isFixed = inFloatingChat || isFixedElement(target);
 
-    if (isFixed) {
+    if (inFloatingChat) {
+      // For PIP floating mini-window: position to the LEFT of the mini-window so the chat is never covered!
+      const floatingChat = findFloatingChatContainer(target);
+      const chatRect = floatingChat ? floatingChat.getBoundingClientRect() : rect;
+
+      card.style.position = 'fixed';
+      let left = chatRect.left - cardWidth - 12;
+      let top = chatRect.bottom - cardHeight;
+
+      // If screen is too narrow to fit side-by-side on the left, try placing above the chat window
+      if (left < 10) {
+        if (chatRect.top - cardHeight - 12 >= 10) {
+          top = chatRect.top - cardHeight - 12;
+          left = Math.max(10, Math.min(chatRect.right - cardWidth, window.innerWidth - cardWidth - 16));
+        } else {
+          left = 10;
+        }
+      }
+
+      // Vertical viewport boundary checks
+      if (top < 10) {
+        top = 10;
+      }
+      if (top + cardHeight > window.innerHeight - 10) {
+        top = window.innerHeight - cardHeight - 10;
+      }
+
+      card.style.top = `${top}px`;
+      card.style.left = `${left}px`;
+    } else if (isFixed) {
       card.style.position = 'fixed';
       let top = rect.top - cardHeight - 12;
       let left = rect.left;
