@@ -280,6 +280,18 @@
         btn.remove();
       }
     });
+
+    // Purge any reply chip mistakenly placed inside or near follow buttons, notification items, or headers
+    document.querySelectorAll('.instareply-dm-reply-chip, .instareply-comment-reply-chip').forEach((chip) => {
+      const parentButton = chip.closest('button:not(.instareply-dm-reply-chip):not(.instareply-comment-reply-chip)');
+      if (
+        parentButton ||
+        chip.parentElement?.textContent?.match(/follow\s*back|following|started following you/i) ||
+        chip.closest('h1, h2, h3, header')
+      ) {
+        chip.remove();
+      }
+    });
   }
 
   /**
@@ -301,8 +313,9 @@
     const exactActions = [
       'reply', 'ai reply', 'like', 'likes', 'liked', 'share', 'view replies', 'hide replies',
       'see translation', 'see original', 'view more comments', 'view all comments',
-      'author', 'creator', 'verified', 'pinned', 'follow', 'following', 'edited', 'just now',
-      'yesterday', 'translate', 'report'
+      'author', 'creator', 'verified', 'pinned', 'follow', 'following', 'follow back',
+      'requested', 'message', 'view profile', 'edited', 'just now', 'yesterday',
+      'translate', 'report', 'start the conversation', 'no comments yet'
     ];
     if (exactActions.includes(lower)) return true;
 
@@ -509,9 +522,22 @@
 
       if (!isReplyBtn) return;
 
+      // Never match inside a follow button, notifications panel, or header
+      if (
+        el.closest('button')?.textContent?.match(/follow\s*back|following|requested/i) ||
+        el.closest('header, nav')
+      ) {
+        return;
+      }
+
       // Ensure this element is inside a comment row / container
       const commentItem = el.closest('li') || el.closest('ul > div') || el.closest('div[role="button"]')?.parentElement || el.closest('.ig-comment');
       if (!commentItem) return;
+
+      // Reject notification items
+      if (commentItem.textContent?.match(/started following you|liked your post/i)) {
+        return;
+      }
 
       // Extract comment author
       const authorEl = commentItem.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong');
@@ -878,12 +904,50 @@
   }
 
   /**
+   * Helper to verify if a container is actually a DM chat thread
+   * (and NOT a notifications drawer, activity flyout, or comments modal)
+   */
+  function isRealDmChatContainer(container) {
+    if (!container) return false;
+
+    // Reject notifications panel, activity drawer, comments list, post modals
+    if (
+      container.closest('aside') ||
+      container.querySelector('nav, header')?.textContent?.match(/notifications|activity/i)
+    ) {
+      return false;
+    }
+
+    const headings = container.querySelectorAll('h1, h2, h3, [role="heading"]');
+    for (const h of headings) {
+      const ht = (h.textContent || '').trim().toLowerCase();
+      if (ht.includes('notifications') || ht.includes('activity') || ht === 'comments') {
+        return false;
+      }
+    }
+
+    // Must have DM composer, DM markers, or be in /direct/ route main container
+    const isDirectMain = window.location.pathname.includes('/direct') && (container.getAttribute('role') === 'main' || container.closest('div[role="main"]'));
+    const hasComposer = !!container.querySelector(
+      '.ig-dm-composer, div[data-lexical-editor="true"], [aria-label*="message" i], [placeholder*="message" i]'
+    );
+    const isExplicitDm = !!(
+      container.classList.contains('ig-dm-card') ||
+      container.classList.contains('ig-dm-messages') ||
+      container.classList.contains('ig-pip-window')
+    );
+
+    return isDirectMain || hasComposer || isExplicitDm || isInsideFloatingChat(container);
+  }
+
+  /**
    * Finds the active DM chat thread container for a given element (bubble, button, input)
    */
   function findChatContainerForElement(el) {
     if (!el) return null;
-    return el.closest('div[role="dialog"]') ||
-           el.closest('.ig-dm-card') ||
+    const dialog = el.closest('div[role="dialog"]');
+    if (dialog && isRealDmChatContainer(dialog)) return dialog;
+    return el.closest('.ig-dm-card') ||
            el.closest('.ig-dm-composer')?.parentElement ||
            el.closest('div[role="main"]') ||
            document.querySelector('div[role="main"]');
@@ -898,10 +962,12 @@
     const chatContainers = new Set();
     if (window.location.pathname.includes('/direct')) {
       const main = document.querySelector('div[role="main"]');
-      if (main) chatContainers.add(main);
+      if (main && isRealDmChatContainer(main)) chatContainers.add(main);
     }
     document.querySelectorAll('div[role="dialog"], .ig-dm-card, .ig-dm-messages').forEach((el) => {
-      chatContainers.add(el);
+      if (isRealDmChatContainer(el)) {
+        chatContainers.add(el);
+      }
     });
     // Check for any floating chat containers
     document.querySelectorAll('div').forEach((el) => {
@@ -919,6 +985,10 @@
           bubble.closest('.instareply-card-overlay') ||
           bubble.closest('.instareply-shortcut-btn') ||
           bubble.closest('.instareply-dm-reply-chip') ||
+          bubble.closest('.instareply-comment-reply-chip') ||
+          bubble.closest('button, [role="button"]') ||
+          bubble.closest('a[role="link"], a[href^="/"]') ||
+          bubble.closest('header, nav, footer') ||
           bubble.closest('.ig-dm-composer') ||
           bubble.closest('form') ||
           bubble.getAttribute('contenteditable') === 'true' ||
@@ -931,7 +1001,14 @@
         if (isOutgoingDmBubble(bubble)) return;
 
         const text = bubble.innerText?.trim() || bubble.textContent?.trim() || '';
-        if (!text || text.length < 2 || isCommentMetadata(text)) return;
+        if (
+          !text ||
+          text.length < 2 ||
+          isCommentMetadata(text) ||
+          text.match(/^(follow|follow back|following|requested|message|view profile)$/i)
+        ) {
+          return;
+        }
 
         bubble.dataset.instareplyDmInjected = 'true';
 
