@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InstaReply AI Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo-wrapper">
+      <img src="../icons/icon48.png" alt="InstaReply" class="logo-icon">
+      <div>
+        <h1 class="app-title">InstaReply AI</h1>
+        <span class="app-subtitle">Smart Instagram Reply Assistant</span>
+      </div>
+    </div>
+    <span class="version-badge">v1.0</span>
+  </header>
+
+  <main class="content">
+    <!-- Model Provider Section -->
+    <section class="card">
+      <label class="section-label">AI Model Provider</label>
+      <div class="provider-toggle">
+        <label class="provider-option">
+          <input type="radio" name="provider" value="gemini" checked>
+          <span class="provider-card">
+            <span class="provider-icon">✨</span>
+            <span class="provider-name">Gemini API</span>
+            <span class="provider-badge recommended">Recommended</span>
+          </span>
+        </label>
+
+        <label class="provider-option">
+          <input type="radio" name="provider" value="edge_ai">
+          <span class="provider-card">
+            <span class="provider-icon">⚡</span>
+            <span class="provider-name">Edge AI</span>
+            <span class="provider-badge">On-Device</span>
+          </span>
+        </label>
+
+        <label class="provider-option">
+          <input type="radio" name="provider" value="local_llm">
+          <span class="provider-card">
+            <span class="provider-icon">🖥️</span>
+            <span class="provider-name">Local LLM</span>
+            <span class="provider-badge">Ollama</span>
+          </span>
+        </label>
+      </div>
+
+      <!-- Gemini Settings -->
+      <div id="gemini-settings" class="provider-settings-panel">
+        <div class="form-group">
+          <label for="geminiApiKey">Gemini API Key</label>
+          <div class="input-with-action">
+            <input type="password" id="geminiApiKey" placeholder="AIzaSy..." autocomplete="off">
+            <button type="button" id="toggleKeyVisibility" class="icon-button" title="Show/Hide Key">👁️</button>
+          </div>
+          <p class="hint-text">
+            Don't have a key? Get one for free at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-action">
+            <label for="geminiModel">Model Selection</label>
+            <button type="button" id="refreshModelsBtn" class="link-button" title="Query Google API for the live list of models available to your key">
+              🔄 Fetch Latest Models
+            </button>
+          </div>
+          <select id="geminiModel" class="select-input">
+            <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (Fast & Stable)</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash (Next-Gen Fast)</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
+            <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B (Lightweight)</option>
+            <option value="custom">✏️ Enter Custom Model / Pointer...</option>
+          </select>
+          <div id="customModelWrapper" class="custom-model-wrapper hidden mt-8">
+            <input type="text" id="customModelInput" placeholder="e.g. gemini-3.8-flash or fine-tuned model" class="text-input">
+          </div>
+          <div id="modelsFetchStatus" class="hint-text"></div>
+        </div>
+      </div>
+
+      <!-- Edge AI Settings -->
+      <div id="edge-ai-settings" class="provider-settings-panel hidden">
+        <div class="info-box">
+          <span class="info-icon">💡</span>
+          <div>
+            <strong>Chrome Built-in Prompt API (Gemini Nano)</strong>
+            <p>Runs offline directly on your machine with zero latency and full privacy.</p>
+          </div>
+        </div>
+        <div id="edgeAiStatus" class="status-indicator">
+          Checking browser capability...
+        </div>
+        <p class="hint-text">
+          Requires Chrome 127+ with <a href="chrome://flags/#prompt-api-for-gemini-nano" target="_blank">Chrome Prompt API</a> flag enabled.
+        </p>
+      </div>
+
+      <!-- Local LLM Settings -->
+      <div id="local-llm-settings" class="provider-settings-panel hidden">
+        <div class="form-group">
+          <label for="localLlmUrl">Server Endpoint URL</label>
+          <input type="text" id="localLlmUrl" placeholder="http://localhost:11434/v1" class="text-input">
+        </div>
+        <div class="form-group">
+          <div class="label-with-action">
+            <label for="localLlmModelSelect">Installed Models</label>
+            <button type="button" id="refreshLocalModelsBtn" class="link-button" title="Fetch locally installed models from Ollama / LM Studio">
+              🔄 Fetch Local Models
+            </button>
+          </div>
+          <select id="localLlmModelSelect" class="select-input">
+            <option value="llama3.2" selected>llama3.2</option>
+            <option value="custom">✏️ Enter Custom Model Name...</option>
+          </select>
+          <div id="customLocalModelWrapper" class="custom-model-wrapper hidden mt-8">
+            <input type="text" id="localLlmModel" placeholder="e.g. llama3.2, mistral:latest" class="text-input">
+          </div>
+          <div id="localModelsFetchStatus" class="hint-text">Auto-detects models from Ollama or LM Studio.</div>
+        </div>
+      </div>
+
+      <!-- Test Connection Button -->
+      <div class="connection-action-row">
+        <button type="button" id="testConnectionBtn" class="btn btn-secondary">
+          <span class="btn-spinner hidden"></span>
+          Test Connection
+        </button>
+        <div id="connectionStatus" class="connection-status-msg"></div>
+      </div>
+    </section>
+
+    <!-- Reply Preferences -->
+    <section class="card">
+      <label class="section-label">Reply Customization</label>
+
+      <div class="form-group">
+        <label for="defaultStance">Default Reply Stance</label>
+        <select id="defaultStance" class="select-input">
+          <option value="positive" selected>🟢 Positive (Warm & Encouraging)</option>
+          <option value="neutral">⚪ Neutral (Objective & Balanced)</option>
+          <option value="negative">🔴 Negative (Firm Boundaries & Disagreement)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="defaultTone">Default Tone Style</label>
+        <select id="defaultTone" class="select-input">
+          <option value="friendly">😊 Friendly & Casual</option>
+          <option value="professional">💼 Professional & Polished</option>
+          <option value="enthusiastic">🔥 Enthusiastic & Hyped</option>
+          <option value="humorous">😄 Witty & Humorous</option>
+          <option value="empathetic">❤️ Empathetic & Caring</option>
+          <option value="concise">⚡ Short & Sweet</option>
+        </select>
+      </div>
+
+      <div class="checkbox-row">
+        <label class="custom-checkbox">
+          <input type="checkbox" id="enableAnalysis" checked>
+          <span class="checkbox-label">Analyze Sentiment & Key Topics</span>
+        </label>
+      </div>
+
+      <div class="checkbox-row">
+        <label class="custom-checkbox">
+          <input type="checkbox" id="includeEmojis" checked>
+          <span class="checkbox-label">Include Emojis in Replies</span>
+        </label>
+      </div>
+
+      <div class="checkbox-row">
+        <label class="custom-checkbox">
+          <input type="checkbox" id="includePostCaption" checked>
+          <span class="checkbox-label">Reference Post Caption Context (Uncheck to reply purely to comments)</span>
+        </label>
+      </div>
+
+      <div class="form-group mt-8">
+        <label for="customInstructions">Custom Persona or Rules (Optional)</label>
+        <textarea id="customInstructions" rows="2" placeholder="e.g. Always be polite, ask them to check my bio, keep under 2 sentences..."></textarea>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div id="saveFeedback" class="save-feedback hidden">✓ Settings saved!</div>
+    <button type="button" id="saveSettingsBtn" class="btn btn-primary w-full">Save Settings</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

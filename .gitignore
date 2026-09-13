@@ -1,0 +1,13 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Chrome extension temporary metadata
+_metadata/
+
+# Node / Environment
+node_modules/
+*.log
+.env
+.env.local

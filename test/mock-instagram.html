@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InstaReply AI - Mock Instagram Test Harness</title>
+  <meta property="og:description" content="studio_creatives on Instagram: &quot;Late night walk through Shinjuku neon alleys. Shot on 35mm f/1.4. What's your favorite photography spot in Japan? 🇯🇵✨&quot;">
+  <link rel="stylesheet" href="../content/content.css">
+  <style>
+    :root {
+      --ig-bg: #000000;
+      --ig-card: #121212;
+      --ig-border: #262626;
+      --ig-text: #f5f5f5;
+      --ig-muted: #a8a8a8;
+      --ig-blue: #0095f6;
+    }
+
+    body {
+      background: var(--ig-bg);
+      color: var(--ig-text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+
+    .test-header {
+      max-width: 800px;
+      text-align: center;
+    }
+
+    .test-header h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      background: linear-gradient(45deg, #f09433, #dc2743, #bc1888);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .test-header p {
+      color: var(--ig-muted);
+      font-size: 14px;
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 900px;
+      width: 100%;
+    }
+
+    @media (max-width: 768px) {
+      .grid-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Mock Post Card */
+    .ig-post-card {
+      background: var(--ig-card);
+      border: 1px solid var(--ig-border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ig-post-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .ig-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(45deg, #f09433, #dc2743, #bc1888);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    .ig-post-img {
+      width: 100%;
+      height: 240px;
+      background: #1e1e1e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ig-muted);
+      font-size: 14px;
+      border-top: 1px solid var(--ig-border);
+      border-bottom: 1px solid var(--ig-border);
+    }
+
+    .ig-comments-section {
+      padding: 12px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ig-comment {
+      line-height: 1.4;
+    }
+
+    .ig-comment strong {
+      margin-right: 6px;
+    }
+
+    .ig-comment-actions {
+      font-size: 11px;
+      color: var(--ig-muted);
+      margin-top: 4px;
+      display: flex;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .ig-comment-form {
+      display: flex;
+      align-items: center;
+      border-top: 1px solid var(--ig-border);
+      padding: 8px 12px;
+      position: relative;
+    }
+
+    .ig-comment-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--ig-text);
+      font-size: 13px;
+      resize: none;
+      height: 24px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .ig-post-btn {
+      background: none;
+      border: none;
+      color: var(--ig-blue);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    /* Mock DM Chat Window */
+    .ig-dm-card {
+      background: var(--ig-card);
+      border: 1px solid var(--ig-border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      height: 440px;
+    }
+
+    .ig-dm-messages {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .ig-msg-bubble {
+      max-width: 75%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .ig-msg-received {
+      background: #262626;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .ig-msg-sent {
+      background: #3797f0;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .ig-dm-composer {
+      display: flex;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid var(--ig-border);
+      position: relative;
+      gap: 8px;
+    }
+
+    .ig-dm-textbox {
+      flex: 1;
+      min-height: 22px;
+      max-height: 80px;
+      overflow-y: auto;
+      border: 1px solid #363636;
+      border-radius: 20px;
+      padding: 6px 14px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .ig-dm-textbox:empty:before {
+      content: attr(placeholder);
+      color: var(--ig-muted);
+    }
+
+    .test-instructions {
+      max-width: 900px;
+      width: 100%;
+      background: #181c24;
+      border: 1px solid #2c354a;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .test-instructions code {
+      background: #111827;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #38bdf8;
+    }
+
+    /* Floating PIP / Mini-Window Chat Widget */
+    .ig-pip-window {
+      position: fixed;
+      bottom: 16px;
+      right: 24px;
+      width: 320px;
+      height: 440px;
+      background: #1c1c1c;
+      border: 1px solid #363636;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      overflow: hidden;
+    }
+
+    .ig-pip-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #141414;
+      border-bottom: 1px solid #2d2d2d;
+    }
+
+    .ig-pip-messages {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-header">
+    <h1>InstaReply AI - Mock Instagram Playground</h1>
+    <p>Simulates Instagram Post Comments and Direct Messages for local verification.</p>
+  </div>
+
+  <div class="test-instructions">
+    <strong>Testing Instructions:</strong>
+    <ol>
+      <li>Notice the circular <strong>gradient sparkle shortcut icon</strong> injected into the comment input and DM composer below.</li>
+      <li><strong>Test 1 (Direct Reply):</strong> Click the shortcut icon without typing anything. It detects the incoming comment/message, extracts sentiment (Positive/Question), and drafts a contextual reply.</li>
+      <li><strong>Test 2 (User Hint):</strong> Type a hint like <code>"politely decline and mention our new spring launch"</code> or <code>"say thanks and ask for their email"</code> in the input box, then click the shortcut icon. Notice how InstaReply displays <em>"Using Draft Hint"</em> and steers the AI accordingly!</li>
+      <li><strong>Test 3 (Regen & Tone):</strong> Click different tone chips (Friendly, Hyped, Professional, Humorous) or hit <strong>🔄 Regen</strong> to see fresh variations.</li>
+      <li><strong>Test 4 (Insert):</strong> Click <strong>Insert Reply ↵</strong> to inject the drafted reply directly into Instagram's input!</li>
+    </ol>
+  </div>
+
+  <div class="grid-container">
+    <!-- Instagram Post Feed Mock -->
+    <article class="ig-post-card">
+      <header class="ig-post-header">
+        <div class="ig-avatar">SC</div>
+        <div>
+          <strong>studio_creatives</strong><br>
+          <span style="font-size: 11px; color: var(--ig-muted);">Tokyo, Japan</span>
+        </div>
+      </header>
+
+      <!-- Semantic caption heading as rendered on Instagram web post pages -->
+      <h1 dir="auto" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">Late night walk through Shinjuku neon alleys. Shot on 35mm f/1.4. What's your favorite photography spot in Japan? 🇯🇵✨</h1>
+
+      <div class="ig-post-img">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' fill='%231e1e1e'%3E%3Ctext x='50%25' y='50%25' fill='%23a8a8a8' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='14'%3E📸 35mm Night Photography in Shinjuku, Tokyo%3C/text%3E%3C/svg%3E" alt="Photo by @studio_creatives in Shinjuku, Tokyo on 35mm f/1.4. May be an image of night, neon street and alley in Shinjuku, Tokyo. Caption: Late night walk through Shinjuku neon alleys. Shot on 35mm f/1.4." style="width:100%; height:100%; object-fit:cover;">
+      </div>
+
+      <div class="ig-comments-section">
+        <div class="ig-comment">
+          <strong>studio_creatives</strong>
+          <span>Late night walk through Shinjuku neon alleys. Shot on 35mm f/1.4. What's your favorite photography spot in Japan? 🇯🇵✨</span>
+        </div>
+
+        <div class="ig-comment" id="mock-comment-1">
+          <strong>@alex_wanderer</strong>
+          <span>This lighting is absolutely mindblowing!! 🔥 What camera body did you use for this? Also are your Lightroom presets available anywhere?</span>
+          <div class="ig-comment-actions">
+            <span>2h</span>
+            <span>14 likes</span>
+            <span class="ig-reply-link" onclick="setReplyTarget('@alex_wanderer ')">Reply</span>
+          </div>
+        </div>
+
+        <div class="ig-comment" id="mock-comment-2">
+          <strong>@hannah_travels</strong>
+          <span>Do you offer 1-on-1 photography workshops in Tokyo? Visiting this November and would love to learn night photography! 🇯🇵</span>
+          <div class="ig-comment-actions">
+            <span>45m</span>
+            <span>6 likes</span>
+            <span class="ig-reply-link" onclick="setReplyTarget('@hannah_travels ')">Reply</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comment Form -->
+      <form class="ig-comment-form" onsubmit="event.preventDefault();">
+        <textarea
+          id="comment-input"
+          class="ig-comment-input"
+          aria-label="Add a comment…"
+          placeholder="Add a comment…"
+        ></textarea>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div role="button" tabindex="0" title="Emoji" style="cursor: pointer; font-size: 16px;">😊</div>
+          <button type="submit" class="ig-post-btn">Post</button>
+        </div>
+      </form>
+    </article>
+
+    <!-- Instagram Direct Message Mock -->
+    <div class="ig-dm-card">
+      <header class="ig-post-header" style="border-bottom: 1px solid var(--ig-border);">
+        <div class="ig-avatar">EM</div>
+        <div>
+          <strong>elena_marketing</strong><br>
+          <span style="font-size: 11px; color: #10B981;">● Active now</span>
+        </div>
+      </header>
+
+      <div class="ig-dm-messages" role="main">
+        <div class="ig-msg-bubble ig-msg-received" dir="auto">
+          Hey! We loved your recent photography reel on Instagram.
+        </div>
+        <div class="ig-msg-bubble ig-msg-sent" dir="auto">
+          Thank you so much Elena! Glad you enjoyed it.
+        </div>
+        <div class="ig-msg-bubble ig-msg-received" dir="auto">
+          We'd love to collaborate on a sponsored campaign next month featuring our new lens gear. Do you have a media kit and what are your standard rates for 1 Reel + 2 Stories?
+        </div>
+      </div>
+
+      <!-- DM Composer -->
+      <div class="ig-dm-composer">
+        <div
+          id="dm-input"
+          class="ig-dm-textbox"
+          role="textbox"
+          contenteditable="true"
+          aria-label="Message..."
+          placeholder="Message..."
+        ></div>
+        <button type="button" class="ig-post-btn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating PIP Mini-Window Chat Widget (resembling Instagram's bottom-right floating chat) -->
+  <div class="ig-pip-window" role="dialog" aria-label="Chat with Hayashi">
+    <div class="ig-pip-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="cursor: pointer; font-size: 13px; color: var(--ig-muted);">❮</span>
+        <div class="ig-avatar" style="width: 28px; height: 28px; font-size: 11px;">H</div>
+        <strong style="font-size: 13px;">Hayashi</strong>
+      </div>
+      <div style="display: flex; gap: 10px; color: var(--ig-muted); cursor: pointer; font-size: 14px;">
+        <span title="Expand">⛶</span>
+        <span title="Close">✕</span>
+      </div>
+    </div>
+
+    <div class="ig-pip-messages">
+      <div class="ig-msg-bubble ig-msg-sent" dir="auto">
+        Hay Hayashi, these collab ideas are amazing! ✨ Glam Giveaways sound especially fun – a perfect way to connect with followers! 😍
+      </div>
+      <div class="ig-msg-bubble ig-msg-received" dir="auto">
+        Squeals Thank you, babe! Glam Giveaways are my ultimate fave — I'm already imagining the prizes: 💄 Luxury lipsticks 💋 High-end perfumes 👑 My own skincare line... Want to co-host one with me? ❤️
+      </div>
+    </div>
+
+    <div class="ig-dm-composer" style="background: #141414; padding: 8px 10px; border-top: 1px solid #2d2d2d;">
+      <div
+        id="pip-dm-input"
+        class="ig-dm-textbox"
+        role="textbox"
+        contenteditable="true"
+        aria-label="Message..."
+        placeholder="Message..."
+      ></div>
+    </div>
+  </div>
+
+  <script>
+    function setReplyTarget(username) {
+      const input = document.getElementById('comment-input');
+      input.value = username;
+      input.focus();
+    }
+  </script>
+
+  <!-- Load Content Script for direct playground testing -->
+  <script src="../content/content.js"></script>
+
+  <!-- Fallback mock handler for standalone browser testing if chrome.runtime is not available -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+      window.chrome = {
+        runtime: {
+          sendMessage: function(msg) {
+            return new Promise((resolve) => {
+              if (msg.action === 'GET_CONFIG') {
+                resolve({
+                  provider: 'gemini',
+                  defaultTone: 'friendly',
+                  enableAnalysis: true,
+                  includeEmojis: true
+                });
+              } else if (msg.action === 'GENERATE_REPLY') {
+                setTimeout(() => {
+                  const hint = msg.payload.userDraftHint || '';
+                  const tone = msg.payload.tone || 'friendly';
+                  const stance = msg.payload.stance || 'positive';
+                  const text = msg.payload.incomingText || '';
+                  const varIdx = msg.payload.variationIndex || 0;
+
+                  let sentiment = stance;
+                  let sentimentLabel = stance === 'negative' ? '🔴 Critical / Firm' : (stance === 'neutral' ? '⚪ Neutral' : '🟢 Positive / Inquiring');
+                  let topics = ['Collaboration', 'Pricing'];
+                  let reply = '';
+
+                  if (stance === 'negative') {
+                    if (text.includes('rates') || text.includes('collaborate')) {
+                      reply = "Thanks for thinking of us, but we are not accepting sponsored promotions or collaboration requests at this time. Wishing you the best with your launch!";
+                    } else if (text.includes('workshop')) {
+                      reply = "Appreciate your interest, but I'm currently not hosting private 1-on-1 workshops this season due to a fully booked shooting schedule.";
+                    } else {
+                      reply = "Thanks for the comment, but I prefer keeping my gear settings and preset workflows private. Appreciate your understanding!";
+                    }
+                  } else if (stance === 'neutral') {
+                    if (text.includes('rates') || text.includes('collaborate')) {
+                      reply = "Collaboration terms, sponsorship requirements, and standard deliverables are outlined in our media kit. Please send an inquiry to the contact email in bio.";
+                    } else if (text.includes('workshop')) {
+                      reply = "Workshop availability and schedule announcements are posted quarterly in our newsletter and bio link.";
+                    } else {
+                      reply = "This was shot on a 35mm lens. Preset announcements and technical details are posted on the studio page.";
+                    }
+                  } else if (text.includes('rates') || text.includes('collaborate')) {
+                    sentiment = 'question';
+                    sentimentLabel = '💼 Business Inquiry';
+                    topics = ['Sponsorship', 'Media Kit', 'Rates'];
+                    if (hint) {
+                      reply = `Thanks for reaching out! Regarding your note: ${hint} - I'd love to send over my media kit. Could you share your brand's official email? 📩`;
+                    } else if (tone === 'enthusiastic') {
+                      reply = `I'd love that! Huge fan of your gear 🔥 I'll send over my media kit and rate card shortly. What's the best email to reach your team?`;
+                    } else {
+                      reply = `Hi Elena, thanks for reaching out! I'd be glad to discuss a partnership. I'll DM my media kit with full package details and rates shortly.`;
+                    }
+                  } else if (text.includes('workshop') || text.includes('November')) {
+                    sentiment = 'question';
+                    sentimentLabel = '📅 Workshop Inquiry';
+                    topics = ['Tokyo Workshops', 'Night Photography'];
+                    if (hint) {
+                      reply = `Hey Hannah! ${hint} - I will be hosting 1-on-1 sessions in Shibuya and Shinjuku this November. Send me a DM for dates! 📸`;
+                    } else {
+                      reply = `Hi Hannah! Yes, I do offer private night photography workshops in Tokyo! Would love to show you around. Feel free to shoot me a DM with your travel dates! 🇯🇵`;
+                    }
+                  } else if (text.includes('Glam Giveaways') || text.includes('skincare') || text.includes('co-host')) {
+                    sentiment = 'positive';
+                    sentimentLabel = '✨ Collab / Excitement';
+                    topics = ['Giveaways', 'Skincare', 'Co-Hosting'];
+                    if (hint) {
+                      reply = `I would love to! ${hint} - Let's definitely co-host the Glam Giveaway together! 💄✨`;
+                    } else if (stance === 'negative') {
+                      reply = `Thank you Hayashi! It sounds like a lovely idea, but my schedule is completely booked right now so I won't be able to co-host. Best of luck with it! 💕`;
+                    } else if (stance === 'neutral') {
+                      reply = `Thanks for thinking of me, Hayashi! Let me check my schedule and campaign guidelines to see if our dates align for a giveaway.`;
+                    } else {
+                      reply = `OMG I would LOVE to co-host with you!! 😍✨ Luxury lipsticks and perfumes will drive everyone wild! Let's jump on a quick call to plan the giveaway details! ❤️`;
+                    }
+                  } else {
+                    sentiment = 'positive';
+                    sentimentLabel = '🟢 Praise / Gear Question';
+                    topics = ['Camera Body', 'Presets', 'Shinjuku'];
+                    if (hint) {
+                      reply = `Thanks so much! ${hint} - Shot this on a Sony A7IV with the 35mm GM. Drop me a DM if you'd like the preset link! 📸`;
+                    } else if (varIdx > 0) {
+                      reply = `Much appreciated! It was shot on an A7IV at ISO 800. Working on packaging these Lightroom presets now, stay tuned! ✨`;
+                    } else {
+                      reply = `Thank you so much! Shot this on a Sony A7IV. Yes, presets are dropping next week in my bio link! 🙌`;
+                    }
+                  }
+
+                  resolve({
+                    success: true,
+                    sentiment,
+                    sentimentLabel,
+                    topics,
+                    reply,
+                    modelUsed: 'Gemini 1.5 Flash (Preview)'
+                  });
+                }, 400);
+              }
+            });
+          }
+        }
+      };
+    }
+  </script>
+</body>
+</html>
