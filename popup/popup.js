@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const enableAnalysis = document.getElementById('enableAnalysis');
   const includeEmojis = document.getElementById('includeEmojis');
   const includePostCaption = document.getElementById('includePostCaption');
+  const enableMultimodalVision = document.getElementById('enableMultimodalVision');
   const customInstructions = document.getElementById('customInstructions');
 
   const testConnectionBtn = document.getElementById('testConnectionBtn');
@@ -344,6 +345,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     enableAnalysis.checked = cfg.enableAnalysis !== false;
     includeEmojis.checked = cfg.includeEmojis !== false;
     includePostCaption.checked = cfg.includePostCaption !== false;
+    if (enableMultimodalVision) enableMultimodalVision.checked = cfg.enableMultimodalVision !== false;
     customInstructions.value = cfg.customInstructions || '';
   }
 
@@ -369,6 +371,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       enableAnalysis: enableAnalysis.checked,
       includeEmojis: includeEmojis.checked,
       includePostCaption: includePostCaption.checked,
+      enableMultimodalVision: enableMultimodalVision ? enableMultimodalVision.checked : true,
       customInstructions: customInstructions.value.trim()
     };
   }

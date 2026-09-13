@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
   enableAnalysis: true,
   includeEmojis: true,
   includePostCaption: true,
+  enableMultimodalVision: true,
   customInstructions: ''
 };
 
@@ -348,6 +349,42 @@ async function handleGenerateReply(payload) {
 }
 
 /**
+ * Fetches an image URL and converts it to a base64 inlineData object for Gemini Multimodal API.
+ */
+async function fetchImageAsBase64(imageUrl) {
+  try {
+    if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
+      return null;
+    }
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      console.warn('[InstaReply AI] Could not download image for multimodal analysis:', response.status);
+      return null;
+    }
+    const blob = await response.blob();
+    // Prevent sending massive files over 8MB
+    if (blob.size > 8 * 1024 * 1024) {
+      console.warn('[InstaReply AI] Image exceeded 8MB size limit for inline data.');
+      return null;
+    }
+    const mimeType = blob.type || 'image/jpeg';
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    const chunkSize = 8192;
+    for (let i = 0; i < len; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, len)));
+    }
+    const data = btoa(binary);
+    return { mimeType, data };
+  } catch (err) {
+    console.warn('[InstaReply AI] Error converting image to base64 for Gemini vision:', err);
+    return null;
+  }
+}
+
+/**
  * Google Gemini API Generation with Sentiment & Key Topic extraction
  */
 async function generateWithGemini({
@@ -377,6 +414,21 @@ async function generateWithGemini({
   const model = resolveGeminiModel(config.geminiModel);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.geminiApiKey.trim())}`;
 
+  // Check if Multimodal Image analysis is enabled and available
+  const canUseMultimodal = config.enableMultimodalVision !== false && Boolean(postVisuals?.thumbnailUrl);
+  let inlineImagePart = null;
+
+  if (canUseMultimodal) {
+    try {
+      inlineImagePart = await fetchImageAsBase64(postVisuals.thumbnailUrl);
+      if (inlineImagePart) {
+        console.log('[InstaReply AI] Successfully prepared base64 image data for Gemini Vision.');
+      }
+    } catch (fetchErr) {
+      console.warn('[InstaReply AI] Multimodal fetch failed, falling back to text prompt:', fetchErr);
+    }
+  }
+
   const prompt = buildStructuredPrompt({
     contextType,
     replyMode,
@@ -386,6 +438,7 @@ async function generateWithGemini({
     postCaption,
     postAuthor,
     postVisuals,
+    hasMultimodalImage: Boolean(inlineImagePart),
     author,
     isSpecificCommentReply,
     userDraftHint,
@@ -397,10 +450,21 @@ async function generateWithGemini({
     customInstructions: config.customInstructions
   });
 
+  const parts = [];
+  if (inlineImagePart) {
+    parts.push({
+      inlineData: {
+        mimeType: inlineImagePart.mimeType,
+        data: inlineImagePart.data
+      }
+    });
+  }
+  parts.push({ text: prompt });
+
   const body = {
     contents: [
       {
-        parts: [{ text: prompt }]
+        parts
       }
     ],
     generationConfig: {
@@ -573,6 +637,7 @@ function buildStructuredPrompt({
   postCaption,
   postAuthor,
   postVisuals,
+  hasMultimodalImage = false,
   author,
   isSpecificCommentReply,
   userDraftHint,
@@ -599,7 +664,13 @@ function buildStructuredPrompt({
   }
 
   let visualContextBlock = '';
-  if (postVisuals && postVisuals.description) {
+  if (hasMultimodalImage) {
+    visualContextBlock = `### POST VISUAL CONTENT (ACTUAL IMAGE ATTACHED DIRECTLY):
+An image of the post has been directly attached to this request.
+Inspect the image's composition, subjects, text, colors, scenery, and emotion directly.
+${postVisuals?.description ? `Supplementary description: "${postVisuals.description}"\n` : ''}
+`;
+  } else if (postVisuals && postVisuals.description) {
     visualContextBlock = `### POST VISUAL CONTENT (${postVisuals.mediaType === 'video' ? 'VIDEO / REEL' : 'IMAGE / PHOTO'}):
 Scene description / visual content: "${postVisuals.description}"
 Notice: Use this visual description to understand what the photo/video actually depicts (lighting, objects, colors, environment, mood).

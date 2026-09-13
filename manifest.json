@@ -37,6 +37,8 @@
   },
   "host_permissions": [
     "https://*.instagram.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*",
     "https://generativelanguage.googleapis.com/*",
     "http://localhost:*/*",
     "http://127.0.0.1:*/*"
