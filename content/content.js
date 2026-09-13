@@ -1520,8 +1520,10 @@
     };
 
     try {
-      // Check if user chose Edge AI (Prompt API)
       const config = await getConfig();
+      payload.replyLanguage = config.replyLanguage || 'auto';
+
+      // Check if user chose Edge AI (Prompt API)
       if (config.provider === 'edge_ai') {
         await generateViaEdgeAI(payload);
         return;

@@ -12,6 +12,7 @@ const DEFAULT_CONFIG = {
   includeEmojis: true,
   includePostCaption: true,
   enableMultimodalVision: true,
+  replyLanguage: 'auto',
   customInstructions: ''
 };
 
@@ -445,6 +446,7 @@ async function generateWithGemini({
     stance,
     tone,
     variationIndex,
+    replyLanguage: config.replyLanguage || 'auto',
     enableAnalysis: config.enableAnalysis,
     includeEmojis: config.includeEmojis,
     customInstructions: config.customInstructions
@@ -551,6 +553,7 @@ async function generateWithLocalLlm({
     stance,
     tone,
     variationIndex,
+    replyLanguage: config.replyLanguage || 'auto',
     enableAnalysis: config.enableAnalysis,
     includeEmojis: config.includeEmojis,
     customInstructions: config.customInstructions
@@ -644,6 +647,7 @@ function buildStructuredPrompt({
   stance = 'positive',
   tone,
   variationIndex,
+  replyLanguage = 'auto',
   enableAnalysis,
   includeEmojis,
   customInstructions
@@ -768,6 +772,8 @@ ${postCaption ? `   - Specifically connect your reply to the topics, locations, 
    - Emojis: ${includeEmojis ? 'Include natural, tasteful Instagram-style emojis' : 'Do NOT use emojis'}.
 ${customInstructions ? `   - Custom Rule: ${customInstructions}\n` : ''}${variationIndex > 0 ? `   - Variation #${variationIndex + 1}: Make this variation noticeably distinct in phrasing and perspective from previous drafts.\n` : ''}   - Length: 1 to 3 natural, impactful sentences authentic to Instagram.
    - Avoid generic AI-sounding phrases, cliches, or corporate buzzwords.
+6. LANGUAGE PREFERENCE:
+${getLanguageInstruction(replyLanguage)}
 
 ### OUTPUT FORMAT:
 You MUST respond with valid JSON matching this exact structure:
@@ -779,6 +785,32 @@ You MUST respond with valid JSON matching this exact structure:
   "reply": "Your drafted reply text here"
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
+}
+
+/**
+ * Builds the language instruction string for AI prompt
+ */
+function getLanguageInstruction(lang) {
+  if (!lang || lang === 'auto') {
+    return `   - STRICT CONTEXT LANGUAGE MATCHING (Auto-Detect):
+   - You MUST detect the primary language of the incoming comment or message (or post caption if writing a top-level post comment).
+   - Write your ENTIRE reply in the EXACT SAME LANGUAGE and script as the context (e.g. if Japanese, reply in natural Japanese; if Traditional Chinese, reply in Traditional Chinese; if Spanish, reply in Spanish; if English, reply in English).
+   - NEVER default or translate to English unless the context itself is in English!`;
+  }
+  const langNames = {
+    'en': 'English',
+    'ja': 'Japanese (日本語)',
+    'zh-TW': 'Traditional Chinese (繁體中文)',
+    'zh-CN': 'Simplified Chinese (简体中文)',
+    'es': 'Spanish (Español)',
+    'fr': 'French (Français)',
+    'de': 'German (Deutsch)',
+    'ko': 'Korean (한국어)',
+    'pt': 'Portuguese (Português)',
+    'it': 'Italian (Italiano)'
+  };
+  const target = langNames[lang] || lang;
+  return `   - FORCED LANGUAGE: You MUST write your entire reply in ${target}, regardless of the language of the incoming context.`;
 }
 
 /**

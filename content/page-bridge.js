@@ -128,6 +128,15 @@
       } else if (stance === 'neutral') {
         stanceRule = '2. Stance: Neutral. Be objective, calm, and matter-of-fact without emotional hype or negativity.';
       }
+      const replyLang = payload.replyLanguage || 'auto';
+      let langRule = '5. Language: Strictly match the language of the incoming comment/post (e.g. if Japanese, reply in natural Japanese; if Traditional Chinese, reply in Traditional Chinese; if Spanish, reply in Spanish; if English, reply in English). Do NOT default or translate to English unless context is English!';
+      if (replyLang !== 'auto') {
+        const langMap = {
+          'en': 'English', 'ja': 'Japanese', 'zh-TW': 'Traditional Chinese', 'zh-CN': 'Simplified Chinese',
+          'es': 'Spanish', 'fr': 'French', 'de': 'German', 'ko': 'Korean', 'pt': 'Portuguese', 'it': 'Italian'
+        };
+        langRule = `5. Language: Always write the entire reply in ${langMap[replyLang] || replyLang}.`;
+      }
 
       const prompt = `Instagram Context:
 - Target Reply Stance: ${stance.toUpperCase()}
@@ -146,6 +155,7 @@ ${payload.isCurrentUserPostAuthor ? '1. You are the CREATOR (@' + payload.postAu
 ${stanceRule}
 ${payload.postVisuals?.description ? '3. Visual Grounding: Reference what is depicted in the image/video ("' + payload.postVisuals.description + '").' : ''}
 4. Be authentic, concise (1-2 sentences), and tailored to Instagram. Avoid robotic marketing language.
+${langRule}
 
 Respond with valid JSON:
 {
