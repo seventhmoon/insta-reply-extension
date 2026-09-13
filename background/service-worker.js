@@ -274,7 +274,8 @@ async function handleGenerateReply(payload) {
       userDraftHint = '',
       stance = config.defaultStance || 'positive',
       tone = config.defaultTone || 'friendly',
-      variationIndex = 0
+      variationIndex = 0,
+      replyLanguage = payload.replyLanguage || config.replyLanguage || 'auto'
     } = payload;
 
     if (!incomingText && !postCaption && !userDraftHint && !postVisuals?.description) {
@@ -293,6 +294,7 @@ async function handleGenerateReply(payload) {
       stance,
       tone,
       variationIndex,
+      replyLanguage,
       hintLen: userDraftHint.length
     });
 
@@ -312,7 +314,8 @@ async function handleGenerateReply(payload) {
         userDraftHint,
         stance,
         tone,
-        variationIndex
+        variationIndex,
+        replyLanguage
       });
     } else if (provider === 'local_llm') {
       return await generateWithLocalLlm({
@@ -330,7 +333,8 @@ async function handleGenerateReply(payload) {
         userDraftHint,
         stance,
         tone,
-        variationIndex
+        variationIndex,
+        replyLanguage
       });
     } else if (provider === 'edge_ai') {
       // Return flag so content script can execute window.ai in the DOM context if available,
@@ -403,7 +407,8 @@ async function generateWithGemini({
   userDraftHint,
   stance,
   tone,
-  variationIndex
+  variationIndex,
+  replyLanguage = 'auto'
 }) {
   if (!config.geminiApiKey || config.geminiApiKey.trim() === '') {
     return {
@@ -446,7 +451,7 @@ async function generateWithGemini({
     stance,
     tone,
     variationIndex,
-    replyLanguage: config.replyLanguage || 'auto',
+    replyLanguage: replyLanguage || config.replyLanguage || 'auto',
     enableAnalysis: config.enableAnalysis,
     includeEmojis: config.includeEmojis,
     customInstructions: config.customInstructions
@@ -533,7 +538,8 @@ async function generateWithLocalLlm({
   userDraftHint,
   stance,
   tone,
-  variationIndex
+  variationIndex,
+  replyLanguage = 'auto'
 }) {
   const rawUrl = (config.localLlmUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
   const model = config.localLlmModel || 'llama3.2';
@@ -553,7 +559,7 @@ async function generateWithLocalLlm({
     stance,
     tone,
     variationIndex,
-    replyLanguage: config.replyLanguage || 'auto',
+    replyLanguage: replyLanguage || config.replyLanguage || 'auto',
     enableAnalysis: config.enableAnalysis,
     includeEmojis: config.includeEmojis,
     customInstructions: config.customInstructions

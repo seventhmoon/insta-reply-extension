@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const defaultTone = document.getElementById('defaultTone');
   const defaultStance = document.getElementById('defaultStance');
-  const replyLanguage = document.getElementById('replyLanguage');
+  let savedReplyLanguage = 'auto';
   const enableAnalysis = document.getElementById('enableAnalysis');
   const includeEmojis = document.getElementById('includeEmojis');
   const includePostCaption = document.getElementById('includePostCaption');
@@ -343,7 +343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (cfg.defaultTone) defaultTone.value = cfg.defaultTone;
     if (defaultStance && cfg.defaultStance) defaultStance.value = cfg.defaultStance;
-    if (replyLanguage && cfg.replyLanguage) replyLanguage.value = cfg.replyLanguage;
+    if (cfg.replyLanguage) savedReplyLanguage = cfg.replyLanguage;
     enableAnalysis.checked = cfg.enableAnalysis !== false;
     includeEmojis.checked = cfg.includeEmojis !== false;
     includePostCaption.checked = cfg.includePostCaption !== false;
@@ -370,7 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       localLlmModel: chosenLocalModel,
       defaultTone: defaultTone.value,
       defaultStance: defaultStance ? defaultStance.value : 'positive',
-      replyLanguage: replyLanguage ? replyLanguage.value : 'auto',
+      replyLanguage: savedReplyLanguage || 'auto',
       enableAnalysis: enableAnalysis.checked,
       includeEmojis: includeEmojis.checked,
       includePostCaption: includePostCaption.checked,

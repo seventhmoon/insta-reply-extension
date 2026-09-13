@@ -8,6 +8,7 @@
   let activeInputTarget = null;
   let currentTone = 'friendly';
   let currentStance = 'positive';
+  let currentLanguage = 'auto';
   let currentVariation = 0;
   let lastContextData = null;
   let lastActiveCommentContext = null;
@@ -1700,6 +1701,7 @@
     const config = await getConfig();
     currentTone = config.defaultTone || 'friendly';
     currentStance = config.defaultStance || 'positive';
+    currentLanguage = config.replyLanguage || 'auto';
     const shouldIncludeCaption = config.includePostCaption !== false;
 
     // Locate post container to extract post caption, author, and visuals
@@ -1785,9 +1787,10 @@
     document.body.appendChild(activeCard);
     positionCard(activeCard, triggerBtn, inputEl);
 
-    // Highlight initial tone chip and stance
+    // Highlight initial tone chip, stance, and language
     setCardActiveTone(activeCard, currentTone);
     setCardActiveStance(activeCard, currentStance);
+    setCardActiveLanguage(activeCard, currentLanguage);
 
     // Trigger AI Generation
     executeReplyGeneration();
@@ -1963,7 +1966,7 @@
 
     try {
       const config = await getConfig();
-      payload.replyLanguage = config.replyLanguage || 'auto';
+      payload.replyLanguage = currentLanguage || config.replyLanguage || 'auto';
 
       // Check if user chose Edge AI (Prompt API)
       if (config.provider === 'edge_ai') {
@@ -2323,6 +2326,29 @@
           </div>
         </div>
 
+        <!-- Reply Language Preference -->
+        <div class="instareply-lang-wrapper">
+          <div class="instareply-control-header">
+            <span class="instareply-control-label">Reply Language</span>
+            <span class="instareply-lang-hint" id="instareply-lang-hint">Auto (Match Context)</span>
+          </div>
+          <div class="instareply-lang-row">
+            <select class="instareply-lang-select" id="instareply-card-lang" title="Reply language preference">
+              <option value="auto">🌐 Match Context Language (Auto-Detect)</option>
+              <option value="en">🇺🇸 English</option>
+              <option value="ja">🇯🇵 Japanese (日本語)</option>
+              <option value="zh-TW">🇹🇼 Traditional Chinese (繁體中文)</option>
+              <option value="zh-CN">🇨🇳 Simplified Chinese (简体中文)</option>
+              <option value="es">🇪🇸 Spanish (Español)</option>
+              <option value="fr">🇫🇷 French (Français)</option>
+              <option value="de">🇩🇪 German (Deutsch)</option>
+              <option value="ko">🇰🇷 Korean (한국어)</option>
+              <option value="pt">🇧🇷 Portuguese (Português)</option>
+              <option value="it">🇮🇹 Italian (Italiano)</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Textarea & Loading State -->
         <div class="instareply-output-wrapper">
           <div class="instareply-loading-container hidden">
@@ -2373,6 +2399,24 @@
         executeReplyGeneration();
       });
     });
+
+    // Language select change
+    const langSelect = card.querySelector('#instareply-card-lang');
+    if (langSelect) {
+      langSelect.value = currentLanguage;
+      setCardActiveLanguage(card, currentLanguage);
+      langSelect.addEventListener('change', () => {
+        const nextLang = langSelect.value;
+        if (currentLanguage === nextLang) return;
+        currentLanguage = nextLang;
+        setCardActiveLanguage(card, currentLanguage);
+        try {
+          chrome.storage?.sync?.set({ replyLanguage: currentLanguage });
+        } catch (_) {}
+        currentVariation = 0;
+        executeReplyGeneration();
+      });
+    }
 
     // Regen button
     card.querySelector('.instareply-btn-regen').addEventListener('click', () => {
@@ -2434,6 +2478,34 @@
     card.querySelectorAll('.instareply-tone-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.tone === tone);
     });
+  }
+
+  /**
+   * Sets active visual state on language select and hint
+   */
+  function setCardActiveLanguage(card, lang) {
+    if (!card) return;
+    const select = card.querySelector('#instareply-card-lang');
+    if (select && select.value !== lang) {
+      select.value = lang;
+    }
+    const hintEl = card.querySelector('#instareply-lang-hint');
+    if (hintEl) {
+      const langNames = {
+        auto: 'Auto (Match Context)',
+        en: 'English',
+        ja: 'Japanese (日本語)',
+        'zh-TW': 'Trad. Chinese (繁體中文)',
+        'zh-CN': 'Simp. Chinese (简体中文)',
+        es: 'Spanish (Español)',
+        fr: 'French (Français)',
+        de: 'German (Deutsch)',
+        ko: 'Korean (한국어)',
+        pt: 'Portuguese (Português)',
+        it: 'Italian (Italiano)'
+      };
+      hintEl.textContent = langNames[lang] || lang;
+    }
   }
 
   /**

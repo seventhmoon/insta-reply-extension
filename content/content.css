@@ -490,6 +490,61 @@
   font-weight: 600;
 }
 
+/* Language Selector */
+.instareply-lang-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.instareply-lang-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.instareply-lang-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f3f4f6;
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239ca3af' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 26px;
+}
+
+.instareply-lang-select:hover {
+  background-color: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.instareply-lang-select:focus {
+  border-color: #E1306C;
+  background-color: #1a1f2c;
+  box-shadow: 0 0 0 2px rgba(225, 48, 108, 0.2);
+}
+
+.instareply-lang-select option {
+  background: #181c24;
+  color: #f3f4f6;
+  padding: 6px;
+}
+
+.instareply-lang-hint {
+  font-size: 10px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
 /* Textarea Output */
 .instareply-output-wrapper {
   position: relative;
