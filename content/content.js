@@ -90,6 +90,29 @@
     setupMutationObserver();
     setupGlobalClickListener();
     setupFocusListener();
+    setupNavigationListener();
+  }
+
+  /**
+   * Listens for SPA route transitions (such as flipping Story slides or entering Stories)
+   */
+  function setupNavigationListener() {
+    let lastUrl = window.location.href;
+    const checkUrlChange = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        setTimeout(scanAndInjectShortcuts, 150);
+        setTimeout(scanAndInjectShortcuts, 600);
+      }
+    };
+
+    window.addEventListener('popstate', () => {
+      lastUrl = window.location.href;
+      setTimeout(scanAndInjectShortcuts, 50);
+      setTimeout(scanAndInjectShortcuts, 250);
+    });
+    setInterval(checkUrlChange, 1000);
   }
 
   /**
@@ -128,6 +151,7 @@
    * Observe DOM mutations to catch dynamically loaded posts, modals, and DM threads
    */
   function setupMutationObserver() {
+    let debounceTimer = null;
     const observer = new MutationObserver((mutations) => {
       let shouldScan = false;
       for (const mutation of mutations) {
@@ -135,9 +159,20 @@
           shouldScan = true;
           break;
         }
+        if (mutation.removedNodes.length > 0) {
+          for (let i = 0; i < mutation.removedNodes.length; i++) {
+            const node = mutation.removedNodes[i];
+            if (node.nodeType === 1 && (node.classList?.contains('instareply-shortcut-btn') || node.querySelector?.('.instareply-shortcut-btn'))) {
+              shouldScan = true;
+              break;
+            }
+          }
+          if (shouldScan) break;
+        }
       }
       if (shouldScan) {
-        scanAndInjectShortcuts();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(scanAndInjectShortcuts, 100);
       }
     });
 
@@ -154,7 +189,35 @@
     // 0. Clean up any accidental duplicate buttons first
     pruneDuplicateShortcutButtons();
 
-    // 1. Instagram Post & Modal Comment Inputs
+    // 1. Instagram Stories Reply Inputs (run first so story inputs are never misclassified as comments)
+    const storyInputs = findStoryInputElements();
+    storyInputs.forEach((el) => {
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
+      injectShortcutButton(el, 'story');
+    });
+
+    // 2. Instagram Direct Message (DM) Composers (Fullscreen + PIP / Mini-window mode)
+    const dmInputs = findDmInputElements();
+    dmInputs.forEach((el) => {
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
+      injectShortcutButton(el, 'dm');
+    });
+
+    // 3. Instagram Post & Modal Comment Inputs
     const commentCandidates = document.querySelectorAll(`
       form textarea[aria-label*="comment" i],
       form textarea[placeholder*="comment" i],
@@ -184,10 +247,28 @@
         return;
       }
 
-      // Exclude DM inputs (which have message cues or are in /direct/ route)
       const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
       const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
       const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
+
+      // Strictly exclude Stories (routes, story composers, viewers, or "reply to" cues)
+      if (
+        window.location.pathname.includes('/stories') ||
+        el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]') ||
+        ariaLabel.startsWith('reply to') ||
+        placeholder.startsWith('reply to') ||
+        ariaPlaceholder.startsWith('reply to') ||
+        ariaLabel.includes('reply to') ||
+        placeholder.includes('reply to') ||
+        ariaPlaceholder.includes('reply to') ||
+        ariaLabel.startsWith('responder a') ||
+        placeholder.startsWith('responder a') ||
+        ariaPlaceholder.startsWith('responder a')
+      ) {
+        return;
+      }
+
+      // Exclude DM inputs (which have message cues or are in /direct/ route)
       if (
         ariaLabel.includes('message') ||
         placeholder.includes('message') ||
@@ -199,34 +280,6 @@
       }
 
       injectShortcutButton(el, 'comment');
-    });
-
-    // 2. Instagram Direct Message (DM) Composers (Fullscreen + PIP / Mini-window mode)
-    const dmInputs = findDmInputElements();
-    dmInputs.forEach((el) => {
-      if (
-        el.closest('.instareply-card-overlay') ||
-        el.closest('.instareply-card') ||
-        el.classList.contains('instareply-textarea') ||
-        el.id === 'instareply-output-text'
-      ) {
-        return;
-      }
-      injectShortcutButton(el, 'dm');
-    });
-
-    // 3. Instagram Stories Reply Inputs
-    const storyInputs = findStoryInputElements();
-    storyInputs.forEach((el) => {
-      if (
-        el.closest('.instareply-card-overlay') ||
-        el.closest('.instareply-card') ||
-        el.classList.contains('instareply-textarea') ||
-        el.id === 'instareply-output-text'
-      ) {
-        return;
-      }
-      injectShortcutButton(el, 'story');
     });
 
     // 4. Inline Comment "✨ AI Reply" buttons next to each comment's Reply link
@@ -1086,16 +1139,30 @@
       .ig-story-viewer div[contenteditable="true"],
       [data-testid="story-viewer"] textarea,
       [data-testid="story-viewer"] input,
-      textarea[placeholder*="Reply to" i],
-      input[placeholder*="Reply to" i],
-      textarea[placeholder*="Reply" i],
-      input[placeholder*="Reply" i],
-      textarea[aria-label*="Reply to" i],
-      input[aria-label*="Reply to" i],
-      textarea[aria-label*="Reply" i],
-      input[aria-label*="Reply" i],
-      div[contenteditable="true"][aria-label*="Reply" i],
-      div[role="textbox"][aria-label*="Reply" i]
+      textarea[placeholder*="reply" i],
+      input[placeholder*="reply" i],
+      textarea[placeholder*="message" i],
+      input[placeholder*="message" i],
+      textarea[placeholder*="send" i],
+      input[placeholder*="send" i],
+      textarea[placeholder*="responder" i],
+      input[placeholder*="responder" i],
+      textarea[aria-label*="reply" i],
+      input[aria-label*="reply" i],
+      textarea[aria-label*="message" i],
+      input[aria-label*="message" i],
+      textarea[aria-label*="send" i],
+      input[aria-label*="send" i],
+      textarea[aria-label*="responder" i],
+      input[aria-label*="responder" i],
+      div[contenteditable="true"][aria-label*="reply" i],
+      div[role="textbox"][aria-label*="reply" i],
+      div[contenteditable="true"][aria-label*="message" i],
+      div[role="textbox"][aria-label*="message" i],
+      div[contenteditable="true"][aria-label*="send" i],
+      div[role="textbox"][aria-label*="send" i],
+      div[contenteditable="true"][placeholder*="reply" i],
+      div[role="textbox"][placeholder*="reply" i]
     `);
 
     candidates.forEach((el) => {
@@ -1112,7 +1179,16 @@
       }
 
       // Exclude regular post comment forms and articles
-      if (el.closest('form:not(.ig-story-composer)') && (el.closest('article') || el.closest('.ig-post-card'))) {
+      if (el.closest('article') || el.closest('.ig-post-card')) {
+        return;
+      }
+
+      // Exclude fullscreen DM chats (unless clearly a story viewer)
+      if (
+        (window.location.pathname.startsWith('/direct/t/') || window.location.pathname.startsWith('/direct/inbox/')) &&
+        !el.closest('.ig-story-viewer, [data-testid="story-viewer"]') &&
+        !window.location.pathname.includes('/stories')
+      ) {
         return;
       }
 
@@ -1121,9 +1197,15 @@
       }
     });
 
-    // If on /stories/ route, scan any input or textarea on the page not part of header/nav
+    // Scan any input in active story containers or on /stories/ route
+    const storyContainers = document.querySelectorAll('.ig-story-viewer, [data-testid="story-viewer"], .ig-story-composer');
+    const scanParents = Array.from(storyContainers);
     if (isStoriesRoute) {
-      const routeInputs = document.querySelectorAll(`
+      scanParents.push(document.body);
+    }
+
+    scanParents.forEach((parent) => {
+      const inputs = parent.querySelectorAll(`
         textarea,
         input[type="text"],
         input:not([type]),
@@ -1131,13 +1213,14 @@
         div[contenteditable="true"]
       `);
 
-      routeInputs.forEach((el) => {
+      inputs.forEach((el) => {
         if (
           el.closest('.instareply-card-overlay') ||
           el.closest('.instareply-card') ||
           el.closest('.instareply-shortcut-btn') ||
           el.closest('nav') ||
           el.closest('header') ||
+          el.closest('article') ||
           el.classList.contains('instareply-textarea') ||
           el.id === 'instareply-output-text'
         ) {
@@ -1146,7 +1229,16 @@
 
         const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
         const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
         if (placeholder.includes('search') || ariaLabel.includes('search')) {
+          return;
+        }
+
+        // Exclude comment inputs on feed
+        if (
+          (placeholder.includes('comment') || ariaLabel.includes('comment') || ariaPlaceholder.includes('comment')) &&
+          !el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')
+        ) {
           return;
         }
 
@@ -1154,22 +1246,32 @@
           placeholder.includes('reply') ||
           placeholder.includes('message') ||
           placeholder.includes('responder') ||
+          placeholder.includes('enviar') ||
           placeholder.includes('返信') ||
           placeholder.includes('回复') ||
           placeholder.includes('回覆') ||
+          placeholder.includes('訊息') ||
+          placeholder.includes('消息') ||
+          placeholder.includes('nachricht') ||
+          placeholder.includes('antworten') ||
           ariaLabel.includes('reply') ||
           ariaLabel.includes('message') ||
           ariaLabel.includes('responder') ||
+          ariaLabel.includes('enviar') ||
           ariaLabel.includes('返信') ||
           ariaLabel.includes('回复') ||
           ariaLabel.includes('回覆') ||
-          el.closest('.ig-story-composer, .ig-story-viewer, section, div[role="dialog"]');
+          ariaLabel.includes('訊息') ||
+          ariaLabel.includes('消息') ||
+          ariaLabel.includes('nachricht') ||
+          ariaLabel.includes('antworten') ||
+          el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]');
 
         if (isStoryCue && !results.includes(el)) {
           results.push(el);
         }
       });
-    }
+    });
 
     return results;
   }
@@ -1280,9 +1382,9 @@
       if (pRect.width > 0) {
         otherButtons.forEach(b => {
           const bRect = b.getBoundingClientRect();
-          if (bRect.width > 0 && bRect.height > 0) {
+          if (bRect.width > 0 && bRect.height > 0 && bRect.left >= pRect.left + pRect.width * 0.4) {
             const fromRight = pRect.right - bRect.left + 6;
-            if (fromRight > rightOffset && fromRight < pRect.width - 40) {
+            if (fromRight > rightOffset && fromRight < Math.min(120, pRect.width - 40)) {
               rightOffset = Math.round(fromRight);
             }
           }
@@ -1301,49 +1403,112 @@
    */
   function findActiveStoryContainer(el = null) {
     if (el) {
-      const container = el.closest('.ig-story-viewer, [data-testid="story-viewer"], section, div[role="dialog"], article');
-      if (container) return container;
+      // 1. Explicit test harness container
+      const mockContainer = el.closest('.ig-story-viewer, [data-testid="story-viewer"]');
+      if (mockContainer) return mockContainer;
+
+      // 2. Walk up from el to locate the single active slide container
+      let curr = el.parentElement;
+      let bestCandidate = null;
+
+      while (curr && curr !== document.body && curr !== document.documentElement) {
+        const headers = curr.querySelectorAll('header');
+        const hasMedia = curr.querySelector('video') ||
+          Array.from(curr.querySelectorAll('img')).some((img) => {
+            if (img.closest('header')) return false;
+            const alt = (img.alt || '').toLowerCase();
+            if (alt.includes('profile picture') || alt.includes('icon') || alt.includes('logo')) return false;
+            const w = img.offsetWidth || img.naturalWidth || parseInt(img.getAttribute('width') || '0', 10);
+            const h = img.offsetHeight || img.naturalHeight || parseInt(img.getAttribute('height') || '0', 10);
+            return (w >= 120 || h >= 120);
+          });
+
+        if (hasMedia || headers.length > 0) {
+          if (headers.length <= 1) {
+            return curr;
+          } else {
+            // We reached the outer carousel with multiple headers/slides
+            if (bestCandidate) return bestCandidate;
+            break;
+          }
+        }
+
+        bestCandidate = curr;
+        const tag = curr.tagName.toLowerCase();
+        if (tag === 'section' || tag === 'article' || curr.getAttribute('role') === 'dialog') {
+          break;
+        }
+
+        curr = curr.parentElement;
+      }
+
+      if (bestCandidate) return bestCandidate;
+      const fallback = el.closest('section, div[role="dialog"]');
+      if (fallback) return fallback;
     }
 
-    return (
-      document.querySelector('.ig-story-viewer, [data-testid="story-viewer"]') ||
-      document.querySelector('div[role="dialog"]') ||
-      document.querySelector('section') ||
-      document.body
-    );
+    // Fallbacks if el is not provided or detached
+    const mockViewer = document.querySelector('.ig-story-viewer, [data-testid="story-viewer"]');
+    if (mockViewer) return mockViewer;
+
+    const storyComposer = document.querySelector('.ig-story-composer, form textarea[placeholder*="reply" i], form input[placeholder*="reply" i]');
+    if (storyComposer && storyComposer !== el) {
+      return findActiveStoryContainer(storyComposer);
+    }
+
+    return document.querySelector('div[role="dialog"]') || document.querySelector('section') || document.body;
   }
 
   /**
    * Extracts author handle of the active Story
    */
-  function extractStoryAuthor(storyContainer) {
+  function extractStoryAuthor(storyContainer, inputEl = null) {
     // 1. URL route (highest priority: /stories/<username>/...)
     const urlMatch = window.location.pathname.match(/\/stories\/([a-zA-Z0-9._]+)/);
     if (urlMatch && urlMatch[1]) {
       const u = urlMatch[1].replace(/^@/, '').trim();
-      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories']);
+      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights', 'settings', 'accounts']);
       if (u && !banned.has(u.toLowerCase())) {
         return u;
       }
     }
 
+    // 2. Input placeholder / aria-label cue (e.g. "Reply to username..." or "Responder a username...")
+    if (inputEl) {
+      const p = (inputEl.getAttribute('placeholder') || '').trim();
+      const a = (inputEl.getAttribute('aria-label') || '').trim();
+      const ap = (inputEl.getAttribute('aria-placeholder') || '').trim();
+      for (const text of [p, a, ap]) {
+        if (!text) continue;
+        const m = text.match(/(?:reply to|responder a|nachricht an|mensaje a|mensagem para|enviar a)\s+@?([a-zA-Z0-9._]+)/i);
+        if (m && m[1]) {
+          const clean = m[1].replace(/\.+$/, '').trim();
+          const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights', 'settings', 'accounts']);
+          if (clean && !banned.has(clean.toLowerCase())) return clean;
+        }
+      }
+    }
+
     if (!storyContainer) return '';
 
-    // 2. Test harness mock
+    // 3. Test harness mock
     const mockAuthor = storyContainer.querySelector('.ig-story-author, [data-testid="story-author"]');
     if (mockAuthor) {
       const txt = (mockAuthor.innerText || mockAuthor.textContent || '').replace(/^@/, '').trim();
       if (txt) return txt;
     }
 
-    // 3. Header link or span
+    // 4. Header link or span
     const header = storyContainer.querySelector('header');
     if (header) {
       const link = header.querySelector('a[role="link"], a[href^="/"]');
       if (link) {
         const href = link.getAttribute('href') || '';
-        const m = href.match(/^\/([a-zA-Z0-9._]+)\/?/);
-        if (m && m[1]) return m[1];
+        const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        if (m && m[1]) {
+          const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights']);
+          if (!banned.has(m[1].toLowerCase())) return m[1];
+        }
         const txt = (link.innerText || link.textContent || '').replace(/^@/, '').trim();
         if (txt) return txt;
       }
@@ -1354,7 +1519,21 @@
       }
     }
 
-    // 4. Any avatar with profile picture alt in storyContainer
+    // 5. Any profile links in the top region of the story container
+    const profileLinks = Array.from(storyContainer.querySelectorAll('a[href^="/"]')).filter((a) => {
+      if (a.closest('.ig-story-composer') || a.closest('form')) return false;
+      const href = a.getAttribute('href') || '';
+      const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+      if (!m || !m[1]) return false;
+      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights', 'settings', 'accounts', 'legal']);
+      return !banned.has(m[1].toLowerCase());
+    });
+    if (profileLinks.length > 0) {
+      const m = profileLinks[0].getAttribute('href').match(/^\/([a-zA-Z0-9._]+)\/?$/);
+      if (m && m[1]) return m[1];
+    }
+
+    // 6. Any avatar with profile picture alt in storyContainer
     const avatar = storyContainer.querySelector('img[alt*="profile picture" i]');
     if (avatar) {
       const m = avatar.alt.match(/([a-zA-Z0-9._]+)'s profile picture/i);
@@ -1372,14 +1551,43 @@
       return { description: '', thumbnailUrl: '', mediaType: 'image' };
     }
 
+    // Check for shared Reel or Post in this Story slide
+    const sharedMediaLink = storyContainer.querySelector('a[href*="/reel/"], a[href*="/p/"], [data-testid*="reel"]');
+    let sharedReelAuthor = '';
+    let isSharedReel = false;
+    let isSharedPost = false;
+    if (sharedMediaLink) {
+      const href = sharedMediaLink.getAttribute('href') || '';
+      isSharedReel = href.includes('/reel/');
+      isSharedPost = href.includes('/p/');
+
+      // Look for original creator mention or link inside/near the shared card
+      const authorMatch = sharedMediaLink.textContent?.match(/@([a-zA-Z0-9._]+)/);
+      if (authorMatch && authorMatch[1]) {
+        sharedReelAuthor = authorMatch[1];
+      } else {
+        const handleEl = sharedMediaLink.querySelector('strong, span[dir="auto"], a[href^="/"]');
+        const candidate = (handleEl?.textContent || '').trim().replace(/^@/, '');
+        if (candidate && !/^(watch|view|play|see|reel|post)\b/i.test(candidate)) {
+          sharedReelAuthor = candidate;
+        }
+      }
+    }
+
     // 1. Check for video story
     const video = storyContainer.querySelector('video');
     if (video) {
       const poster = video.getAttribute('poster') || '';
+      let desc = 'Instagram Story video';
+      if (isSharedReel) {
+        desc = sharedReelAuthor
+          ? `Instagram Story sharing a Reel by @${sharedReelAuthor}`
+          : 'Instagram Story sharing a Reel';
+      }
       return {
         mediaType: 'video',
         thumbnailUrl: poster,
-        description: 'Instagram Story video'
+        description: desc
       };
     }
 
@@ -1388,8 +1596,8 @@
       const alt = (img.getAttribute('alt') || '').toLowerCase();
       if (alt.includes('profile picture') || alt.includes('icon') || alt.includes('logo')) return false;
       if (img.closest('header')) return false;
-      if (img.naturalWidth && img.naturalWidth < 120) return false;
-      if (img.width && img.width < 120) return false;
+      const w = img.naturalWidth || img.width || img.offsetWidth || 0;
+      if (w > 0 && w < 120) return false;
       return true;
     });
 
@@ -1407,10 +1615,31 @@
       const alt = bestImg.getAttribute('alt') || '';
       const cleanDesc = alt.replace(/^May be an? (image|illustration|graphic) of\s*/i, '').trim();
 
+      let desc = cleanDesc || alt || 'Instagram Story photo';
+      if (isSharedReel) {
+        desc = sharedReelAuthor
+          ? `Instagram Story sharing a Reel by @${sharedReelAuthor}`
+          : 'Instagram Story sharing a Reel';
+      } else if (isSharedPost) {
+        desc = sharedReelAuthor
+          ? `Instagram Story sharing a post by @${sharedReelAuthor}`
+          : 'Instagram Story sharing a post';
+      }
+
       return {
         mediaType: 'image',
         thumbnailUrl: bestImg.currentSrc || bestImg.src || '',
-        description: cleanDesc || alt || 'Instagram Story photo'
+        description: desc
+      };
+    }
+
+    if (isSharedReel) {
+      return {
+        description: sharedReelAuthor
+          ? `Instagram Story sharing a Reel by @${sharedReelAuthor}`
+          : 'Instagram Story sharing a Reel',
+        thumbnailUrl: '',
+        mediaType: 'video'
       };
     }
 
@@ -1423,22 +1652,67 @@
   function extractStoryCaption(storyContainer, storyAuthor = '') {
     if (!storyContainer) return '';
 
-    const textElements = storyContainer.querySelectorAll('div[dir="auto"], span[dir="auto"], p, h1, h2');
+    const textElements = storyContainer.querySelectorAll('div[dir="auto"], span[dir="auto"], p, h1, h2, h3');
     const seenTexts = new Set();
     const captionLines = [];
 
     const bannedWords = new Set([
       (storyAuthor || '').toLowerCase(),
-      'reply', 'send message', 'responder', '返信', '回复', '回覆', 'story'
+      'reply', 'send message', 'responder', '返信', '回复', '回覆', 'story',
+      'quick reactions', 'quick reaction', 'reactions', 'reaction',
+      'reacciones rápidas', 'reacción rápida', 'reações rápidas', 'reação rápida',
+      'schnelle reaktionen', 'schnelle reaktion', 'réactions rapides', 'réaction rapide',
+      'reazioni rapide', 'reazione rapida', 'クイックリアクション',
+      '快捷回覆', '快捷回复', '快速反應', '快速反应', '빠른 공감',
+      'emoji', 'emojis', 'like', 'send',
+      // Reel & Video Share CTAs (system navigation buttons on shared stories)
+      'watch full reel', 'watch reel', 'watch full video', 'watch video', 'watch on instagram', 'play reel', 'view reel',
+      'ver reel completo', 'ver reel', 'ver video completo', 'ver en instagram',
+      'regarder le reel', 'regarder la vidéo complète', 'regarder sur instagram',
+      'reel ansehen', 'vollständiges reel ansehen', 'auf instagram ansehen',
+      'guarda il reel', 'guarda il reel completo', 'guarda su instagram',
+      'assista ao reel completo', 'assistir ao reel', 'assistir no instagram',
+      'リールをすべて見る', 'リールを見る',
+      '觀看完整連續短片', '觀看連續短片', '觀看完整影片',
+      '观看完整 reels', '观看完整短片', '观看完整视频',
+      '전체 릴스 보기', '릴스 보기',
+      // Post & Photo Share CTAs
+      'view post', 'see post', 'view photo', 'view full post', 'view on instagram',
+      'ver publicación', 'ver post', 'ver foto',
+      'voir la publication', 'voir le post',
+      'beitrag ansehen', 'post ansehen',
+      'visualizza il post', 'vedi post',
+      '投稿を見る', '写真を見る',
+      '查看帖子', '查看貼文', '查看照片',
+      '게시물 보기',
+      // Link, Shopping, and Interactive Stickers
+      'view product', 'view products', 'visit shop', 'shop now', 'view shop',
+      'visit website', 'open link', 'visit link', 'tap link', 'learn more',
+      'add yours', 'tu turno', 'du bist dran', 'tocca a te', 'sua vez', 'お題', '輪到你了', '轮到你了',
+      'ask me a question', 'hazme una pregunta', 'posez-moi une question', 'stelle mir eine frage'
     ]);
 
     textElements.forEach((el) => {
       if (
         el.closest('header') ||
+        el.closest('footer') ||
         el.closest('.ig-story-composer') ||
         el.closest('.instareply-card-overlay') ||
         el.closest('.instareply-card') ||
-        el.closest('form')
+        el.closest('form') ||
+        el.closest('button') ||
+        el.closest('[role="button"]') ||
+        el.closest('[role="toolbar"]') ||
+        el.closest('a') ||
+        el.closest('[role="link"]') ||
+        el.closest('[aria-label*="reaction" i]') ||
+        el.closest('[data-testid*="reaction" i]') ||
+        el.closest('[aria-label*="reacciones" i]') ||
+        el.closest('[aria-label*="réactions" i]') ||
+        el.closest('[aria-label*="emoji" i]') ||
+        el.closest('[data-testid*="emoji" i]') ||
+        el.closest('[class*="reaction" i]') ||
+        el.closest('[class*="Reaction" i]')
       ) {
         return;
       }
@@ -1451,7 +1725,54 @@
 
       const lower = txt.toLowerCase();
       if (bannedWords.has(lower)) return;
-      if (lower.startsWith('reply to ') || lower.startsWith('responder a ')) return;
+      if (
+        lower.startsWith('reply to') ||
+        lower.startsWith('responder a') ||
+        lower.startsWith('send message') ||
+        lower.startsWith('send a message') ||
+        lower.startsWith('enviar mensaje') ||
+        lower.includes('reaction') ||
+        lower.includes('reacción') ||
+        lower.includes('réaction') ||
+        lower.includes('reaktion') ||
+        lower.includes('reazione') ||
+        lower.includes('reação') ||
+        lower.includes('リアクション') ||
+        lower.includes('reacciones rápidas') ||
+        lower.includes('réactions rapides') ||
+        lower.includes('schnelle reaktionen') ||
+        lower.includes('快捷回覆') ||
+        lower.includes('快捷回复') ||
+        lower.includes('快速反應') ||
+        lower.includes('快速反应') ||
+        lower.includes('avatar') ||
+        lower.includes('swipe up') ||
+        lower.includes('tap to')
+      ) {
+        return;
+      }
+
+      // Filter out Reel / Post / Video share CTA banners and link buttons
+      if (
+        /^(watch|play|see|view)\s+(full\s+)?(reel|video|post|photo|clip)(\s+on\s+instagram)?$/i.test(lower) ||
+        /^(ver|regarder|guarda|assistir|assista)\s+(el\s+|le\s+|il\s+|ao\s+)?(reel|video|vidéo|post|publicación|publicacao)(\s+completo|\s+complet|\s+completa)?$/i.test(lower) ||
+        /^(vollständiges\s+)?(reel|beitrag)\s+ansehen$/i.test(lower) ||
+        /^(リール|動画|投稿)を(すべて)?見る$/i.test(lower) ||
+        /^(觀看|观看)(完整)?(連續短片|短片|视频|影片|reels?)$/i.test(lower) ||
+        /^(查看)(帖子|貼文|照片)$/i.test(lower) ||
+        /^(전체\s+)?(릴스|게시물)\s+보기$/i.test(lower) ||
+        /^(view|visit)\s+(shop|product|products|store|link|website)$/i.test(lower) ||
+        /^(shop\s+now|swipe\s+up|tap\s+here|tap\s+link|tap\s+to\s+view|tap\s+to\s+watch|learn\s+more)$/i.test(lower) ||
+        /^(add\s+yours|tu\s+turno|du\s+bist\s+dran|tocca\s+a\s+te|sua\s+vez|お題|輪到你了|轮到你了)$/i.test(lower) ||
+        /^(ask\s+me\s+a\s+question|hazme\s+una\s+pregunta|posez-moi\s+une\s+question|stelle\s+mir\s+eine\s+frage)$/i.test(lower)
+      ) {
+        return;
+      }
+
+      // Filter out pure emoji reaction buttons / emoji sequences from reaction tray
+      if (/^[\p{Extended_Pictographic}\s]+$/u.test(txt)) {
+        return;
+      }
 
       if (!seenTexts.has(lower)) {
         seenTexts.add(lower);
@@ -1471,7 +1792,10 @@
     if (match) {
       const user = match[1];
       const storyId = match[2];
-      return storyId ? `story_${user}_${storyId}` : `story_${user}_active`;
+      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights']);
+      if (!banned.has(user.toLowerCase())) {
+        return storyId ? `story_${user}_${storyId}` : `story_${user}_active`;
+      }
     }
     return `story_${storyAuthor || 'user'}_active`;
   }
@@ -1535,7 +1859,28 @@
     }
 
     if (inputEl.dataset.instareplyInjected === 'true') {
-      return;
+      let stillHasBtn = false;
+      if (contextType === 'story') {
+        const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
+        if (storyRow && storyRow.querySelector('.instareply-shortcut-btn')) {
+          stillHasBtn = true;
+        }
+      } else if (contextType === 'dm') {
+        const dmRow = findDmPillContainer(inputEl) || inputEl.closest('.ig-dm-composer') || inputEl.parentElement;
+        if (dmRow && dmRow.querySelector('.instareply-shortcut-btn')) {
+          stillHasBtn = true;
+        }
+      } else {
+        const commentRow = findCommentInputContainer(inputEl) || inputEl.closest('form') || inputEl.parentElement;
+        if (commentRow && commentRow.querySelector('.instareply-shortcut-btn')) {
+          stillHasBtn = true;
+        }
+      }
+
+      if (stillHasBtn) {
+        return;
+      }
+      delete inputEl.dataset.instareplyInjected;
     }
 
     inputEl.dataset.instareplyInjected = 'true';
@@ -1543,14 +1888,19 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'instareply-shortcut-btn';
+    btn.dataset.contextType = contextType;
+    if (contextType === 'story') {
+      btn.classList.add('instareply-story-shortcut-btn');
+    }
     btn.title = `Draft ${contextType === 'story' ? 'Story Reply' : contextType === 'dm' ? 'DM Reply' : 'Comment'} with InstaReply AI`;
     btn.innerHTML = SPARKLE_SVG;
 
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const activeInput = findActiveInput(btn, contextType) || inputEl;
-      openAssistantCard(activeInput, contextType, btn);
+      const activeContextType = btn.dataset.contextType || contextType;
+      const activeInput = findActiveInput(btn, activeContextType) || inputEl;
+      openAssistantCard(activeInput, activeContextType, btn);
     });
 
     if (contextType === 'comment') {
@@ -2217,7 +2567,13 @@
       'instagram', 'follow', 'following', 'message', 'view profile',
       'posts', 'reels', 'tagged', 'verified', 'switch accounts',
       'log in', 'sign up', 'search', 'explore', 'notifications',
-      'reply', 'ai reply', 'add a comment'
+      'reply', 'ai reply', 'add a comment',
+      'quick reactions', 'quick reaction', 'reactions', 'reaction',
+      'reacciones rápidas', 'reacción rápida', 'reações rápidas',
+      'schnelle reaktionen', 'réactions rapides', 'reazioni rapide',
+      'クイックリアクション', '快捷回覆', '快捷回复', '快速反應', '快速反应', '빠른 공감',
+      'watch full reel', 'watch reel', 'watch full video', 'watch video', 'watch on instagram',
+      'play reel', 'view post', 'see post', 'view full post'
     ];
     if (banned.includes(lower)) return false;
 
@@ -2227,7 +2583,11 @@
       lower.endsWith('likes') ||
       lower.endsWith('others') ||
       lower.includes('view more comments') ||
-      lower.includes('see translation')
+      lower.includes('see translation') ||
+      lower.includes('quick reaction') ||
+      lower.includes('reacciones rápidas') ||
+      /^(watch|play|see|view)\s+(full\s+)?(reel|video|post|photo|clip)(\s+on\s+instagram)?$/i.test(lower) ||
+      /^(view|visit)\s+(shop|product|products|store|link|website)$/i.test(lower)
     ) {
       return false;
     }
@@ -2862,6 +3222,27 @@
     activeInputTarget = inputEl;
     currentVariation = 0;
 
+    // Auto-detect and correct contextType if interacting with an Instagram Story
+    const ariaLabel = (inputEl?.getAttribute?.('aria-label') || '').toLowerCase();
+    const placeholder = (inputEl?.getAttribute?.('placeholder') || '').toLowerCase();
+    const ariaPlaceholder = (inputEl?.getAttribute?.('aria-placeholder') || '').toLowerCase();
+    const isStoryContext =
+      contextType === 'story' ||
+      triggerBtn?.dataset?.contextType === 'story' ||
+      triggerBtn?.classList?.contains('instareply-story-shortcut-btn') ||
+      window.location.pathname.includes('/stories') ||
+      Boolean(inputEl?.closest?.('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')) ||
+      Boolean(triggerBtn?.closest?.('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')) ||
+      ariaLabel.includes('reply to') ||
+      placeholder.includes('reply to') ||
+      ariaPlaceholder.includes('reply to') ||
+      ariaLabel.includes('responder a') ||
+      placeholder.includes('responder a');
+
+    if (isStoryContext) {
+      contextType = 'story';
+    }
+
     // Fetch Initial Config first so we know user preferences
     const config = await getConfig();
     currentTone = config.defaultTone || 'friendly';
@@ -2877,9 +3258,22 @@
 
     if (contextType === 'story') {
       const storyContainer = findActiveStoryContainer(inputEl || triggerBtn);
-      postAuthor = extractStoryAuthor(storyContainer);
+      postAuthor = extractStoryAuthor(storyContainer, inputEl || triggerBtn);
       postCaption = extractStoryCaption(storyContainer, postAuthor);
       postVisuals = extractStoryVisuals(storyContainer);
+      postContainer = storyContainer;
+
+      // Pause story playback: focus input and pause any active video
+      try {
+        if (inputEl && typeof inputEl.focus === 'function') {
+          inputEl.focus();
+        }
+        const activeVideo = storyContainer?.querySelector('video');
+        if (activeVideo && !activeVideo.paused) {
+          activeVideo.pause();
+          activeVideo.dataset.instareplyPaused = 'true';
+        }
+      } catch (_) {}
     } else {
       postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
       if (postContainer) {
@@ -2958,6 +3352,7 @@
       };
     } else {
       context = extractContext(inputEl, contextType, postContainer);
+      context.contextType = contextType;
       context.postId = postId || context.postId || extractPostIdentifier(postContainer, context.postAuthor, context.postCaption);
       if (!context.postCaption) context.postCaption = postCaption;
       if (!context.postAuthor) context.postAuthor = postAuthor;
@@ -3002,12 +3397,14 @@
     let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
     if (contextType === 'story') {
-      const storyContainer = findActiveStoryContainer(inputEl);
-      postAuthor = extractStoryAuthor(storyContainer);
+      const storyContainer = (postContainer && !postContainer.closest?.('article'))
+        ? postContainer
+        : findActiveStoryContainer(inputEl);
+      postAuthor = extractStoryAuthor(storyContainer, inputEl);
       postCaption = extractStoryCaption(storyContainer, postAuthor);
       postVisuals = extractStoryVisuals(storyContainer);
       author = postAuthor;
-      incomingText = postCaption ? `[Story Content]: ${postCaption}` : '';
+      incomingText = '';
     } else if (contextType === 'comment') {
       const article = postContainer || findPostContainer(inputEl);
       if (article) {
@@ -3135,6 +3532,7 @@
     const isReplyingToComment = Boolean(incomingText && author);
 
     return {
+      contextType,
       incomingText,
       author,
       postCaption,
@@ -3668,7 +4066,7 @@
           setupUnbindButtons(activeCard);
         }
       }
-    } else {
+    } else if (!lastContextData?.postVisuals?.description && !lastContextData?.postVisuals?.thumbnailUrl) {
       const existingBanner = activeCard.querySelector('.instareply-visual-banner');
       if (existingBanner) existingBanner.remove();
     }
@@ -3789,6 +4187,7 @@
     card.className = 'instareply-card-overlay';
 
     const hasHint = Boolean(context.userDraftHint);
+    const isStory = context.contextType === 'story' || context.replyMode === 'story_reply';
 
     card.innerHTML = `
       <div class="instareply-card-header">
@@ -3803,7 +4202,7 @@
         <!-- Interaction Role & Relationship Badge -->
         ${context.relationshipSummary ? `
           <div class="instareply-relationship-badge ${context.replyMode === 'comment_reply' ? 'is-comment-reply' : 'is-post-comment'}">
-            <span>${context.replyMode === 'comment_reply' ? '💬' : ((context.contextType === 'story' || context.replyMode === 'story_reply') ? '📸' : context.contextType === 'dm' ? '✉️' : '📝')}</span>
+            <span>${context.replyMode === 'comment_reply' ? '💬' : (isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '📝')}</span>
             <span>${escapeHTML(context.relationshipSummary)}</span>
           </div>
         ` : ''}
@@ -3826,23 +4225,23 @@
           </div>
         ` : ''}
 
-        <!-- Post Caption Banner -->
+        <!-- Post Caption / Story Text Banner -->
         ${context.postCaption ? `
-          <div class="instareply-context-banner instareply-post-banner" title="Referenced Post Caption">
-            <span class="instareply-banner-icon">📌</span>
+          <div class="instareply-context-banner instareply-post-banner" title="${isStory ? 'Referenced Story Sticker Text' : 'Referenced Post Caption'}">
+            <span class="instareply-banner-icon">${isStory ? '📸' : '📌'}</span>
             <div class="instareply-context-text">
-              <strong>${context.contextType === 'story' ? 'Story Text:' : 'Post:'}</strong> "${escapeHTML(context.postCaption)}"
+              <strong>${isStory ? 'Story Text:' : 'Post:'}</strong> "${escapeHTML(context.postCaption)}"
             </div>
-            <button type="button" class="instareply-unbind-btn" id="instareply-unbind-post" title="Unbind / Remove post context">&times;</button>
+            <button type="button" class="instareply-unbind-btn" id="instareply-unbind-post" title="${isStory ? 'Unbind / Remove story text' : 'Unbind / Remove post context'}">&times;</button>
           </div>
         ` : ''}
 
         <!-- Specific Comment / DM Message Target Banner (if different from caption) -->
         ${context.incomingText && context.incomingText !== context.postCaption ? `
-          <div class="instareply-context-banner instareply-comment-banner" style="border-left-color: ${context.contextType === 'story' ? '#f43f5e' : context.contextType === 'dm' ? '#8b5cf6' : '#ec4899'}; background: ${context.contextType === 'story' ? 'rgba(244, 63, 94, 0.08)' : context.contextType === 'dm' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(236, 72, 153, 0.08)'}; color: ${context.contextType === 'story' ? '#fecdd3' : context.contextType === 'dm' ? '#ddd6fe' : '#fbcfe8'};" title="${context.contextType === 'story' ? 'Replying to Story' : context.contextType === 'dm' ? 'Replying to DM Message' : 'Replying to Comment'}">
-            <span class="instareply-banner-icon">${context.contextType === 'story' ? '📸' : context.contextType === 'dm' ? '✉️' : '💬'}</span>
+          <div class="instareply-context-banner instareply-comment-banner" style="border-left-color: ${isStory ? '#f43f5e' : context.contextType === 'dm' ? '#8b5cf6' : '#ec4899'}; background: ${isStory ? 'rgba(244, 63, 94, 0.08)' : context.contextType === 'dm' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(236, 72, 153, 0.08)'}; color: ${isStory ? '#fecdd3' : context.contextType === 'dm' ? '#ddd6fe' : '#fbcfe8'};" title="${isStory ? 'Replying to Story' : context.contextType === 'dm' ? 'Replying to DM Message' : 'Replying to Comment'}">
+            <span class="instareply-banner-icon">${isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '💬'}</span>
             <div class="instareply-context-text">
-              <strong>${context.author ? `@${escapeHTML(context.author)}` : (context.contextType === 'story' ? 'Story' : context.contextType === 'dm' ? 'Incoming Message' : 'Replying')}:</strong> "${escapeHTML(context.incomingText)}"
+              <strong>${context.author ? `@${escapeHTML(context.author)}` : (isStory ? 'Story' : context.contextType === 'dm' ? 'Incoming Message' : 'Replying')}:</strong> "${escapeHTML(context.incomingText)}"
             </div>
             <button type="button" class="instareply-unbind-btn" id="instareply-unbind-comment" title="Unbind / Remove message context">&times;</button>
           </div>
@@ -4124,17 +4523,42 @@
 
     element.focus();
 
-    if (element.tagName.toLowerCase() === 'textarea' || element.tagName.toLowerCase() === 'input') {
+    const tag = (element.tagName || '').toLowerCase();
+    if (tag === 'textarea' || tag === 'input') {
       // Standard input or textarea
-      // Use native value setter to trigger React state updates
-      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
-        || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      // Use correct prototype descriptor for the specific element type
+      try {
+        const proto = tag === 'textarea'
+          ? window.HTMLTextAreaElement?.prototype
+          : window.HTMLInputElement?.prototype;
+        const nativeSetter = proto ? Object.getOwnPropertyDescriptor(proto, 'value')?.set : null;
 
-      if (nativeSetter) {
-        nativeSetter.call(element, textToInsert);
-      } else {
+        if (nativeSetter) {
+          nativeSetter.call(element, textToInsert);
+        } else {
+          element.value = textToInsert;
+        }
+      } catch (err) {
         element.value = textToInsert;
       }
+
+      // Update React internal value tracker if present
+      if (element._valueTracker) {
+        try {
+          element._valueTracker.setValue('');
+        } catch (_) {}
+      }
+
+      // Dispatch InputEvent with data
+      try {
+        const inputEvent = new InputEvent('input', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: textToInsert
+        });
+        element.dispatchEvent(inputEvent);
+      } catch (_) {}
 
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -4303,6 +4727,16 @@
     clearTimeout(stancePrefetchTimer);
     currentGenerationId++;
     activeGenerationContext = null;
+
+    // Resume video if paused by InstaReply
+    try {
+      const pausedVideo = document.querySelector('video[data-instareply-paused="true"]');
+      if (pausedVideo) {
+        delete pausedVideo.dataset.instareplyPaused;
+        pausedVideo.play().catch(() => {});
+      }
+    } catch (_) {}
+
     if (activeCard && activeCard.parentNode) {
       activeCard.parentNode.removeChild(activeCard);
     }

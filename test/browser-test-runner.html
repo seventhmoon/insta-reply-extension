@@ -140,6 +140,16 @@
         <img src="https://instagram.com/story1.jpg" alt="Sunset over Tokyo skyline" width="300" height="400">
       </div>
       <div dir="auto" class="story-sticker-text">Golden hour views from Shibuya! 🌆</div>
+      <!-- Mock Shared Reel Card in Story -->
+      <a href="/reel/DdQLLRDAUN5/" role="link" class="story-shared-reel-card" style="display: flex; gap: 4px; padding: 4px;">
+        <span dir="auto">Watch full reel</span>
+        <strong>@chef_mario</strong>
+      </a>
+      <div class="story-reaction-tray" style="display: flex; gap: 8px;">
+        <div dir="auto"><h2>Quick Reactions</h2></div>
+        <button type="button" aria-label="React with 😂">😂</button>
+        <button type="button" aria-label="React with 🔥">🔥</button>
+      </div>
       <div class="ig-story-composer" style="border-radius: 20px; height: 44px; display: flex; align-items: center;">
         <input id="story-reply-input" type="text" placeholder="Reply to story_creator..." style="width: 100%; border: none;">
       </div>
@@ -219,6 +229,43 @@
         assert("AI shortcut button injected into Story composer pill", Boolean(storyBtn));
         if (storyBtn) {
           assert("Story button has correct title", storyBtn.title.includes("Story Reply"));
+        }
+
+        // Test 6: Story Reply card opening and safe text insertion into <input>
+        if (storyBtn) {
+          storyBtn.click();
+          await new Promise(r => setTimeout(r, 250));
+          const card = document.querySelector(".instareply-card-overlay");
+          assert("Story assistant card opens on shortcut button click", Boolean(card));
+          if (card) {
+            const cardText = card.innerText || "";
+            assert("Story assistant card displays story relationship", cardText.includes("story_creator") || cardText.includes("Story"));
+            assert("Story assistant card does NOT bleed background post context", !cardText.includes("janedoe") && !cardText.includes("Coffee time"));
+            assert("Story assistant card targets story_creator via DM", cardText.includes("story_creator") && cardText.includes("DM"));
+            assert("Story assistant card renders 'Story Text:' banner and does NOT render 'Post:'", cardText.includes("Story Text:") && !cardText.includes("Post:"));
+            assert("Story assistant card extracts genuine sticker text", cardText.includes("Golden hour views from Shibuya!"));
+            assert("Story assistant card completely excludes Quick Reactions UI", !cardText.includes("Quick Reactions"));
+            assert("Story assistant card does NOT contain 'Watch full reel' UI CTA", !cardText.includes("Watch full reel"));
+            assert("Story assistant card recognizes shared reel in visual banner", cardText.includes("chef_mario") || cardText.includes("Reel"));
+            // Test insert button into Story input
+            const insertBtn = card.querySelector(".instareply-btn-insert");
+            assert("Insert button exists in Story card", Boolean(insertBtn));
+            if (insertBtn) {
+              insertBtn.click();
+              assert("Story input value populated safely without Illegal invocation", storyInput.value.length > 0);
+            }
+          }
+        }
+
+        // Test 7: Story shortcut button re-injection when detached by React
+        const pill = document.querySelector(".ig-story-composer");
+        if (pill) {
+          const btn = pill.querySelector(".instareply-shortcut-btn");
+          if (btn) btn.remove(); // Simulate React re-render unmounting the button
+          window.dispatchEvent(new Event("popstate")); // Trigger navigation check
+          await new Promise(r => setTimeout(r, 350));
+          const reInjectedBtn = pill.querySelector(".instareply-shortcut-btn");
+          assert("Story shortcut button re-injected after being detached by React", Boolean(reInjectedBtn));
         }
 
         const summary = failed === 0 ? "ALL BROWSER TESTS PASSED" : failed + " BROWSER TESTS FAILED";

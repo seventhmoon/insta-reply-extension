@@ -931,6 +931,9 @@ ${incomingText}
 """
 ${incomingText}
 """`;
+  } else if (isStoryReply) {
+    incomingSection = `### ACTION:
+Writing a direct reaction / reply to the Instagram Story shown above (sent via DM to @${postAuthor || 'creator'}).`;
   } else {
     incomingSection = `### ACTION:
 Writing a top-level engaging comment on the post described above.`;

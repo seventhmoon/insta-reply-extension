@@ -307,30 +307,37 @@ async function main() {
   // =========================================================================
   console.log('\n📸 Suite 2c: Instagram Story Reply & Context Extraction');
 
-  runTest('StoryInputDiscovery', 'Identifies Story reply input and pill container', () => {
+  runTest('StoryInputDiscovery', 'Identifies Story reply input with reply/message/send and multilingual cues', () => {
     function isStoryInput(placeholder, ariaLabel, insideViewer) {
       const p = (placeholder || '').toLowerCase();
       const a = (ariaLabel || '').toLowerCase();
-      return insideViewer || p.startsWith('reply to') || a.startsWith('reply to') || p.includes('reply') || a.includes('reply');
+      const storyCues = ['reply', 'message', 'send', 'responder', 'enviar', '返信', 'メッセージ', '回复', '回覆', '訊息', '消息', 'nachricht', 'antworten'];
+      const hasCue = storyCues.some(c => p.includes(c) || a.includes(c));
+      return insideViewer || hasCue;
     }
 
     assert.strictEqual(isStoryInput('Reply to story_creator...', '', false), true);
     assert.strictEqual(isStoryInput('', 'Reply to story_creator...', false), true);
+    assert.strictEqual(isStoryInput('Send message...', '', false), true);
+    assert.strictEqual(isStoryInput('Send a message...', '', false), true);
+    assert.strictEqual(isStoryInput('Responder a story_creator...', '', false), true);
+    assert.strictEqual(isStoryInput('メッセージを送信...', '', false), true);
+    assert.strictEqual(isStoryInput('傳送訊息...', '', false), true);
     assert.strictEqual(isStoryInput('', '', true), true);
     assert.strictEqual(isStoryInput('Add a comment...', '', false), false);
-    assert.strictEqual(isStoryInput('Message...', '', false), false);
+    assert.strictEqual(isStoryInput('Search...', '', false), false);
   });
 
-  runTest('StoryAuthorExtraction', 'Extracts author from /stories/<username>/ route URL and header', () => {
+  runTest('StoryAuthorExtraction', 'Extracts author from /stories/<username>/ route URL and header, rejecting highlights', () => {
     function extractStoryAuthor(pathname, headerLink) {
       const urlMatch = pathname.match(/\/stories\/([a-zA-Z0-9._]+)/);
-      if (urlMatch && urlMatch[1]) {
-        const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories']);
-        if (!banned.has(urlMatch[1].toLowerCase())) return urlMatch[1];
+      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights', 'settings', 'accounts']);
+      if (urlMatch && urlMatch[1] && !banned.has(urlMatch[1].toLowerCase())) {
+        return urlMatch[1];
       }
       if (headerLink) {
-        const m = headerLink.match(/^\/([a-zA-Z0-9._]+)\/?/);
-        if (m && m[1]) return m[1];
+        const m = headerLink.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        if (m && m[1] && !banned.has(m[1].toLowerCase())) return m[1];
       }
       return '';
     }
@@ -338,12 +345,15 @@ async function main() {
     assert.strictEqual(extractStoryAuthor('/stories/nature_photographer/312345/', ''), 'nature_photographer');
     assert.strictEqual(extractStoryAuthor('/stories/travel_diaries/', ''), 'travel_diaries');
     assert.strictEqual(extractStoryAuthor('/direct/t/123/', '/travel_diaries/'), 'travel_diaries');
+    // On highlights route, 'highlights' must NOT be treated as the author username!
+    assert.strictEqual(extractStoryAuthor('/stories/highlights/18123456789/', '/tokyo_eats/'), 'tokyo_eats');
   });
 
-  runTest('StoryIdentifier', 'Generates unique story identifier scoping replies to active slide', () => {
+  runTest('StoryIdentifier', 'Generates unique story identifier scoping replies to active slide, rejecting highlights', () => {
     function extractStoryIdentifier(pathname, storyAuthor) {
       const match = pathname.match(/\/stories\/([a-zA-Z0-9._]+)(?:\/([0-9]+))?/);
-      if (match) {
+      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights']);
+      if (match && match[1] && !banned.has(match[1].toLowerCase())) {
         const user = match[1];
         const storyId = match[2];
         return storyId ? `story_${user}_${storyId}` : `story_${user}_active`;
@@ -353,6 +363,52 @@ async function main() {
 
     assert.strictEqual(extractStoryIdentifier('/stories/nature_photographer/312345/', 'nature_photographer'), 'story_nature_photographer_312345');
     assert.strictEqual(extractStoryIdentifier('/stories/nature_photographer/', 'nature_photographer'), 'story_nature_photographer_active');
+    assert.strictEqual(extractStoryIdentifier('/stories/highlights/18123456789/', 'tokyo_eats'), 'story_tokyo_eats_active');
+  });
+
+  runTest('StoryInputInsertionPrototype', 'Correctly scopes prototype value setter for HTMLInputElement vs HTMLTextAreaElement', () => {
+    // Simulates the prototype setter selection in content.js without calling Illegal invocation
+    function getNativeSetterForTag(tag, mockInputProto, mockTextareaProto) {
+      const proto = tag === 'textarea' ? mockTextareaProto : mockInputProto;
+      return proto.valueSetter;
+    }
+
+    let inputSetterCalled = false;
+    let textareaSetterCalled = false;
+
+    const mockInputProto = {
+      valueSetter: function(val) { inputSetterCalled = true; this.value = val; }
+    };
+    const mockTextareaProto = {
+      valueSetter: function(val) { textareaSetterCalled = true; this.value = val; }
+    };
+
+    const mockInputEl = { tagName: 'INPUT', value: '' };
+    const mockTextareaEl = { tagName: 'TEXTAREA', value: '' };
+
+    const inputSetter = getNativeSetterForTag('input', mockInputProto, mockTextareaProto);
+    inputSetter.call(mockInputEl, 'Story DM response');
+    assert.strictEqual(inputSetterCalled, true);
+    assert.strictEqual(mockInputEl.value, 'Story DM response');
+
+    const textareaSetter = getNativeSetterForTag('textarea', mockInputProto, mockTextareaProto);
+    textareaSetter.call(mockTextareaEl, 'Comment reply');
+    assert.strictEqual(textareaSetterCalled, true);
+    assert.strictEqual(mockTextareaEl.value, 'Comment reply');
+  });
+
+  runTest('StoryButtonReinjection', 'Permits re-injection if shortcut button was unmounted by React', () => {
+    function shouldInjectShortcut(datasetInjected, containerHasBtn) {
+      if (datasetInjected) {
+        if (containerHasBtn) return false; // Button already present in DOM
+        return true; // Button was detached by React; allow re-injection!
+      }
+      return true;
+    }
+
+    assert.strictEqual(shouldInjectShortcut(false, false), true, 'Fresh input must be injected');
+    assert.strictEqual(shouldInjectShortcut(true, true), false, 'Already injected button in DOM must not be duplicated');
+    assert.strictEqual(shouldInjectShortcut(true, false), true, 'Unmounted button must be re-injected on React reconciliation');
   });
 
   runTest('StoryRelationship', 'Correctly sets story_reply mode, target, and relationshipSummary', () => {
@@ -384,6 +440,242 @@ async function main() {
     assert.ok(swContent.includes('isStoryReply'), 'Must check isStoryReply in service worker');
     assert.ok(swContent.includes('INSTAGRAM STORY REPLY (SENT VIA DM)'), 'Must contain Story Reply engagement instructions');
     assert.ok(swContent.includes('FOLLOWER / FRIEND replying directly to @'), 'Must contain Story role header');
+  });
+
+  runTest('StoryAuthorFromInputPlaceholder', 'Extracts author from input placeholder or aria-label', () => {
+    function extractStoryAuthorFromInput(placeholder, ariaLabel) {
+      for (const text of [placeholder, ariaLabel]) {
+        if (!text) continue;
+        const m = text.match(/(?:reply to|responder a|nachricht an|mensaje a|mensagem para|enviar a)\s+@?([a-zA-Z0-9._]+)/i);
+        if (m && m[1]) {
+          const clean = m[1].replace(/\.+$/, '').trim();
+          const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories', 'highlights', 'settings', 'accounts']);
+          if (clean && !banned.has(clean.toLowerCase())) return clean;
+        }
+      }
+      return '';
+    }
+
+    assert.strictEqual(extractStoryAuthorFromInput('Reply to sarah_adventures...', ''), 'sarah_adventures');
+    assert.strictEqual(extractStoryAuthorFromInput('', 'Responder a chef_mario...'), 'chef_mario');
+    assert.strictEqual(extractStoryAuthorFromInput('Nachricht an photo_guru senden...', ''), 'photo_guru');
+    assert.strictEqual(extractStoryAuthorFromInput('Add a comment...', ''), '');
+  });
+
+  runTest('StorySlideScoping', 'Scopes active story slide container and prevents carousel bleed', () => {
+    const mockCarousel = {
+      tagName: 'SECTION',
+      querySelectorAll: (sel) => sel === 'header' ? [{}, {}, {}] : []
+    };
+    const mockSlide0 = {
+      tagName: 'DIV',
+      parentElement: mockCarousel,
+      querySelectorAll: (sel) => sel === 'header' ? [{}] : [],
+      querySelector: (sel) => sel === 'video' ? {} : null
+    };
+    const mockComposer = {
+      tagName: 'FORM',
+      parentElement: mockSlide0,
+      querySelectorAll: () => [],
+      querySelector: () => null
+    };
+    const mockInput = {
+      tagName: 'TEXTAREA',
+      parentElement: mockComposer,
+      querySelectorAll: () => [],
+      querySelector: () => null
+    };
+
+    function findActiveSlide(el) {
+      let curr = el.parentElement;
+      let bestCandidate = null;
+      while (curr && curr.tagName !== 'BODY') {
+        const headers = curr.querySelectorAll('header');
+        const hasMedia = curr.querySelector('video') || false;
+        if (hasMedia || headers.length > 0) {
+          if (headers.length <= 1) {
+            return curr;
+          } else {
+            if (bestCandidate) return bestCandidate;
+            break;
+          }
+        }
+        bestCandidate = curr;
+        curr = curr.parentElement;
+      }
+      return curr;
+    }
+
+    const resolvedSlide = findActiveSlide(mockInput);
+    assert.strictEqual(resolvedSlide, mockSlide0, 'Must resolve to active slide and stop before multi-header carousel');
+  });
+
+  runTest('StoryCommentExclusion', 'Comment scanning excludes Story inputs and routes', () => {
+    function isExcludedFromComments(pathname, ariaLabel, placeholder, isStoryComposer) {
+      const a = (ariaLabel || '').toLowerCase();
+      const p = (placeholder || '').toLowerCase();
+      if (
+        pathname.includes('/stories') ||
+        isStoryComposer ||
+        a.startsWith('reply to') ||
+        p.startsWith('reply to') ||
+        a.includes('reply to') ||
+        p.includes('reply to')
+      ) {
+        return true;
+      }
+      return false;
+    }
+
+    assert.strictEqual(isExcludedFromComments('/stories/alice/123/', '', '', false), true);
+    assert.strictEqual(isExcludedFromComments('/', 'Reply to alice...', '', false), true);
+    assert.strictEqual(isExcludedFromComments('/', '', 'Reply to bob...', false), true);
+    assert.strictEqual(isExcludedFromComments('/', '', '', true), true);
+    assert.strictEqual(isExcludedFromComments('/p/123/', 'Add a comment...', 'Add a comment...', false), false);
+  });
+
+  runTest('StoryQuickReactionsRejection', 'Rejects Quick Reactions UI headings, trays, and pure emoji bars from story text', () => {
+    function filterStoryText(elList, storyAuthor) {
+      const bannedWords = new Set([
+        (storyAuthor || '').toLowerCase(),
+        'reply', 'send message', 'responder', 'story',
+        'quick reactions', 'quick reaction', 'reactions', 'reaction',
+        'reacciones rápidas', 'reacción rápida', 'schnelle reaktionen', 'réactions rapides'
+      ]);
+
+      const captionLines = [];
+      const seen = new Set();
+
+      for (const el of elList) {
+        if (el.inReactionContainer || el.inHeader || el.inForm || el.inButton) continue;
+        const txt = (el.text || '').trim();
+        if (!txt || txt.length < 2) continue;
+        if (/^[0-9]+[smhd]$/i.test(txt)) continue;
+        const lower = txt.toLowerCase();
+        if (bannedWords.has(lower)) continue;
+        if (
+          lower.startsWith('reply to') ||
+          lower.startsWith('responder a') ||
+          lower.includes('reaction') ||
+          lower.includes('reacción') ||
+          lower.includes('réaction') ||
+          lower.includes('reaktion') ||
+          lower.includes('reacciones rápidas') ||
+          lower.includes('avatar')
+        ) {
+          continue;
+        }
+        if (/^[\p{Extended_Pictographic}\s]+$/u.test(txt)) {
+          continue;
+        }
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          captionLines.push(txt);
+        }
+      }
+      return captionLines.join('\n');
+    }
+
+    const mockElements = [
+      { text: 'traveler_sam', inHeader: true },
+      { text: '3h', inHeader: true },
+      { text: 'Quick Reactions', inReactionContainer: false }, // Heading text
+      { text: 'Reactions', inReactionContainer: false },
+      { text: 'Reacciones rápidas', inReactionContainer: false },
+      { text: '😂 😮 😍 😢 👏 🔥 🎉 💯', inReactionContainer: false }, // Emoji tray
+      { text: 'Reply to traveler_sam...', inForm: true },
+      { text: 'Sunset at Kyoto temple! ⛩️', inReactionContainer: false } // Genuine sticker
+    ];
+
+    const result = filterStoryText(mockElements, 'traveler_sam');
+    assert.strictEqual(result, 'Sunset at Kyoto temple! ⛩️', 'Must extract genuine sticker and exclude all Quick Reactions UI and emoji trays');
+  });
+
+  runTest('StoryBannerRendering', 'Renders "Story Text:" instead of "Post:" and omits banner when caption is empty', () => {
+    function renderCaptionBanner(context) {
+      const isStory = context.contextType === 'story' || context.replyMode === 'story_reply';
+      if (!context.postCaption) return '';
+      return `<strong>${isStory ? 'Story Text:' : 'Post:'}</strong> "${context.postCaption}"`;
+    }
+
+    const storyWithSticker = { contextType: 'story', replyMode: 'story_reply', postCaption: 'Beautiful day!' };
+    const bannerWithSticker = renderCaptionBanner(storyWithSticker);
+    assert.ok(bannerWithSticker.includes('Story Text:'), 'Must render Story Text: for story context');
+    assert.ok(!bannerWithSticker.includes('Post:'), 'Must NOT render Post: for story context');
+
+    const storyWithoutSticker = { contextType: 'story', replyMode: 'story_reply', postCaption: '' };
+    const bannerWithoutSticker = renderCaptionBanner(storyWithoutSticker);
+    assert.strictEqual(bannerWithoutSticker, '', 'Must render empty banner when Story has no text stickers');
+
+    const feedPost = { contextType: 'comment', replyMode: 'post_comment', postCaption: 'Check out our new recipe' };
+    const feedBanner = renderCaptionBanner(feedPost);
+    assert.ok(feedBanner.includes('Post:'), 'Must render Post: for standard feed post comment');
+  });
+
+  runTest('StoryReelShareCTARejection', 'Rejects "Watch full reel", "View post", and navigation CTAs from shared reel stories', () => {
+    function filterStoryCaption(elements, author) {
+      const bannedWords = new Set([
+        (author || '').toLowerCase(),
+        'reply', 'send message', 'story',
+        'watch full reel', 'watch reel', 'watch full video', 'watch video', 'watch on instagram',
+        'play reel', 'view post', 'see post', 'view photo', 'view full post',
+        'ver reel completo', 'ver reel', 'ver publicación',
+        'regarder le reel', 'reel ansehen', 'guarda il reel', 'assista ao reel completo',
+        'リールをすべて見る', 'リールを見る', '觀看完整連續短片', '观看完整 reels',
+        'view product', 'visit shop', 'shop now', 'add yours', 'ask me a question'
+      ]);
+
+      const ctaRegex = /^(watch|play|see|view)\s+(full\s+)?(reel|video|post|photo|clip)(\s+on\s+instagram)?$/i;
+      const multilingualRegex = /^(ver|regarder|guarda|assistir|assista)\s+(el\s+|le\s+|il\s+|ao\s+)?(reel|video|vidéo|post|publicación|publicacao)(\s+completo|\s+complet|\s+completa)?$/i;
+      const cjkRegex = /^((リール|動画|投稿)を(すべて)?見る|(觀看|观看)(完整)?(連續短片|短片|视频|影片|reels?))$/i;
+
+      const lines = [];
+      for (const el of elements) {
+        if (el.inLink || el.inButton || el.inHeader || el.inForm) continue;
+        const txt = (el.text || '').trim();
+        if (!txt || txt.length < 2) continue;
+        const lower = txt.toLowerCase();
+        if (bannedWords.has(lower)) continue;
+        if (ctaRegex.test(lower) || multilingualRegex.test(lower) || cjkRegex.test(lower)) continue;
+        if (lower.startsWith('reply to') || lower.includes('reaction')) continue;
+        lines.push(txt);
+      }
+      return lines.join('\n');
+    }
+
+    // Case 1: Story sharing a reel with NO custom text sticker (only Instagram's "Watch full reel" CTA)
+    const reelShareOnly = [
+      { text: 'travel_lover', inHeader: true },
+      { text: 'Watch full reel', inLink: false }, // CTA text
+      { text: '@foodie_chef', inLink: true }     // Original creator link
+    ];
+    assert.strictEqual(filterStoryCaption(reelShareOnly, 'travel_lover'), '', 'Must return empty caption when story only contains "Watch full reel" CTA');
+
+    // Case 2: Story sharing a reel WITH a custom sticker added by the author
+    const reelShareWithSticker = [
+      { text: 'travel_lover', inHeader: true },
+      { text: 'Watch full reel', inLink: false },
+      { text: 'Ver reel completo', inLink: false },
+      { text: 'Reel ansehen', inLink: false },
+      { text: 'リールを見る', inLink: false },
+      { text: '觀看完整連續短片', inLink: false },
+      { text: 'You have to try this recipe! 🍝', inLink: false } // Genuine user sticker
+    ];
+    assert.strictEqual(
+      filterStoryCaption(reelShareWithSticker, 'travel_lover'),
+      'You have to try this recipe! 🍝',
+      'Must extract user sticker and reject all multilingual "Watch full reel" CTAs'
+    );
+
+    // Case 3: Genuine user caption mentioning "watch" or "reel" in a natural sentence
+    const naturalSentence = [
+      { text: 'Watch till the very end to see the surprise! 🐶', inLink: false }
+    ];
+    assert.strictEqual(
+      filterStoryCaption(naturalSentence, 'travel_lover'),
+      'Watch till the very end to see the surprise! 🐶',
+      'Must preserve natural sentences starting with "Watch"'
+    );
   });
 
   // =========================================================================
