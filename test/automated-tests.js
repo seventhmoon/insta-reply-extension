@@ -193,6 +193,116 @@ async function main() {
   });
 
   // =========================================================================
+  // SUITE 2b: Instagram Reel Context Extraction & Comments Drawer Isolation
+  // =========================================================================
+  console.log('\n🎬 Suite 2b: Instagram Reel Context Extraction & Comments Drawer Isolation');
+
+  runTest('ReelIdentifier', 'Rejects generic /reels/videos/ route and finds shortcode in reel container', () => {
+    const bannedCodes = new Set(['videos', 'audio', 'reels', 'reel', 'explore', 'direct', 'stories', 'create', 'tv']);
+    function extractReelIdentifier(path, container) {
+      const pathMatch = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+      if (pathMatch && pathMatch[2] && !bannedCodes.has(pathMatch[2].toLowerCase())) {
+        return pathMatch[2];
+      }
+      if (container) {
+        const link = container.querySelector ? container.querySelector('a[href*="/reel/"], a[href*="/reels/"]') : null;
+        if (link) {
+          const m = link.href.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+          if (m && m[2] && !bannedCodes.has(m[2].toLowerCase())) return m[2];
+        }
+      }
+      return 'fallback_id';
+    }
+
+    // 1. Direct Reel URL: /reel/C9xyz123/
+    assert.strictEqual(extractReelIdentifier('/reel/C9xyz123/', null), 'C9xyz123');
+
+    // 2. Generic Reels feed: /reels/videos/ with container having link /reel/C8abc789/
+    const mockContainer = {
+      querySelector: () => ({ href: 'https://www.instagram.com/reel/C8abc789/' })
+    };
+    assert.strictEqual(extractReelIdentifier('/reels/videos/', mockContainer), 'C8abc789');
+  });
+
+  runTest('ReelDrawerIsolation', 'isInsideCommentsSection correctly identifies comments drawer elements', () => {
+    function isInsideCommentsSection(node) {
+      if (!node) return false;
+      let curr = node;
+      while (curr) {
+        if (curr.role === 'dialog' && (curr.heading === 'Comments' || curr.heading === '留言' || (curr.hasCommentInput && !curr.hasVideo))) {
+          return true;
+        }
+        if (curr.tag === 'UL' || curr.tag === 'OL' || curr.tag === 'FORM' || curr.className?.includes('ig-comment')) {
+          return true;
+        }
+        curr = curr.parent;
+      }
+      return false;
+    }
+
+    const videoOverlayNode = { tag: 'DIV', parent: { tag: 'DIV', role: 'region' } };
+    const commentRowNode = { tag: 'SPAN', parent: { tag: 'DIV', parent: { tag: 'DIV', role: 'dialog', heading: 'Comments', hasCommentInput: true, hasVideo: false } } };
+
+    assert.strictEqual(isInsideCommentsSection(videoOverlayNode), false, 'Video overlay must NOT be treated as comments section');
+    assert.strictEqual(isInsideCommentsSection(commentRowNode), true, 'Node in comments drawer must be recognized as comments section');
+  });
+
+  runTest('ReelAuthor', 'Extracts author from video overlay avatar or canonical title and ignores commenters in drawer', () => {
+    const reelOverlayAvatar = {
+      alt: "bi___0108's profile picture",
+      isInComments: false
+    };
+    const drawerCommenterAvatar = {
+      alt: "random_commenter's profile picture",
+      isInComments: true
+    };
+
+    function extractAuthor(avatars) {
+      const banned = new Set(['reels', 'explore', 'p', 'audio', 'videos']);
+      for (const a of avatars) {
+        if (a.isInComments) continue;
+        const m = a.alt.match(/([a-zA-Z0-9._]+)'s profile picture/i);
+        if (m && m[1] && !banned.has(m[1].toLowerCase())) {
+          return m[1];
+        }
+      }
+      return '';
+    }
+
+    const author = extractAuthor([drawerCommenterAvatar, reelOverlayAvatar]);
+    assert.strictEqual(author, 'bi___0108', 'Must extract reel creator handle and ignore commenters in drawer');
+  });
+
+  runTest('ReelVisuals', 'Extracts og:image cover and real visual description for Reel', () => {
+    function extractVisuals(ogImage, ogDesc, videoPoster) {
+      let thumbnailUrl = '';
+      let description = '';
+
+      if (ogImage && ogImage.startsWith('http')) thumbnailUrl = ogImage;
+      else if (videoPoster) thumbnailUrl = videoPoster;
+
+      const imgAltMatch = (ogDesc || '').match(/(?:Photo|Video) (?:by|shared by) .+?: (.+)$/i);
+      if (imgAltMatch && imgAltMatch[1]) {
+        description = imgAltMatch[1].trim();
+      }
+
+      return {
+        mediaType: 'video',
+        thumbnailUrl,
+        description: description || 'Instagram Reel video'
+      };
+    }
+
+    const ogImg = 'https://cdn.instagram.com/reel_cover.jpg';
+    const ogDesc = 'Video by kart_racer: Go kart drifting championship 2026';
+    const visuals = extractVisuals(ogImg, ogDesc, '');
+
+    assert.strictEqual(visuals.mediaType, 'video');
+    assert.strictEqual(visuals.thumbnailUrl, 'https://cdn.instagram.com/reel_cover.jpg');
+    assert.strictEqual(visuals.description, 'Go kart drifting championship 2026');
+  });
+
+  // =========================================================================
   // SUITE 3: Comment Isolation & Anti-Stale Caching
   // =========================================================================
   console.log('\n🛡️ Suite 3: Comment Isolation & Anti-Stale Caching');

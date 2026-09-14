@@ -33,24 +33,36 @@
    * to strictly scope cached replies and pre-fetches to the current post
    */
   function extractPostIdentifier(container, postAuthor = '', postCaption = '') {
+    const bannedCodes = new Set(['videos', 'audio', 'reels', 'reel', 'explore', 'direct', 'stories', 'create', 'tv']);
+
     // 1. Direct page route on dedicated /p/, /reel/, or /reels/ URL (authoritative)
     const path = window.location.pathname;
     const pathMatch = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
-    if (pathMatch && pathMatch[2]) return pathMatch[2];
+    if (pathMatch && pathMatch[2] && !bannedCodes.has(pathMatch[2].toLowerCase())) {
+      return pathMatch[2];
+    }
 
-    // 2. Feed post or modal post link
-    if (container) {
-      const link = container.querySelector('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"]');
-      if (link) {
+    // 2. Feed post, active reel, or modal post link
+    const searchRoots = [container];
+    try {
+      const activeReel = findActiveReelContainer();
+      if (activeReel && !searchRoots.includes(activeReel)) searchRoots.push(activeReel);
+    } catch (_) {}
+
+    for (const root of searchRoots) {
+      if (!root) continue;
+      const links = root.querySelectorAll('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"]');
+      for (const link of links) {
         const href = link.getAttribute('href') || '';
         const match = href.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
-        if (match && match[2]) return match[2];
+        if (match && match[2] && !bannedCodes.has(match[2].toLowerCase())) {
+          return match[2];
+        }
       }
     }
-    if (pathMatch && pathMatch[2]) return pathMatch[2];
 
     const cleanCap = (postCaption || '').replace(/\[Author Comment #[0-9]+\]:?/g, '').trim().slice(0, 40);
-    return `${postAuthor || 'post'}_${cleanCap}`;
+    return `${postAuthor || 'reel'}_${cleanCap}`;
   }
 
   function getReplyCacheKey(postId, postAuthor, incomingAuthor, incomingText, stance, tone, language) {
@@ -1283,6 +1295,55 @@
   }
 
   /**
+   * Helper to check if an element is inside a comments drawer, comments dialog, or comment list
+   */
+  function isInsideCommentsSection(el) {
+    if (!el) return false;
+    if (el.closest && (el.closest('.instareply-card-overlay') || el.closest('.instareply-card'))) return false;
+
+    // Direct comments drawer or modal dialog (without video)
+    const dialog = el.closest ? el.closest('div[role="dialog"]') : null;
+    if (dialog) {
+      const heading = dialog.querySelector('h1, h2, h3, [role="heading"]');
+      const headingText = (heading?.textContent || '').trim().toLowerCase();
+      if (['comments', '留言', 'コメント', 'comentarios', 'kommentare', 'commentaires'].some(k => headingText.includes(k))) {
+        return true;
+      }
+      // If dialog has comment inputs but NO video element, it's a comments drawer
+      if (dialog.querySelector('textarea, div[contenteditable="true"]') && !dialog.querySelector('video')) {
+        return true;
+      }
+    }
+
+    // Check parent comment list structures
+    if (el.closest) {
+      if (
+        el.closest('ul') ||
+        el.closest('ol') ||
+        el.closest('.ig-comments-section') ||
+        el.closest('.ig-comment') ||
+        el.closest('form')
+      ) {
+        return true;
+      }
+
+      // Element in close proximity to a "Reply" button inside a comment row
+      const parentRow = el.closest('div[role="button"]')?.parentElement || el.parentElement;
+      if (parentRow) {
+        const hasReplyBtn = Array.from(parentRow.querySelectorAll('button, [role="button"], span')).some(b => {
+          const t = (b.textContent || '').trim().toLowerCase();
+          return t === 'reply' || t === '回复' || t === '返信' || t === 'responder';
+        });
+        if (hasReplyBtn && !el.matches('button, [role="button"]')) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Helper to check if a specific post container is a Reel (and NOT an image/photo post)
    */
   function isReelContainer(container) {
@@ -1291,7 +1352,7 @@
     if (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) return true;
 
     // Check if THIS specific container actually contains a video element
-    if (container.querySelector('video')) return true;
+    if (container.querySelector && container.querySelector('video')) return true;
 
     return false;
   }
@@ -1302,6 +1363,7 @@
   function findActiveReelVideo() {
     const videos = Array.from(document.querySelectorAll('video'));
     if (videos.length === 0) return null;
+    if (videos.length === 1) return videos[0];
 
     // 1. First priority: video that is actively playing (not paused and has played frames)
     const playingVideos = videos.filter(v => {
@@ -1313,38 +1375,30 @@
     });
 
     if (playingVideos.length === 1) return playingVideos[0];
-    if (playingVideos.length > 1) {
-      const center = window.innerHeight / 2;
-      playingVideos.sort((a, b) => {
-        const rA = a.getBoundingClientRect();
-        const rB = b.getBoundingClientRect();
-        return Math.abs((rA.top + rA.bottom) / 2 - center) - Math.abs((rB.top + rB.bottom) / 2 - center);
-      });
-      return playingVideos[0];
+    const candidateList = playingVideos.length > 1 ? playingVideos : videos;
+
+    // 2. Pick video with largest visible area intersecting the viewport
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1200;
+
+    let bestVideo = null;
+    let maxVisibleArea = -1;
+
+    for (const v of candidateList) {
+      try {
+        const r = v.getBoundingClientRect();
+        const visibleWidth = Math.max(0, Math.min(r.right, viewportWidth) - Math.max(r.left, 0));
+        const visibleHeight = Math.max(0, Math.min(r.bottom, viewportHeight) - Math.max(r.top, 0));
+        const visibleArea = visibleWidth * visibleHeight;
+
+        if (visibleArea > maxVisibleArea) {
+          maxVisibleArea = visibleArea;
+          bestVideo = v;
+        }
+      } catch (_) {}
     }
 
-    // 2. Visible video in viewport with substantial dimensions
-    const visibleVideos = videos.filter(v => {
-      const r = v.getBoundingClientRect();
-      return (
-        r.width > 120 &&
-        r.height > 150 &&
-        r.bottom > window.innerHeight * 0.15 &&
-        r.top < window.innerHeight * 0.85
-      );
-    });
-
-    if (visibleVideos.length > 0) {
-      const center = window.innerHeight / 2;
-      visibleVideos.sort((a, b) => {
-        const rA = a.getBoundingClientRect();
-        const rB = b.getBoundingClientRect();
-        return Math.abs((rA.top + rA.bottom) / 2 - center) - Math.abs((rB.top + rB.bottom) / 2 - center);
-      });
-      return visibleVideos[0];
-    }
-
-    return null;
+    return bestVideo || candidateList[0] || videos[0];
   }
 
   /**
@@ -1358,8 +1412,13 @@
     let bestContainer = null;
 
     while (curr && curr !== document.body) {
-      // Look for author profile link inside this ancestor
-      const hasAuthor = curr.querySelector('a[href^="/"]:not([href*="/reel/"]):not([href*="/reels/"]):not([href*="/explore/"]):not([href*="/direct/"])');
+      if (isInsideCommentsSection(curr)) {
+        curr = curr.parentElement;
+        continue;
+      }
+
+      // Look for author profile link inside this ancestor (excluding reel permalinks)
+      const hasAuthor = curr.querySelector('a[href^="/"]:not([href*="/reel/"]):not([href*="/reels/"]):not([href*="/explore/"]):not([href*="/direct/"]):not([href*="/audio/"])');
       const hasButtons = curr.querySelector('button, [role="button"]');
 
       if (hasAuthor && hasButtons) {
@@ -1368,7 +1427,8 @@
           curr.tagName.toLowerCase() === 'article' ||
           curr.getAttribute('role') === 'region' ||
           curr.getAttribute('role') === 'dialog' ||
-          curr.classList.contains('ig-post-card')
+          curr.classList.contains('ig-post-card') ||
+          curr.classList.contains('reel-item-container')
         ) {
           return curr;
         }
@@ -1388,16 +1448,36 @@
    * Extracts post author from an active Reel container
    */
   function extractReelAuthor(reelContainer) {
-    const root = reelContainer || findActiveReelContainer() || document.querySelector('main, article, div[role="main"]') || document.body;
+    // 1. If on dedicated /reel/ or /reels/ URL, check canonical title/og/JSON-LD first
+    const isDedicatedRoute = window.location.pathname.startsWith('/reel/') ||
+                             (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
+    if (isDedicatedRoute) {
+      const canonical = extractPostAuthor(reelContainer);
+      if (canonical) return canonical;
+    }
 
-    const anchors = Array.from(root.querySelectorAll('a[href^="/"]'));
+    const root = reelContainer || findActiveReelContainer() || document.querySelector('article, div[role="region"]') || document.body;
+
     const bannedRoutes = new Set([
-      'explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv',
+      'explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv', 'audio', 'videos',
       'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api', 'notifications', 'create'
     ]);
 
+    // 2. Avatar profile picture alt text on Reel overlay (reliable creator handle cue)
+    const avatarImgs = Array.from(root.querySelectorAll('img[alt*="profile picture" i], img[alt*="的照片" i], img[alt*="大头贴" i], img[alt*="プロフィール写真" i]'));
+    for (const avatarImg of avatarImgs) {
+      if (isInsideCommentsSection(avatarImg) || avatarImg.closest('.instareply-card-overlay')) continue;
+      const alt = avatarImg.getAttribute('alt') || '';
+      const m = alt.match(/([a-zA-Z0-9._]+)(?:'s profile picture|的(?:大头贴|照片)|のプロフィール写真)/i);
+      if (m && m[1] && !bannedRoutes.has(m[1].toLowerCase())) {
+        return m[1];
+      }
+    }
+
+    // 3. Check for author profile link near Follow button (strictly outside comments)
+    const anchors = Array.from(root.querySelectorAll('a[href^="/"]'));
     for (const a of anchors) {
-      if (a.closest('nav, aside') || a.closest('.instareply-card-overlay') || a.closest('li') || a.closest('.ig-comment')) continue;
+      if (isInsideCommentsSection(a) || a.closest('nav, aside') || a.closest('.instareply-card-overlay')) continue;
       const href = a.getAttribute('href') || '';
       const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
       if (m && m[1]) {
@@ -1416,9 +1496,9 @@
       }
     }
 
-    // Fallback: any valid profile link matching anchor text
+    // 4. Any valid profile link on reel overlay matching anchor text
     for (const a of anchors) {
-      if (a.closest('nav, aside') || a.closest('.instareply-card-overlay') || a.closest('li') || a.closest('.ig-comment')) continue;
+      if (isInsideCommentsSection(a) || a.closest('nav, aside') || a.closest('.instareply-card-overlay')) continue;
       const href = a.getAttribute('href') || '';
       const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
       if (m && m[1]) {
@@ -1432,16 +1512,6 @@
       }
     }
 
-    // Avatar profile picture alt text
-    const avatarImg = root.querySelector('img[alt*="profile picture" i], img[alt*="的照片" i], img[alt*="大头贴" i], img[alt*="プロフィール写真" i]');
-    if (avatarImg && !avatarImg.closest('.instareply-card-overlay') && !avatarImg.closest('li')) {
-      const alt = avatarImg.getAttribute('alt') || '';
-      const m = alt.match(/([a-zA-Z0-9._]+)(?:'s profile picture|的(?:大头贴|照片)|のプロフィール写真)/i);
-      if (m && m[1] && !bannedRoutes.has(m[1].toLowerCase())) {
-        return m[1];
-      }
-    }
-
     return extractPostAuthor(root);
   }
 
@@ -1449,18 +1519,26 @@
    * Extracts post caption from an active Reel container
    */
   function extractReelCaption(reelContainer, postAuthor = '') {
-    const root = reelContainer || findActiveReelContainer() || document.querySelector('main, article, div[role="main"]') || document.body;
+    // 1. If on dedicated /reel/ or /reels/ URL, check canonical h1/og:desc/title/JSON-LD first
+    const isDedicatedRoute = window.location.pathname.startsWith('/reel/') ||
+                             (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
+    if (isDedicatedRoute) {
+      const canonical = extractPostCaption(reelContainer, postAuthor);
+      if (canonical) return canonical;
+    }
 
+    const root = reelContainer || findActiveReelContainer() || document.querySelector('article, div[role="region"]') || document.body;
+
+    // 2. Candidate caption spans on the Reel video overlay (strictly outside comments)
     const candidateSpans = Array.from(root.querySelectorAll('h1[dir="auto"], span[dir="auto"], div[dir="auto"], h1, p'));
     for (const el of candidateSpans) {
       if (
+        isInsideCommentsSection(el) ||
         el.closest('button, [role="button"]') ||
         el.closest('.instareply-card-overlay') ||
         el.closest('form') ||
         el.closest('svg') ||
-        el.closest('nav, aside') ||
-        el.closest('li') ||
-        el.closest('.ig-comment')
+        el.closest('nav, aside')
       ) {
         continue;
       }
@@ -1477,7 +1555,7 @@
       }
 
       const lower = raw.toLowerCase();
-      if (['follow', 'following', 'requested', 'original audio', 'audio', 'like', 'comment', 'share', 'save', 'verified'].includes(lower)) {
+      if (['follow', 'following', 'requested', 'original audio', 'audio', 'like', 'comment', 'share', 'save', 'verified', 'comments'].includes(lower)) {
         continue;
       }
 
@@ -1502,14 +1580,33 @@
     const root = reelContainer || findActiveReelContainer() || document.body;
     const video = activeVideo || root.querySelector('video') || findActiveReelVideo();
     let thumbnailUrl = '';
+    let description = '';
 
-    if (video) {
-      thumbnailUrl = video.getAttribute('poster') || video.poster || '';
+    // 1. Check meta tags (authoritative for dedicated /reel/ and /reels/ routes)
+    const ogImage = document.querySelector('meta[property="og:image"]')?.content ||
+                    document.querySelector('meta[name="twitter:image"]')?.content;
+    if (ogImage && ogImage.startsWith('http')) {
+      thumbnailUrl = ogImage;
     }
 
+    const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
+    const imgAltMatch = ogDesc.match(/(?:Photo|Video) (?:by|shared by) .+?: (.+)$/i);
+    if (imgAltMatch && imgAltMatch[1] && imgAltMatch[1].length > 8) {
+      description = imgAltMatch[1].trim();
+    }
+
+    // 2. Video element poster
+    if (video) {
+      const poster = video.getAttribute('poster') || video.poster;
+      if (poster && poster.startsWith('http')) {
+        thumbnailUrl = poster;
+      }
+    }
+
+    // 3. Fallback to large image in reel root outside comments
     if (!thumbnailUrl && root) {
       const img = root.querySelector('img[src*="cdninstagram.com"]:not([alt*="profile"]):not([alt*="avatar"]):not([alt*="大头贴"])');
-      if (img && img.src && !img.closest('.instareply-card-overlay') && !img.closest('li')) {
+      if (img && img.src && !isInsideCommentsSection(img) && !img.closest('.instareply-card-overlay')) {
         thumbnailUrl = img.src;
       }
     }
@@ -1517,7 +1614,7 @@
     return {
       mediaType: 'video',
       thumbnailUrl,
-      description: 'Instagram Reel video'
+      description: description || 'Instagram Reel video'
     };
   }
 
@@ -1530,24 +1627,11 @@
       const parentArticle = el.closest('article') || el.closest('.ig-post-card');
       if (parentArticle) return parentArticle;
 
-      // Direct parent main container on dedicated post/reel route
-      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
-        const parentArticle = el.closest('article');
-        if (parentArticle) return parentArticle;
-        const pageArticle = document.querySelector('article');
-        if (pageArticle) return pageArticle;
-        const parentMain = el.closest('main') || el.closest('div[role="main"]');
-        if (parentMain) return parentMain;
-      }
-
-      // 2. Direct modal dialog
+      // 2. Direct comments drawer or modal dialog
       const parentModal = el.closest('div[role="dialog"]');
       if (parentModal) {
-        // If parentModal contains the post's own article or video
         const modalArticle = parentModal.querySelector('article, .ig-post-card');
-        if (modalArticle) {
-          return modalArticle;
-        }
+        if (modalArticle) return modalArticle;
 
         const heading = parentModal.querySelector('h1, h2, h3, [role="heading"]');
         const headingText = (heading?.textContent || '').trim().toLowerCase();
@@ -1555,7 +1639,8 @@
           headingText === 'comments' ||
           headingText === '留言' ||
           headingText === 'コメント' ||
-          headingText === 'comentarios'
+          headingText === 'comentarios' ||
+          !parentModal.querySelector('video')
         );
 
         if (isCommentsDrawer || window.location.pathname.startsWith('/reel') || window.location.pathname.startsWith('/reels')) {
@@ -1568,9 +1653,26 @@
 
         return parentModal;
       }
+
+      // 3. On reel routes, resolve to active Reel container
+      if (window.location.pathname.startsWith('/reel') || window.location.pathname.startsWith('/reels')) {
+        const activeVideo = findActiveReelVideo();
+        if (activeVideo) {
+          const activeReel = findActiveReelContainer(activeVideo);
+          if (activeReel) return activeReel;
+        }
+      }
+
+      // 4. Direct parent main container on dedicated post route
+      if (window.location.pathname.startsWith('/p/')) {
+        const pageArticle = document.querySelector('article');
+        if (pageArticle) return pageArticle;
+        const parentMain = el.closest('main') || el.closest('div[role="main"]');
+        if (parentMain) return parentMain;
+      }
     }
 
-    // 3. Active Reel on screen if on /reel/ or /reels/ route
+    // 5. Active Reel on screen if on /reel/ or /reels/ route
     if (window.location.pathname.startsWith('/reel') || window.location.pathname.startsWith('/reels')) {
       const activeVideo = findActiveReelVideo();
       if (activeVideo) {
@@ -1579,13 +1681,13 @@
       }
     }
 
-    // 4. Check if an active modal dialog is open
+    // 6. Check if an active modal dialog is open
     const openModal = document.querySelector('div[role="dialog"] article') || document.querySelector('div[role="dialog"]');
     if (openModal && openModal.querySelector('video, article, .ig-post-card, img')) {
       return openModal.querySelector('article') || openModal;
     }
 
-    // 5. Fallback on dedicated single-post or reel URL
+    // 7. Fallback on dedicated single-post or reel URL
     if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
       return document.querySelector('article') ||
              document.querySelector('main') ||
@@ -2289,8 +2391,12 @@
 
     // Direct page fallbacks for dedicated /p/, /reel/, and /reels/ routes
     if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
-      if (!postVisuals.thumbnailUrl && !postVisuals.description) {
-        postVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+      if (!postVisuals.thumbnailUrl || !postVisuals.description || postVisuals.description === 'Instagram Reel video') {
+        const canonicalVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+        if (canonicalVisuals.thumbnailUrl && !postVisuals.thumbnailUrl) postVisuals.thumbnailUrl = canonicalVisuals.thumbnailUrl;
+        if (canonicalVisuals.description && (!postVisuals.description || postVisuals.description === 'Instagram Reel video')) {
+          postVisuals.description = canonicalVisuals.description;
+        }
       }
       if (!postAuthor) {
         postAuthor = extractPostAuthor(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
@@ -2401,19 +2507,20 @@
         }
       }
 
-      // Also fallback to Open Graph meta tags for Reel pages
-      if ((!postAuthor || !postCaption) && (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/'))) {
+      // Also fallback to canonical page metadata on dedicated post/reel routes
+      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
+        if (!postVisuals.thumbnailUrl || !postVisuals.description || postVisuals.description === 'Instagram Reel video') {
+          const canonicalVisuals = extractPostVisuals(article || document.querySelector('main, article, div[role="main"]') || document.body);
+          if (canonicalVisuals.thumbnailUrl && !postVisuals.thumbnailUrl) postVisuals.thumbnailUrl = canonicalVisuals.thumbnailUrl;
+          if (canonicalVisuals.description && (!postVisuals.description || postVisuals.description === 'Instagram Reel video')) {
+            postVisuals.description = canonicalVisuals.description;
+          }
+        }
         if (!postAuthor) {
-          const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
-          const m = ogTitle.match(/@([a-zA-Z0-9._]+)/);
-          if (m) postAuthor = m[1];
+          postAuthor = extractPostAuthor(article || document.querySelector('main, article, div[role="main"]') || document.body);
         }
         if (!postCaption) {
-          const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
-          const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{5,})[”"']/);
-          if (quoteMatch && quoteMatch[1]) {
-            postCaption = cleanCaptionText(quoteMatch[1]);
-          }
+          postCaption = extractPostCaption(article || document.querySelector('main, article, div[role="main"]') || document.body, postAuthor);
         }
       }
 
