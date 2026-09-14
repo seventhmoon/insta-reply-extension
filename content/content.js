@@ -33,6 +33,12 @@
    * to strictly scope cached replies and pre-fetches to the current post
    */
   function extractPostIdentifier(container, postAuthor = '', postCaption = '') {
+    // 1. Direct page route on dedicated /p/, /reel/, or /reels/ URL (authoritative)
+    const path = window.location.pathname;
+    const pathMatch = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+    if (pathMatch && pathMatch[2]) return pathMatch[2];
+
+    // 2. Feed post or modal post link
     if (container) {
       const link = container.querySelector('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"]');
       if (link) {
@@ -41,8 +47,6 @@
         if (match && match[2]) return match[2];
       }
     }
-    const path = window.location.pathname;
-    const pathMatch = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
     if (pathMatch && pathMatch[2]) return pathMatch[2];
 
     const cleanCap = (postCaption || '').replace(/\[Author Comment #[0-9]+\]:?/g, '').trim().slice(0, 40);
@@ -552,13 +556,17 @@
     const clean = targetAuthor.trim().replace(/^@/, '');
 
     // 1. Check if we recently cached this exact comment from a native "Reply" button click
+    const currentPostId = extractPostIdentifier(article);
     if (
       lastActiveCommentContext &&
       lastActiveCommentContext.incomingText &&
-      (Date.now() - lastActiveCommentContext.timestamp < 300000)
+      lastActiveCommentContext.commentItem &&
+      document.contains(lastActiveCommentContext.commentItem) &&
+      (!lastActiveCommentContext.postId || !currentPostId || lastActiveCommentContext.postId === currentPostId) &&
+      (Date.now() - lastActiveCommentContext.timestamp < 45000)
     ) {
       if (
-        !clean ||
+        clean &&
         lastActiveCommentContext.author.toLowerCase() === clean.toLowerCase()
       ) {
         return {
@@ -678,10 +686,13 @@
       el.addEventListener('click', () => {
         try {
           const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
+          const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
+          const postId = extractPostIdentifier(postCont);
           lastActiveCommentContext = {
             author: rawAuthor,
             incomingText: commentText,
             commentItem,
+            postId,
             timestamp: Date.now()
           };
         } catch (_) {}
@@ -700,10 +711,13 @@
 
         // Extract the specific comment's body text using the robust extractor
         const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
+        const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
+        const postId = extractPostIdentifier(postCont);
         lastActiveCommentContext = {
           author: rawAuthor,
           incomingText: commentText,
           commentItem,
+          postId,
           timestamp: Date.now()
         };
 
@@ -1518,6 +1532,10 @@
 
       // Direct parent main container on dedicated post/reel route
       if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
+        const parentArticle = el.closest('article');
+        if (parentArticle) return parentArticle;
+        const pageArticle = document.querySelector('article');
+        if (pageArticle) return pageArticle;
         const parentMain = el.closest('main') || el.closest('div[role="main"]');
         if (parentMain) return parentMain;
       }
@@ -1746,46 +1764,111 @@
    */
   function extractPostCaption(container, knownAuthor = '') {
     if (!container) return '';
-    const author = (knownAuthor || extractPostAuthor(container) || '').trim();
-
-    // 1. Scan and extract all comments authored by the creator in the comment stream
-    const authorComments = extractAllAuthorComments(container, author);
+    const author = (knownAuthor || extractPostAuthor(container) || '').trim().replace(/^@/, '');
+    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/');
 
     let standardCaption = '';
 
-    // 2. Feed post caption structure (right after the author username link)
-    const authorLinks = container.querySelectorAll('a[role="link"], header a, .ig-post-header strong');
-    for (const link of authorLinks) {
-      const parentContainer = link.parentElement;
-      if (parentContainer && !parentContainer.closest('header') && !parentContainer.closest('.ig-post-header')) {
-        const captionSpan = parentContainer.querySelector('span[dir="auto"], span');
-        if (captionSpan) {
-          const txt = cleanCaptionText(captionSpan.textContent?.trim() || '');
-          if (isValidCaption(txt, author)) {
-            standardCaption = txt;
-            break;
+    // 1. Instagram SEO & Accessibility heading (<h1 dir="auto">)
+    // On dedicated post pages and modal dialogs, Instagram renders the canonical post caption as an <h1>
+    const articleEl = container.matches && container.matches('article, div[role="dialog"]') ? container : (container.querySelector('article, div[role="dialog"]') || container);
+    const h1 = articleEl.querySelector('h1[dir="auto"], h1');
+    if (h1 && !h1.closest('header') && !h1.closest('.ig-post-header')) {
+      const h1Text = cleanCaptionText(h1.textContent?.trim() || '');
+      if (isValidCaption(h1Text, author)) {
+        standardCaption = h1Text;
+      }
+    }
+
+    // 2. Open Graph description & document.title on dedicated post/reel URLs (authoritative)
+    if (!standardCaption && isDedicatedPost) {
+      const ogDesc = document.querySelector('meta[property="og:description"]')?.content ||
+                     document.querySelector('meta[name="description"]')?.content || '';
+      if (ogDesc) {
+        // IG format: "1,234 likes, 56 comments - user on Date: \"Caption here\""
+        const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{3,})[”"']/);
+        if (quoteMatch && quoteMatch[1]) {
+          const cleaned = cleanCaptionText(quoteMatch[1]);
+          if (isValidCaption(cleaned, author)) {
+            standardCaption = cleaned;
+          }
+        } else {
+          const descMatch = ogDesc.match(/-\s*[^:]+:\s*(.+)$/) || ogDesc.match(/shared a post on Instagram:\s*(.+)$/);
+          if (descMatch && descMatch[1]) {
+            const cleaned = cleanCaptionText(descMatch[1]);
+            if (isValidCaption(cleaned, author)) {
+              standardCaption = cleaned;
+            }
+          }
+        }
+      }
+
+      if (!standardCaption && document.title) {
+        const titleQuote = document.title.match(/:\s*[“"']([^”"']{3,})[”"']/);
+        if (titleQuote && titleQuote[1]) {
+          const cleaned = cleanCaptionText(titleQuote[1]);
+          if (isValidCaption(cleaned, author)) {
+            standardCaption = cleaned;
+          }
+        }
+      }
+
+      // Try JSON-LD structured data on direct post/reel pages
+      if (!standardCaption) {
+        try {
+          const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+          for (const script of jsonLdScripts) {
+            const data = JSON.parse(script.textContent || '{}');
+            const cap = data.headline || data.articleBody || data.caption || data.description;
+            if (cap && typeof cap === 'string') {
+              const cleaned = cleanCaptionText(cap);
+              if (isValidCaption(cleaned, author)) {
+                standardCaption = cleaned;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 3. Feed post caption structure (right after the author username link)
+    if (!standardCaption) {
+      const authorLinks = articleEl.querySelectorAll('a[role="link"], header a, .ig-post-header strong');
+      for (const link of authorLinks) {
+        // Exclude comment items and modal overlays
+        if (link.closest('ul') || link.closest('li') || link.closest('.instareply-card-overlay')) continue;
+
+        // Verify that this link belongs to the post author
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/(?:instagram\.com|^)\/([a-zA-Z0-9._]+)\/?$/);
+        const linkHandle = (match ? match[1] : (link.textContent || '')).replace(/^@/, '').trim().toLowerCase();
+        if (author && linkHandle && linkHandle !== author.toLowerCase()) {
+          continue;
+        }
+
+        const parentContainer = link.parentElement;
+        if (parentContainer && !parentContainer.closest('header') && !parentContainer.closest('.ig-post-header')) {
+          const captionSpan = parentContainer.querySelector('span[dir="auto"], span');
+          if (captionSpan) {
+            const txt = cleanCaptionText(captionSpan.textContent?.trim() || '');
+            if (isValidCaption(txt, author)) {
+              standardCaption = txt;
+              break;
+            }
           }
         }
       }
     }
 
-    // 3. Instagram SEO & Accessibility heading (present inside post article on post pages)
+    // 4. Scan content spans inside article (filtering out metadata, comments, forms, and buttons)
     if (!standardCaption) {
-      const h1 = container.querySelector('article h1[dir="auto"], div[role="dialog"] h1');
-      if (h1 && !h1.closest('header')) {
-        const h1Text = cleanCaptionText(h1.textContent?.trim() || '');
-        if (isValidCaption(h1Text, author)) {
-          standardCaption = h1Text;
-        }
-      }
-    }
-
-    // 4. Scan content spans inside container (filtering out metadata, forms, and button labels)
-    if (!standardCaption) {
-      const dirSpans = container.querySelectorAll('span[dir="auto"]');
+      const dirSpans = articleEl.querySelectorAll('span[dir="auto"]');
       for (const span of dirSpans) {
         if (
           span.closest('form') ||
+          span.closest('ul') ||
+          span.closest('li') ||
           span.closest('.instareply-card-overlay') ||
           span.closest('button') ||
           span.closest('header')
@@ -1807,65 +1890,9 @@
       }
     }
 
-    // 5. Open Graph & Meta tags (essential on dedicated post/reel URLs)
+    // 5. Post main image alt text fallback
     if (!standardCaption) {
-      const path = window.location.pathname;
-      if (path.startsWith('/p/') || path.startsWith('/reel/') || path.startsWith('/reels/')) {
-        const ogDesc = document.querySelector('meta[property="og:description"]')?.content ||
-                       document.querySelector('meta[name="description"]')?.content || '';
-        if (ogDesc) {
-          // IG format: "1,234 likes, 56 comments - user on Date: \"Caption here\""
-          const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{3,})[”"']/);
-          if (quoteMatch && quoteMatch[1]) {
-            const cleaned = cleanCaptionText(quoteMatch[1]);
-            if (isValidCaption(cleaned, author)) {
-              standardCaption = cleaned;
-            }
-          } else {
-            const descMatch = ogDesc.match(/-\s*[^:]+:\s*(.+)$/) || ogDesc.match(/shared a post on Instagram:\s*(.+)$/);
-            if (descMatch && descMatch[1]) {
-              const cleaned = cleanCaptionText(descMatch[1]);
-              if (isValidCaption(cleaned, author)) {
-                standardCaption = cleaned;
-              }
-            }
-          }
-        }
-
-        // Also check document.title
-        if (!standardCaption && document.title) {
-          const titleQuote = document.title.match(/:\s*[“"']([^”"']{3,})[”"']/);
-          if (titleQuote && titleQuote[1]) {
-            const cleaned = cleanCaptionText(titleQuote[1]);
-            if (isValidCaption(cleaned, author)) {
-              standardCaption = cleaned;
-            }
-          }
-        }
-      }
-    }
-
-    // 6. Try JSON-LD structured data on direct post/reel pages
-    if (!standardCaption) {
-      try {
-        const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
-        for (const script of jsonLdScripts) {
-          const data = JSON.parse(script.textContent || '{}');
-          const cap = data.headline || data.articleBody || data.caption || data.description;
-          if (cap && typeof cap === 'string') {
-            const cleaned = cleanCaptionText(cap);
-            if (isValidCaption(cleaned, author)) {
-              standardCaption = cleaned;
-              break;
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    // 6. Post main image alt text fallback
-    if (!standardCaption) {
-      const imgAlt = container.querySelector('img[alt]')?.getAttribute('alt');
+      const imgAlt = articleEl.querySelector('img[alt]')?.getAttribute('alt');
       if (imgAlt && imgAlt.length > 25) {
         const captionMatch = imgAlt.match(/Caption:\s*(.+)$/i) || imgAlt.match(/Photo (?:shared|by) [^.]+.\s*(.+)$/i);
         if (captionMatch && captionMatch[1]) {
@@ -1877,12 +1904,13 @@
       }
     }
 
-    // Deduplicate author comments against standardCaption
+    // 6. Scan and append any genuine additional author comments (excluding the caption itself)
+    const authorComments = extractAllAuthorComments(articleEl, author);
     const uniqueAuthorComments = authorComments.filter(c => {
       if (!standardCaption) return true;
-      const lowerC = c.toLowerCase();
-      const lowerStd = standardCaption.toLowerCase();
-      return !lowerStd.includes(lowerC) && !lowerC.includes(lowerStd);
+      const lowerC = c.trim().toLowerCase();
+      const lowerStd = standardCaption.trim().toLowerCase();
+      return lowerC !== lowerStd && !lowerStd.includes(lowerC) && !lowerC.includes(lowerStd);
     });
 
     if (uniqueAuthorComments.length === 0) {
@@ -1908,27 +1936,52 @@
    * Extracts post author username from post header or metadata
    */
   function extractPostAuthor(container) {
-    if (!container) container = document.querySelector('main, article, div[role="main"]') || document.body;
+    if (!container) container = document.querySelector('article') || document.querySelector('main') || document.querySelector('div[role="main"]') || document.body;
 
     const bannedRoutes = new Set([
       'explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv',
       'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api', 'notifications', 'create'
     ]);
 
-    // 1. Try anchor hrefs inside header or container
-    const headerLinks = container.querySelectorAll(
-      'header a[href^="/"], .ig-post-header a[href^="/"], header a[role="link"], .ig-post-header a, a[role="link"][href^="/"], a[href^="/"]'
-    );
-    for (const link of headerLinks) {
-      if (link.closest('.instareply-card-overlay') || link.closest('li') || link.closest('.ig-comment')) continue;
-      const href = link.getAttribute('href') || '';
-      const match = href.match(/(?:instagram\.com|^)\/([a-zA-Z0-9._]+)\/?$/);
-      if (match && match[1]) {
-        const handle = match[1];
-        const lower = handle.toLowerCase();
-        if (!bannedRoutes.has(lower)) {
-          return handle;
-        }
+    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/');
+
+    const cleanCandidate = (handle) => {
+      if (!handle) return '';
+      const clean = handle.replace(/^@/, '').trim();
+      if (/^[a-zA-Z0-9._]+$/.test(clean) && !bannedRoutes.has(clean.toLowerCase())) {
+        return clean;
+      }
+      return '';
+    };
+
+    // 1. On dedicated post/reel URLs, document.title and Open Graph title are authoritative and unpolluted
+    const pageTitle = (document.title || '').trim();
+    const ogTitle = document.querySelector('meta[property="og:title"]')?.content ||
+                    document.querySelector('meta[name="twitter:title"]')?.content || '';
+
+    // Instagram title formats:
+    // - "Name (@handle) on Instagram: ..."
+    // - "handle on Instagram: ..."
+    // - "handle • Instagram photos and videos"
+    for (const titleCandidate of [pageTitle, ogTitle]) {
+      if (!titleCandidate) continue;
+      // Match (@handle) before "on Instagram" or ":"
+      const parenMatch = titleCandidate.match(/^.+?\(@([a-zA-Z0-9._]+)\)/);
+      if (parenMatch && parenMatch[1]) {
+        const c = cleanCandidate(parenMatch[1]);
+        if (c) return c;
+      }
+      // Match "handle on Instagram"
+      const onIgMatch = titleCandidate.match(/^([a-zA-Z0-9._]+)\s+on\s+Instagram/i);
+      if (onIgMatch && onIgMatch[1]) {
+        const c = cleanCandidate(onIgMatch[1]);
+        if (c) return c;
+      }
+      // Match "handle • Instagram"
+      const dotIgMatch = titleCandidate.match(/^([a-zA-Z0-9._]+)\s*•\s*Instagram/i);
+      if (dotIgMatch && dotIgMatch[1]) {
+        const c = cleanCandidate(dotIgMatch[1]);
+        if (c) return c;
       }
     }
 
@@ -1940,33 +1993,43 @@
         const authorObj = data.author || data.creator;
         if (authorObj) {
           const handle = authorObj.identifier?.value || authorObj.alternateName || authorObj.name;
-          if (handle) {
-            const clean = handle.replace(/^@/, '').trim();
-            if (/^[a-zA-Z0-9._]+$/.test(clean) && !bannedRoutes.has(clean.toLowerCase())) {
-              return clean;
-            }
-          }
+          const c = cleanCandidate(handle);
+          if (c) return c;
         }
       }
     } catch (_) {}
 
-    // 3. Try Open Graph meta tags (og:title, twitter:title, document.title)
-    const ogTitle = document.querySelector('meta[property="og:title"]')?.content ||
-                    document.querySelector('meta[name="twitter:title"]')?.content ||
-                    document.title || '';
-    if (ogTitle) {
-      // Matches @username
-      let match = ogTitle.match(/@([a-zA-Z0-9._]+)/);
-      if (match && match[1] && !bannedRoutes.has(match[1].toLowerCase())) {
-        return match[1];
+    // 3. Try post header links inside container or article (strictly inside header)
+    const headerLinks = container.querySelectorAll(
+      'header a[href^="/"], .ig-post-header a[href^="/"], header a[role="link"], .ig-post-header a'
+    );
+    for (const link of headerLinks) {
+      if (link.closest('.instareply-card-overlay') || link.closest('li') || link.closest('.ig-comment')) continue;
+      const href = link.getAttribute('href') || '';
+      const match = href.match(/(?:instagram\.com|^)\/([a-zA-Z0-9._]+)\/?$/);
+      if (match && match[1]) {
+        const c = cleanCandidate(match[1]);
+        if (c) return c;
       }
+    }
 
-      // Matches "username on Instagram" or "Display Name (@username)"
-      match = ogTitle.match(/^([a-zA-Z0-9._]+)\s+on\s+Instagram/i) ||
-              ogTitle.match(/by\s+([a-zA-Z0-9._]+)\b/i) ||
-              ogTitle.match(/([a-zA-Z0-9._]+)\s*•\s*Instagram/i);
-      if (match && match[1] && !bannedRoutes.has(match[1].toLowerCase())) {
-        return match[1];
+    // 4. Feed post fallback: only scan links outside comment lists and forms
+    if (!isDedicatedPost) {
+      const allLinks = container.querySelectorAll('a[role="link"][href^="/"], a[href^="/"]');
+      for (const link of allLinks) {
+        if (
+          link.closest('.instareply-card-overlay') ||
+          link.closest('li') ||
+          link.closest('ul') ||
+          link.closest('form') ||
+          link.closest('.ig-comment')
+        ) continue;
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/(?:instagram\.com|^)\/([a-zA-Z0-9._]+)\/?$/);
+        if (match && match[1]) {
+          const c = cleanCandidate(match[1]);
+          if (c) return c;
+        }
       }
     }
 
@@ -1986,27 +2049,23 @@
    * Extracts visual context from the post (photo alt text, scene tags, video type, thumbnail)
    */
   function extractPostVisuals(container) {
-    let target = container;
-    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/');
-
-    // On dedicated post URLs, fallback to main container if container is null or has no media
-    if (!target || (!target.querySelector('img') && !target.querySelector('video'))) {
-      if (isDedicatedPost) {
-        target = document.querySelector('article') ||
-                 document.querySelector('main') ||
-                 document.querySelector('div[role="main"]') ||
-                 document.body;
-      }
+    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/');
+    
+    // Find the closest article or media root
+    let target = container ? (container.closest('article') || (container.matches && container.matches('article') ? container : null)) : null;
+    if (!target && isDedicatedPost) {
+      target = document.querySelector('article') || document.querySelector('main') || document.querySelector('div[role="main"]') || document.body;
     }
-
-    if (!target) return { description: '', thumbnailUrl: '', mediaType: 'image' };
+    if (!target) target = container || document.body;
 
     let description = '';
     let thumbnailUrl = '';
     let mediaType = 'image';
 
+    const currentPostId = extractPostIdentifier(target);
+
     // 1. Check for video or reel
-    const video = target.querySelector('video') || (isDedicatedPost ? document.querySelector('video') : null);
+    const video = target.querySelector('video') || (isDedicatedPost ? document.querySelector('article video, video') : null);
     if (video) {
       mediaType = 'video';
       if (video.poster) thumbnailUrl = video.poster;
@@ -2015,6 +2074,14 @@
     // 2. Scan media images for visual descriptions and thumbnails
     const images = Array.from(target.querySelectorAll('img')).filter(img => {
       if (img.closest('.instareply-card-overlay')) return false;
+
+      // Filter out images inside suggested post links ("More posts from...")
+      const parentLink = img.closest('a[href*="/p/"], a[href*="/reel/"]');
+      if (parentLink) {
+        const href = parentLink.getAttribute('href') || '';
+        if (currentPostId && !href.includes(currentPostId)) return false;
+      }
+
       const alt = (img.getAttribute('alt') || '').toLowerCase();
       if (alt.includes('profile picture') || alt.includes('avatar')) return false;
       if (!img.src || img.src.startsWith('data:image/svg')) return false;
@@ -2233,16 +2300,11 @@
       }
     }
 
-    // 2. Scan author comments across the thread or comments drawer
-    if (postContainer && postAuthor) {
+    // 2. Scan author comments across the thread or comments drawer if caption is still missing
+    if (!postCaption && postContainer && postAuthor) {
       const authorComments = extractAllAuthorComments(postContainer, postAuthor);
       if (authorComments.length > 0) {
-        const commentsBlock = authorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
-        if (!postCaption) {
-          postCaption = commentsBlock;
-        } else if (!postCaption.includes(authorComments[0])) {
-          postCaption = `${postCaption}\n\n${commentsBlock}`;
-        }
+        postCaption = authorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
       }
     }
 
@@ -2374,15 +2436,23 @@
         }
       }
 
-      // 3. Resolve specific comment text from either cached active comment or searching article
+      // 3. Resolve specific comment text from either searching article or recently cached active comment
+      const currentPostId = extractPostIdentifier(article);
       if (author) {
         const found = findCommentByAuthor(article, author);
         if (found && found.incomingText) {
           incomingText = found.incomingText;
           author = found.author;
         }
-      } else if (lastActiveCommentContext && (Date.now() - lastActiveCommentContext.timestamp < 300000)) {
-        // If no @mention was in the box, but user recently clicked "Reply" on a comment
+      } else if (
+        lastActiveCommentContext &&
+        lastActiveCommentContext.incomingText &&
+        lastActiveCommentContext.commentItem &&
+        document.contains(lastActiveCommentContext.commentItem) &&
+        (!lastActiveCommentContext.postId || !currentPostId || lastActiveCommentContext.postId === currentPostId) &&
+        (Date.now() - lastActiveCommentContext.timestamp < 45000)
+      ) {
+        // If no @mention was in the box, but user recently clicked "Reply" on a comment in THIS post
         author = lastActiveCommentContext.author;
         incomingText = lastActiveCommentContext.incomingText;
       }
