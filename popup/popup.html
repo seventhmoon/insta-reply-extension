@@ -21,34 +21,20 @@
   <main class="content">
     <!-- Model Provider Section -->
     <section class="card">
-      <label class="section-label">AI Model Provider</label>
-      <div class="provider-toggle">
-        <label class="provider-option">
-          <input type="radio" name="provider" value="gemini" checked>
-          <span class="provider-card">
-            <span class="provider-icon">✨</span>
-            <span class="provider-name">Gemini API</span>
-            <span class="provider-badge recommended">Recommended</span>
-          </span>
-        </label>
-
-        <label class="provider-option">
-          <input type="radio" name="provider" value="edge_ai">
-          <span class="provider-card">
-            <span class="provider-icon">⚡</span>
-            <span class="provider-name">Edge AI</span>
-            <span class="provider-badge">On-Device</span>
-          </span>
-        </label>
-
-        <label class="provider-option">
-          <input type="radio" name="provider" value="local_llm">
-          <span class="provider-card">
-            <span class="provider-icon">🖥️</span>
-            <span class="provider-name">Local LLM</span>
-            <span class="provider-badge">Ollama</span>
-          </span>
-        </label>
+      <div class="form-group mb-12">
+        <label for="providerSelect" class="section-label">AI Model Provider</label>
+        <select id="providerSelect" class="select-input provider-combobox">
+          <optgroup label="🌐 Online / Cloud Models">
+            <option value="gemini" selected>✨ Google Gemini API (Recommended)</option>
+            <option value="groq">⚡ Groq Cloud (Free & Ultra-Fast LPU)</option>
+            <option value="openrouter">🌍 OpenRouter (Free Multi-Model Hub)</option>
+            <option value="custom_openai">🔌 Custom OpenAI-Compatible (GitHub / Mistral / Azure)</option>
+          </optgroup>
+          <optgroup label="🖥️ Offline / Local Models">
+            <option value="local_llm">🖥️ Local LLM (Ollama / LM Studio)</option>
+            <option value="edge_ai">📱 Chrome Built-in Prompt API (Gemini Nano)</option>
+          </optgroup>
+        </select>
       </div>
 
       <!-- Gemini Settings -->
@@ -82,6 +68,98 @@
             <input type="text" id="customModelInput" placeholder="e.g. gemini-3.8-flash or fine-tuned model" class="text-input">
           </div>
           <div id="modelsFetchStatus" class="hint-text"></div>
+        </div>
+      </div>
+
+      <!-- Groq Cloud Settings -->
+      <div id="groq-settings" class="provider-settings-panel hidden">
+        <div class="form-group">
+          <label for="groqApiKey">Groq API Key</label>
+          <div class="input-with-action">
+            <input type="password" id="groqApiKey" placeholder="gsk_..." autocomplete="off">
+            <button type="button" id="toggleGroqKeyVisibility" class="icon-button" title="Show/Hide Key">👁️</button>
+          </div>
+          <p class="hint-text">
+            Free high-speed LPU inference! Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq Console</a>.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-action">
+            <label for="groqModel">Model Selection</label>
+            <button type="button" id="refreshGroqModelsBtn" class="link-button" title="Query Groq API for live available models">
+              🔄 Fetch Latest Models
+            </button>
+          </div>
+          <select id="groqModel" class="select-input">
+            <option value="llama-3.3-70b-versatile" selected>Llama 3.3 70B Versatile (Meta - Flagship & Free)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Ultra-Fast 1000 tok/s)</option>
+            <option value="mixtral-8x7b-32768">Mixtral 8x7B (Multilingual Reasoning)</option>
+            <option value="gemma2-9b-it">Gemma 2 9B (Google Open Weights)</option>
+            <option value="custom">✏️ Enter Custom Model Name...</option>
+          </select>
+          <div id="customGroqModelWrapper" class="custom-model-wrapper hidden mt-8">
+            <input type="text" id="customGroqModelInput" placeholder="e.g. llama-3.3-70b-specdec" class="text-input">
+          </div>
+          <div id="groqModelsFetchStatus" class="hint-text"></div>
+        </div>
+      </div>
+
+      <!-- OpenRouter Settings -->
+      <div id="openrouter-settings" class="provider-settings-panel hidden">
+        <div class="form-group">
+          <label for="openrouterApiKey">OpenRouter API Key</label>
+          <div class="input-with-action">
+            <input type="password" id="openrouterApiKey" placeholder="sk-or-v1-..." autocomplete="off">
+            <button type="button" id="toggleOpenRouterKeyVisibility" class="icon-button" title="Show/Hide Key">👁️</button>
+          </div>
+          <p class="hint-text">
+            Free multi-model gateway! Get a free API key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-action">
+            <label for="openrouterModel">Model Selection (:free tier)</label>
+            <button type="button" id="refreshOpenRouterModelsBtn" class="link-button" title="Fetch free available models from OpenRouter">
+              🔄 Fetch Free Models
+            </button>
+          </div>
+          <select id="openrouterModel" class="select-input">
+            <option value="meta-llama/llama-3.3-70b-instruct:free" selected>Llama 3.3 70B Instruct (Free)</option>
+            <option value="deepseek/deepseek-r1:free">DeepSeek R1 Reasoning (Free)</option>
+            <option value="qwen/qwen-2.5-72b-instruct:free">Qwen 2.5 72B Instruct (Free - Great Asian/EU Langs)</option>
+            <option value="mistralai/mistral-7b-instruct:free">Mistral 7B Instruct (Free)</option>
+            <option value="custom">✏️ Enter Custom Model Identifier...</option>
+          </select>
+          <div id="customOpenRouterModelWrapper" class="custom-model-wrapper hidden mt-8">
+            <input type="text" id="customOpenRouterModelInput" placeholder="e.g. meta-llama/llama-3.2-3b-instruct:free" class="text-input">
+          </div>
+          <div id="openRouterModelsFetchStatus" class="hint-text"></div>
+        </div>
+      </div>
+
+      <!-- Custom OpenAI-Compatible Settings -->
+      <div id="custom-openai-settings" class="provider-settings-panel hidden">
+        <div class="form-group">
+          <label for="customOpenAiUrl">Base API Endpoint URL</label>
+          <input type="text" id="customOpenAiUrl" placeholder="https://models.inference.ai.azure.com" class="text-input">
+          <p class="hint-text">
+            Works with GitHub Models, Mistral AI (<code>https://api.mistral.ai/v1</code>), Cerebras, or any OpenAI-compatible server.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label for="customOpenAiKey">API Key / Token (Optional for local)</label>
+          <div class="input-with-action">
+            <input type="password" id="customOpenAiKey" placeholder="Bearer token or API key" autocomplete="off">
+            <button type="button" id="toggleCustomOpenAiKeyVisibility" class="icon-button" title="Show/Hide Key">👁️</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="customOpenAiModel">Model Name</label>
+          <input type="text" id="customOpenAiModel" placeholder="e.g. gpt-4o-mini, mistral-small-latest" class="text-input">
         </div>
       </div>
 

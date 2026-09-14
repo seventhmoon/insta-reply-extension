@@ -2976,7 +2976,17 @@
     }
 
     if (modelBadge) {
-      const baseModel = data.modelUsed || 'AI Assistant';
+      let baseModel = data.modelUsed || 'AI Assistant';
+      // Beautify long model names for badge display
+      baseModel = baseModel
+        .replace('meta-llama/llama-3.3-70b-instruct:free', 'Llama 3.3 70B')
+        .replace('meta-llama/llama-3.1-8b-instruct:free', 'Llama 3.1 8B')
+        .replace('llama-3.3-70b-versatile', 'Llama 3.3 70B')
+        .replace('llama-3.1-8b-instant', 'Llama 3.1 8B')
+        .replace('deepseek/deepseek-r1:free', 'DeepSeek R1')
+        .replace('qwen/qwen-2.5-72b-instruct:free', 'Qwen 2.5 72B')
+        .replace('mistralai/mistral-7b-instruct:free', 'Mistral 7B')
+        .replace(':free', '');
       modelBadge.innerHTML = isFromCache ? `${baseModel} &bull; <span style="color: #34d399; font-weight: 600;">⚡ Instant</span>` : baseModel;
     }
 

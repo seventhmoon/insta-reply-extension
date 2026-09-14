@@ -1,9 +1,16 @@
 // InstaReply AI - Background Service Worker (Manifest V3)
 
 const DEFAULT_CONFIG = {
-  provider: 'gemini', // 'gemini' | 'edge_ai' | 'local_llm'
+  provider: 'gemini', // 'gemini' | 'groq' | 'openrouter' | 'custom_openai' | 'edge_ai' | 'local_llm'
   geminiApiKey: '',
   geminiModel: 'gemini-1.5-flash',
+  groqApiKey: '',
+  groqModel: 'llama-3.3-70b-versatile',
+  openrouterApiKey: '',
+  openrouterModel: 'meta-llama/llama-3.3-70b-instruct:free',
+  customOpenAiUrl: '',
+  customOpenAiKey: '',
+  customOpenAiModel: 'gpt-4o-mini',
   localLlmUrl: 'http://localhost:11434/v1',
   localLlmModel: 'llama3.2',
   defaultTone: 'friendly',
@@ -65,6 +72,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'FETCH_GROQ_MODELS') {
+    handleFetchGroqModels(request.apiKey).then(sendResponse);
+    return true;
+  }
+
+  if (request.action === 'FETCH_OPENROUTER_MODELS') {
+    handleFetchOpenRouterModels(request.apiKey).then(sendResponse);
+    return true;
+  }
+
   if (request.action === 'FETCH_LOCAL_MODELS') {
     handleFetchLocalModels(request.url).then(sendResponse);
     return true;
@@ -111,6 +128,62 @@ async function handleFetchGeminiModels(apiKey) {
     return { success: true, models };
   } catch (err) {
     return { success: false, error: err.message || 'Error fetching models.' };
+  }
+}
+
+/**
+ * Dynamically fetches the list of available models from Groq Cloud API
+ */
+async function handleFetchGroqModels(apiKey) {
+  try {
+    if (!apiKey || apiKey.trim() === '') {
+      return { success: false, error: 'Groq API key is required.' };
+    }
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey.trim()}` }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, error: err.error?.message || `HTTP ${res.status}: Failed to fetch Groq models.` };
+    }
+    const data = await res.json();
+    const models = (data.data || [])
+      .filter(m => m.active !== false && !m.id.includes('whisper'))
+      .map(m => ({ id: m.id, displayName: m.id }));
+    return { success: true, models };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error fetching Groq models.' };
+  }
+}
+
+/**
+ * Fetches free and popular models from OpenRouter API
+ */
+async function handleFetchOpenRouterModels(apiKey) {
+  try {
+    const headers = {
+      'HTTP-Referer': 'https://github.com/seventhmoon/insta-reply-extension',
+      'X-Title': 'InstaReply AI'
+    };
+    if (apiKey && apiKey.trim()) {
+      headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+    }
+    const res = await fetch('https://openrouter.ai/api/v1/models', { headers });
+    if (!res.ok) {
+      return { success: false, error: `HTTP ${res.status}: Failed to fetch OpenRouter models.` };
+    }
+    const data = await res.json();
+    const rawList = data.data || [];
+    // Prioritize free models (:free suffix or 0 prompt price)
+    const freeModels = rawList.filter(m => m.id.endsWith(':free') || m.pricing?.prompt === '0');
+    const targetList = freeModels.length > 0 ? freeModels : rawList.slice(0, 30);
+    const models = targetList.map(m => ({
+      id: m.id,
+      displayName: m.name ? `${m.name} ${m.id.endsWith(':free') ? '(Free)' : ''}`.trim() : m.id
+    }));
+    return { success: true, models };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error fetching OpenRouter models.' };
   }
 }
 
@@ -194,6 +267,100 @@ async function handleTestConnection(config) {
       const data = await res.json();
       const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       return { success: true, message: `Connected to Gemini (${model}) successfully! Response: ${answer.trim()}` };
+    }
+
+    if (config.provider === 'groq') {
+      if (!config.groqApiKey || config.groqApiKey.trim() === '') {
+        return { success: false, error: 'Groq API key is required. Get a free key at console.groq.com/keys.' };
+      }
+      const model = (config.groqModel || 'llama-3.3-70b-versatile').trim();
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.groqApiKey.trim()}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'Say OK' }],
+          max_tokens: 5
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error?.message || `HTTP ${res.status}: Failed to connect to Groq.` };
+      }
+
+      const data = await res.json();
+      const answer = data.choices?.[0]?.message?.content || 'OK';
+      return { success: true, message: `Connected to Groq (${model}) successfully! Response: ${answer.trim()}` };
+    }
+
+    if (config.provider === 'openrouter') {
+      if (!config.openrouterApiKey || config.openrouterApiKey.trim() === '') {
+        return { success: false, error: 'OpenRouter API key is required. Get a free key at openrouter.ai/keys.' };
+      }
+      const model = (config.openrouterModel || 'meta-llama/llama-3.3-70b-instruct:free').trim();
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.openrouterApiKey.trim()}`,
+          'HTTP-Referer': 'https://github.com/seventhmoon/insta-reply-extension',
+          'X-Title': 'InstaReply AI'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'Say OK' }],
+          max_tokens: 5
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error?.message || `HTTP ${res.status}: Failed to connect to OpenRouter.` };
+      }
+
+      const data = await res.json();
+      const answer = data.choices?.[0]?.message?.content || 'OK';
+      return { success: true, message: `Connected to OpenRouter (${model}) successfully! Response: ${answer.trim()}` };
+    }
+
+    if (config.provider === 'custom_openai') {
+      const rawUrl = (config.customOpenAiUrl || '').replace(/\/+$/, '');
+      if (!rawUrl) {
+        return { success: false, error: 'Custom OpenAI Base URL is required (e.g. https://models.inference.ai.azure.com).' };
+      }
+      const openAiUrl = rawUrl.endsWith('/chat/completions') ? rawUrl : (rawUrl.endsWith('/v1') ? `${rawUrl}/chat/completions` : `${rawUrl}/v1/chat/completions`);
+      const model = (config.customOpenAiModel || 'gpt-4o-mini').trim();
+      const headers = { 'Content-Type': 'application/json' };
+      if (config.customOpenAiKey && config.customOpenAiKey.trim()) {
+        headers['Authorization'] = `Bearer ${config.customOpenAiKey.trim()}`;
+      }
+
+      const res = await fetch(openAiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'Say OK' }],
+          max_tokens: 5
+        })
+      }).catch(err => ({ error: err }));
+
+      if (!res || res.error) {
+        return { success: false, error: res?.error?.message || 'Failed to reach custom OpenAI server.' };
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error?.message || `HTTP ${res.status}: ${res.statusText}` };
+      }
+
+      const data = await res.json();
+      const answer = data.choices?.[0]?.message?.content || 'OK';
+      return { success: true, message: `Connected to Custom OpenAI endpoint (${model}) successfully! Response: ${answer.trim()}` };
     }
 
     if (config.provider === 'local_llm') {
@@ -317,8 +484,9 @@ async function handleGenerateReply(payload) {
         variationIndex,
         replyLanguage
       });
-    } else if (provider === 'local_llm') {
-      return await generateWithLocalLlm({
+    } else if (provider === 'groq' || provider === 'openrouter' || provider === 'custom_openai' || provider === 'local_llm') {
+      return await generateWithOpenAiCompatible({
+        provider,
         config,
         contextType,
         replyMode,
@@ -337,8 +505,6 @@ async function handleGenerateReply(payload) {
         replyLanguage
       });
     } else if (provider === 'edge_ai') {
-      // Return flag so content script can execute window.ai in the DOM context if available,
-      // or we handle here if chrome.aiOriginTrial is available in worker
       return {
         success: false,
         requiresPageContext: true,
@@ -521,9 +687,10 @@ async function generateWithGemini({
 }
 
 /**
- * Local LLM (Ollama or OpenAI compatible endpoint)
+ * Universal OpenAI-Compatible Generator (Groq, OpenRouter, Custom OpenAI, Local LLM)
  */
-async function generateWithLocalLlm({
+async function generateWithOpenAiCompatible({
+  provider,
   config,
   contextType,
   replyMode,
@@ -541,8 +708,51 @@ async function generateWithLocalLlm({
   variationIndex,
   replyLanguage = 'auto'
 }) {
-  const rawUrl = (config.localLlmUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
-  const model = config.localLlmModel || 'llama3.2';
+  let openAiUrl = '';
+  let rootUrl = '';
+  let model = '';
+  let providerBrand = 'AI';
+  const headers = { 'Content-Type': 'application/json' };
+
+  if (provider === 'groq') {
+    const apiKey = (config.groqApiKey || '').trim();
+    if (!apiKey) {
+      return { success: false, error: 'Groq API key is missing. Please enter your API key in extension settings.' };
+    }
+    openAiUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    headers['Authorization'] = `Bearer ${apiKey}`;
+    model = (config.groqModel || 'llama-3.3-70b-versatile').trim();
+    providerBrand = 'Groq';
+  } else if (provider === 'openrouter') {
+    const apiKey = (config.openrouterApiKey || '').trim();
+    if (!apiKey) {
+      return { success: false, error: 'OpenRouter API key is missing. Please enter your API key in extension settings.' };
+    }
+    openAiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers['HTTP-Referer'] = 'https://github.com/seventhmoon/insta-reply-extension';
+    headers['X-Title'] = 'InstaReply AI';
+    model = (config.openrouterModel || 'meta-llama/llama-3.3-70b-instruct:free').trim();
+    providerBrand = 'OpenRouter';
+  } else if (provider === 'custom_openai') {
+    const rawUrl = (config.customOpenAiUrl || '').replace(/\/+$/, '');
+    if (!rawUrl) {
+      return { success: false, error: 'Custom OpenAI Base URL is missing. Please enter the endpoint URL in settings.' };
+    }
+    openAiUrl = rawUrl.endsWith('/chat/completions') ? rawUrl : (rawUrl.endsWith('/v1') ? `${rawUrl}/chat/completions` : `${rawUrl}/v1/chat/completions`);
+    model = (config.customOpenAiModel || 'gpt-4o-mini').trim();
+    providerBrand = 'OpenAI';
+    if (config.customOpenAiKey && config.customOpenAiKey.trim()) {
+      headers['Authorization'] = `Bearer ${config.customOpenAiKey.trim()}`;
+    }
+  } else {
+    // local_llm (Ollama, LM Studio)
+    const rawUrl = (config.localLlmUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
+    rootUrl = rawUrl.replace(/\/v1$/, '');
+    openAiUrl = rawUrl.endsWith('/v1') ? `${rawUrl}/chat/completions` : `${rawUrl}/v1/chat/completions`;
+    model = (config.localLlmModel || 'llama3.2').trim();
+    providerBrand = 'Local';
+  }
 
   const prompt = buildStructuredPrompt({
     contextType,
@@ -565,21 +775,25 @@ async function generateWithLocalLlm({
     customInstructions: config.customInstructions
   });
 
-  const rootUrl = rawUrl.replace(/\/v1$/, '');
-  const openAiUrl = rawUrl.endsWith('/v1') ? `${rawUrl}/chat/completions` : `${rawUrl}/v1/chat/completions`;
+  const requestBody = {
+    model,
+    messages: [
+      { role: 'system', content: 'You are an Instagram engagement assistant. Output valid JSON only.' },
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0.7 + (variationIndex * 0.1)
+  };
 
-  // 1. Try standard OpenAI-compatible format
+  // Groq and OpenRouter support json_object mode natively
+  if (provider === 'groq' || provider === 'openrouter') {
+    requestBody.response_format = { type: 'json_object' };
+  }
+
+  // 1. Send to standard OpenAI-compatible endpoint
   let res = await fetch(openAiUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: 'You are an Instagram engagement assistant. Output valid JSON only.' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7 + (variationIndex * 0.1)
-    })
+    headers,
+    body: JSON.stringify(requestBody)
   }).catch(() => null);
 
   let rawOutput = '';
@@ -587,7 +801,7 @@ async function generateWithLocalLlm({
   if (res && res.ok) {
     const data = await res.json().catch(() => ({}));
     rawOutput = data.choices?.[0]?.message?.content || '';
-  } else {
+  } else if (provider === 'local_llm' && rootUrl) {
     // 2. Fallback to Ollama native /api/chat endpoint
     const ollamaUrl = `${rootUrl}/api/chat`;
     res = await fetch(ollamaUrl, {
@@ -608,28 +822,29 @@ async function generateWithLocalLlm({
   }
 
   if (!res) {
-    return { success: false, error: 'Could not connect to Local LLM. Please check that Ollama is running on localhost:11434.' };
+    const targetName = provider === 'local_llm' ? 'Local LLM (Ollama)' : providerBrand;
+    return { success: false, error: `Could not connect to ${targetName}. Please check network or configuration.` };
   }
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    if (res.status === 403) {
+    if (res.status === 403 && provider === 'local_llm') {
       return {
         success: false,
         error: 'Ollama returned 403 Forbidden. On Mac, run in Terminal: OLLAMA_ORIGINS="*" ollama serve'
       };
     }
-    return { success: false, error: `Local LLM error (${res.status}): ${errText || res.statusText}` };
+    return { success: false, error: `${providerBrand} error (${res.status}): ${errText || res.statusText}` };
   }
 
   if (!rawOutput) {
-    return { success: false, error: 'Local LLM returned an empty response.' };
+    return { success: false, error: `${providerBrand} returned an empty response.` };
   }
 
   const parsed = parseAIResponse(rawOutput);
   return {
     success: true,
-    modelUsed: `Local (${model})`,
+    modelUsed: `${providerBrand} (${model})`,
     ...parsed
   };
 }

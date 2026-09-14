@@ -352,8 +352,75 @@ Hope this helps!
   });
 
   // =========================================================================
-  // SUMMARY
+  // SUITE 6: Multi-Provider & OpenAI-Compatible Endpoints
   // =========================================================================
+  console.log('\n🤖 Suite 6: Multi-Provider (Groq, OpenRouter, Custom OpenAI) & Combobox');
+
+  runTest('ProviderDefaults', 'Default config includes all supported providers', () => {
+    const swContent = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swContent.includes('groqApiKey'), 'Must have groqApiKey in DEFAULT_CONFIG');
+    assert.ok(swContent.includes('groqModel'), 'Must have groqModel in DEFAULT_CONFIG');
+    assert.ok(swContent.includes('openrouterApiKey'), 'Must have openrouterApiKey in DEFAULT_CONFIG');
+    assert.ok(swContent.includes('openrouterModel'), 'Must have openrouterModel in DEFAULT_CONFIG');
+    assert.ok(swContent.includes('customOpenAiUrl'), 'Must have customOpenAiUrl in DEFAULT_CONFIG');
+    assert.ok(swContent.includes('customOpenAiModel'), 'Must have customOpenAiModel in DEFAULT_CONFIG');
+  });
+
+  runTest('ProviderCombobox', 'Popup HTML contains provider combobox and panels', () => {
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    assert.ok(popupHtml.includes('id="providerSelect"'), 'Must have #providerSelect element');
+    assert.ok(popupHtml.includes('label="🌐 Online / Cloud Models"'), 'Must have online optgroup');
+    assert.ok(popupHtml.includes('label="🖥️ Offline / Local Models"'), 'Must have offline optgroup');
+    assert.ok(popupHtml.includes('id="groq-settings"'), 'Must have Groq settings panel');
+    assert.ok(popupHtml.includes('id="openrouter-settings"'), 'Must have OpenRouter settings panel');
+    assert.ok(popupHtml.includes('id="custom-openai-settings"'), 'Must have Custom OpenAI settings panel');
+  });
+
+  runTest('OpenAiCompatibleUrl', 'Endpoint URL normalization correctly adds /chat/completions if omitted', () => {
+    function normalizeEndpoint(url) {
+      const trimmed = (url || '').trim().replace(/\/+$/, '');
+      if (trimmed.endsWith('/chat/completions')) return trimmed;
+      return `${trimmed}/chat/completions`;
+    }
+
+    assert.strictEqual(
+      normalizeEndpoint('https://api.openai.com/v1'),
+      'https://api.openai.com/v1/chat/completions'
+    );
+    assert.strictEqual(
+      normalizeEndpoint('https://api.openai.com/v1/chat/completions'),
+      'https://api.openai.com/v1/chat/completions'
+    );
+    assert.strictEqual(
+      normalizeEndpoint('http://localhost:11434/v1/'),
+      'http://localhost:11434/v1/chat/completions'
+    );
+  });
+
+  runTest('OpenRouterHeaders', 'OpenRouter headers include Bearer auth, HTTP-Referer, and X-Title', () => {
+    function buildHeaders(provider, apiKey) {
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      };
+      if (provider === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://github.com/seventhmoon/insta-reply-extension';
+        headers['X-Title'] = 'InstaReply AI';
+      }
+      return headers;
+    }
+
+    const groqHeaders = buildHeaders('groq', 'gsk_123');
+    assert.strictEqual(groqHeaders.Authorization, 'Bearer gsk_123');
+    assert.strictEqual(groqHeaders['HTTP-Referer'], undefined);
+
+    const openrouterHeaders = buildHeaders('openrouter', 'sk-or-123');
+    assert.strictEqual(openrouterHeaders.Authorization, 'Bearer sk-or-123');
+    assert.strictEqual(openrouterHeaders['HTTP-Referer'], 'https://github.com/seventhmoon/insta-reply-extension');
+    assert.strictEqual(openrouterHeaders['X-Title'], 'InstaReply AI');
+  });
+
+
   console.log('\n=================================================');
   console.log(`📊 Tests Executed: ${totalTests} | Passed: ${passedTests} | Failed: ${failedTests}`);
   console.log('=================================================');
