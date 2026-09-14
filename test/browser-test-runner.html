@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jane Doe (@janedoe) on Instagram: "Coffee time at @cafeparis! Loving this atmosphere."</title>
+  <meta property="og:title" content="Jane Doe (@janedoe) on Instagram: &quot;Coffee time at @cafeparis!&quot;">
+  <meta property="og:description" content="1,200 likes, 45 comments - Jane Doe on September 14: &quot;Coffee time at @cafeparis! Loving this atmosphere.&quot;">
+  <meta property="og:image" content="https://instagram.com/p/DdQLLRDAUN5/main_photo.jpg">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SocialMediaPosting",
+    "headline": "Coffee time at @cafeparis! Loving this atmosphere.",
+    "author": {
+      "@type": "Person",
+      "name": "Jane Doe",
+      "alternateName": "janedoe"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Mock Chrome extension API -->
+  <script>
+    window.chrome = {
+      runtime: {
+        getURL: function(path) { return path; },
+        sendMessage: function(msg) {
+          if (msg.action === "GET_CONFIG") {
+            return Promise.resolve({
+              provider: "gemini",
+              defaultTone: "friendly",
+              defaultStance: "positive",
+              replyLanguage: "auto"
+            });
+          }
+          if (msg.action === "GENERATE_REPLY") {
+            return Promise.resolve({
+              success: true,
+              reply: "Thanks for commenting!",
+              sentiment: "positive",
+              sentimentLabel: "Positive",
+              modelUsed: "gemini-1.5-flash",
+              toneDrafts: {
+                humorous: "Funny reply",
+                playful: "Playful reply"
+              }
+            });
+          }
+          return Promise.resolve({});
+        }
+      },
+      storage: {
+        sync: {
+          get: function() { return Promise.resolve({}); },
+          set: function() { return Promise.resolve(); }
+        }
+      }
+    };
+    try {
+      history.replaceState({}, "", "/p/DdQLLRDAUN5/");
+    } catch (_) {}
+  </script>
+
+  <main role="main">
+    <article class="ig-post-article">
+      <!-- Media column -->
+      <div class="media-container">
+        <img class="main-post-photo"
+             src="https://instagram.com/p/DdQLLRDAUN5/main_photo.jpg"
+             alt="May be an image of coffee and croissant on a wooden table"
+             width="600" height="600">
+      </div>
+
+      <!-- Sidebar column -->
+      <div class="sidebar-container">
+        <header class="post-header">
+          <a href="/janedoe/" role="link">janedoe</a>
+        </header>
+
+        <!-- Instagram Canonical Caption Heading -->
+        <h1 dir="auto">Coffee time at @cafeparis! Loving this atmosphere.</h1>
+
+        <!-- Comment stream -->
+        <ul class="comments-list">
+          <!-- Author caption row inside comments list (as IG renders) -->
+          <li class="comment-item caption-row">
+            <a href="/janedoe/" role="link">janedoe</a>
+            <span dir="auto">Coffee time at @cafeparis! Loving this atmosphere.</span>
+          </li>
+
+          <!-- Comment 1 from Bob -->
+          <li class="comment-item bob-comment">
+            <a href="/bob/" role="link">bob</a>
+            <span dir="auto">Looks delicious! What blend do they serve?</span>
+            <button type="button" class="reply-button">Reply</button>
+          </li>
+
+          <!-- Comment 2 from Alice -->
+          <li class="comment-item alice-comment">
+            <a href="/alice/" role="link">alice</a>
+            <span dir="auto">Visiting next week! Any recommendations?</span>
+            <button type="button" class="reply-button">Reply</button>
+          </li>
+        </ul>
+
+        <!-- Comment Form -->
+        <form class="comment-form">
+          <div id="comment-input"
+               role="textbox"
+               contenteditable="true"
+               aria-label="Add a comment…"></div>
+        </form>
+      </div>
+    </article>
+
+    <!-- Suggested Posts ("More posts from janedoe") -->
+    <section class="suggested-posts">
+      <h2>More posts from janedoe</h2>
+      <div class="suggested-grid">
+        <a href="/p/SUGGESTED_POST_111/">
+          <img src="https://instagram.com/thumb1.jpg"
+               alt="May be an image of a sports car"
+               width="200" height="200">
+        </a>
+        <a href="/p/SUGGESTED_POST_222/">
+          <img src="https://instagram.com/thumb2.jpg"
+               alt="May be an image of a dog on a beach"
+               width="200" height="200">
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <div id="test-results" style="padding: 20px; font-family: monospace;">Running tests...</div>
+
+  <!-- Load Extension Content Script -->
+  <script src="../content/content.js"></script>
+
+  <!-- In-Browser Test Suite -->
+  <script>
+    window.addEventListener("load", async function() {
+      // Allow content script mutation observer and init to complete
+      await new Promise(r => setTimeout(r, 200));
+
+      const resultsDiv = document.getElementById("test-results");
+      const logs = [];
+      let failed = 0;
+
+      function assert(desc, condition, details = "") {
+        if (condition) {
+          logs.push("  PASS: " + desc);
+        } else {
+          failed++;
+          logs.push("  FAIL: " + desc + (details ? " (" + details + ")" : ""));
+        }
+      }
+
+      try {
+        const article = document.querySelector("article");
+        const inputEl = document.getElementById("comment-input");
+        const bobReplyBtn = document.querySelector(".bob-comment .reply-button");
+        const bobChip = document.querySelector(".bob-comment .instareply-comment-reply-chip");
+
+        // Test 1: Content script injection & chip creation
+        const chips = document.querySelectorAll(".instareply-comment-reply-chip");
+        assert("AI Reply chip injected into comment items", chips.length >= 2, "Found " + chips.length);
+
+        // Test 2: AI Trigger button injected for comment form
+        const triggerBtn = document.querySelector(".instareply-shortcut-btn, .instareply-btn, .instareply-icon-chip");
+        assert("AI Trigger button injected for comment form", Boolean(triggerBtn));
+
+        // Test 3: Top-level comment context extraction
+        // Focus input to simulate writing comment
+        inputEl.focus();
+        if (triggerBtn) {
+          triggerBtn.click();
+          await new Promise(r => setTimeout(r, 250));
+
+          const card = document.querySelector(".instareply-card-overlay");
+          assert("Assistant card opens on trigger click", Boolean(card));
+
+          // Card header should show Jane Doe as context
+          const header = card ? card.querySelector(".instareply-target-author, .instareply-post-author") : null;
+          const cardText = card ? card.innerText : "";
+          assert("Assistant card reflects correct post context",
+                 cardText.includes("janedoe") || cardText.includes("Coffee time"));
+        }
+
+        // Test 4: Clicking AI Reply Chip on Bob comment opens card with Bob as target
+        if (bobChip) {
+          bobChip.click();
+          await new Promise(r => setTimeout(r, 250));
+
+          const card = document.querySelector(".instareply-card-overlay");
+          assert("Assistant card opens on Bob comment chip click", Boolean(card));
+          const cardText = card ? card.innerText : "";
+          assert("Assistant card targets @bob", cardText.includes("bob") || inputEl.innerText.includes("bob"));
+        }
+
+        const summary = failed === 0 ? "ALL BROWSER TESTS PASSED" : failed + " BROWSER TESTS FAILED";
+        resultsDiv.setAttribute("data-status", failed === 0 ? "PASSED" : "FAILED");
+        resultsDiv.setAttribute("data-failures", String(failed));
+        resultsDiv.innerHTML = "<h3>" + summary + "</h3><pre>" + logs.join("\n") + "</pre>";
+      } catch (err) {
+        resultsDiv.setAttribute("data-status", "ERROR");
+        resultsDiv.innerHTML = "<h3>ERROR</h3><pre>" + err.stack + "</pre>";
+      }
+    });
+  </script>
+</body>
+</html>

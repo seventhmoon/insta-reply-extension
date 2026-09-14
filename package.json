@@ -1,0 +1,10 @@
+{
+  "name": "insta-reply-ai",
+  "version": "1.0.0",
+  "description": "AI-powered Instagram comment and DM reply assistant Chrome extension",
+  "scripts": {
+    "test": "node test/automated-tests.js"
+  },
+  "author": "Fung Lam <fung@androidfung.com>",
+  "license": "MIT"
+}
