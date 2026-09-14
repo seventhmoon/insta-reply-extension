@@ -16,6 +16,15 @@
   // In-memory predictive cache for instant comment replies
   const replyCache = new Map();
   let prefetchTimer = null;
+  let stancePrefetchTimer = null;
+
+  function setReplyCacheEntry(key, value) {
+    if (replyCache.size > 250) {
+      const oldestKey = replyCache.keys().next().value;
+      if (oldestKey) replyCache.delete(oldestKey);
+    }
+    replyCache.set(key, value);
+  }
 
   /**
    * Generates a unique post identifier (shortcode or unique caption snippet)
@@ -23,15 +32,15 @@
    */
   function extractPostIdentifier(container, postAuthor = '', postCaption = '') {
     if (container) {
-      const link = container.querySelector('a[href*="/p/"], a[href*="/reel/"]');
+      const link = container.querySelector('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"]');
       if (link) {
         const href = link.getAttribute('href') || '';
-        const match = href.match(/\/(p|reel)\/([A-Za-z0-9_-]+)/);
+        const match = href.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
         if (match && match[2]) return match[2];
       }
     }
     const path = window.location.pathname;
-    const pathMatch = path.match(/\/(p|reel)\/([A-Za-z0-9_-]+)/);
+    const pathMatch = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
     if (pathMatch && pathMatch[2]) return pathMatch[2];
 
     const cleanCap = (postCaption || '').replace(/\[Author Comment #[0-9]+\]:?/g, '').trim().slice(0, 40);
@@ -110,16 +119,26 @@
     pruneDuplicateShortcutButtons();
 
     // 1. Instagram Post & Modal Comment Inputs
-    const commentSelectors = [
-      'form textarea[aria-label*="comment" i]',
-      'form textarea[placeholder*="comment" i]',
-      'textarea[aria-label*="Add a comment" i]',
-      'textarea[placeholder*="Add a comment" i]',
-      'form div[role="textbox"][contenteditable="true"]',
-      'div[role="textbox"][aria-label*="Add a comment" i]'
-    ];
+    const commentCandidates = document.querySelectorAll(`
+      form textarea[aria-label*="comment" i],
+      form textarea[placeholder*="comment" i],
+      textarea[aria-label*="comment" i],
+      textarea[placeholder*="comment" i],
+      form div[role="textbox"][contenteditable="true"],
+      form div[contenteditable="true"],
+      div[role="textbox"][aria-label*="comment" i],
+      div[role="textbox"][placeholder*="comment" i],
+      div[role="textbox"][aria-placeholder*="comment" i],
+      div[contenteditable="true"][aria-label*="comment" i],
+      div[contenteditable="true"][placeholder*="comment" i],
+      div[contenteditable="true"][aria-placeholder*="comment" i],
+      article div[role="textbox"][contenteditable="true"],
+      article div[contenteditable="true"],
+      .ig-post-card div[role="textbox"][contenteditable="true"],
+      .ig-post-card div[contenteditable="true"]
+    `);
 
-    document.querySelectorAll(commentSelectors.join(',')).forEach((el) => {
+    commentCandidates.forEach((el) => {
       if (
         el.closest('.instareply-card-overlay') ||
         el.closest('.instareply-card') ||
@@ -128,6 +147,21 @@
       ) {
         return;
       }
+
+      // Exclude DM inputs (which have message cues or are in /direct/ route)
+      const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+      const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+      const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
+      if (
+        ariaLabel.includes('message') ||
+        placeholder.includes('message') ||
+        ariaPlaceholder.includes('message') ||
+        el.closest('.ig-dm-composer') ||
+        (window.location.pathname.includes('/direct') && !el.closest('article'))
+      ) {
+        return;
+      }
+
       injectShortcutButton(el, 'comment');
     });
 
@@ -317,11 +351,11 @@
   }
 
   /**
-   * Prunes duplicate shortcut buttons across forms, dialogs, and DM composer bars
+   * Prunes duplicate shortcut buttons across forms, post containers, and DM composer bars
    */
   function pruneDuplicateShortcutButtons() {
-    // Check all comment forms and dialogs
-    document.querySelectorAll('form, div[role="dialog"]').forEach((container) => {
+    // Check all comment forms and post containers (avoid wiping buttons in div[role="dialog"])
+    document.querySelectorAll('form, article, .ig-post-card').forEach((container) => {
       const btns = container.querySelectorAll('.instareply-shortcut-btn');
       if (btns.length > 1) {
         for (let i = 1; i < btns.length; i++) {
@@ -595,7 +629,20 @@
 
       const text = el.textContent?.trim() || '';
       const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-      const isReplyBtn = (text === 'Reply' || text === 'reply' || ariaLabel.startsWith('reply to'));
+      const lowerText = text.toLowerCase();
+      const isReplyBtn = (
+        lowerText === 'reply' ||
+        lowerText === '回覆' ||
+        lowerText === '回复' ||
+        lowerText === '返信' ||
+        lowerText === 'responder' ||
+        lowerText === 'répondre' ||
+        lowerText === 'antworten' ||
+        ariaLabel.includes('reply to') ||
+        ariaLabel.includes('回覆') ||
+        ariaLabel.includes('回复') ||
+        ariaLabel.includes('返信')
+      );
 
       if (!isReplyBtn) return;
 
@@ -665,7 +712,23 @@
 
         // Locate the comment input for this post
         const article = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || document.querySelector('article') || document;
-        const commentInput = article.querySelector('form div[role="textbox"][contenteditable="true"], form textarea, textarea[placeholder*="comment" i]');
+        const commentInput = article.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][aria-placeholder*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          form textarea,
+          textarea[placeholder*="comment" i]
+        `) || document.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][aria-placeholder*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          form textarea,
+          textarea[placeholder*="comment" i]
+        `);
 
         // Open AI assistant card anchored directly to this comment!
         openAssistantCard(commentInput, 'comment', chip, {
@@ -1204,8 +1267,19 @@
   }
 
   /**
-   * Opens or toggles the AI Reply Assistant Card
+   * Helper to check if a specific post container is a Reel (and NOT an image/photo post)
    */
+  function isReelContainer(container) {
+    if (!container) return false;
+    if (container.dataset?.instareplyReel === 'true') return true;
+    if (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) return true;
+
+    // Check if THIS specific container actually contains a video element
+    if (container.querySelector('video')) return true;
+
+    return false;
+  }
+
   /**
    * Finds the currently visible active Reel video element on the page
    */
@@ -1268,12 +1342,6 @@
     let bestContainer = null;
 
     while (curr && curr !== document.body) {
-      // Skip dialogs (such as the comments drawer)
-      if (curr.getAttribute('role') === 'dialog') {
-        curr = curr.parentElement;
-        continue;
-      }
-
       // Look for author profile link inside this ancestor
       const hasAuthor = curr.querySelector('a[href^="/"]:not([href*="/reel/"]):not([href*="/reels/"]):not([href*="/explore/"]):not([href*="/direct/"])');
       const hasButtons = curr.querySelector('button, [role="button"]');
@@ -1283,6 +1351,7 @@
         if (
           curr.tagName.toLowerCase() === 'article' ||
           curr.getAttribute('role') === 'region' ||
+          curr.getAttribute('role') === 'dialog' ||
           curr.classList.contains('ig-post-card')
         ) {
           return curr;
@@ -1303,26 +1372,26 @@
    * Extracts post author from an active Reel container
    */
   function extractReelAuthor(reelContainer) {
-    if (!reelContainer) return '';
+    const root = reelContainer || findActiveReelContainer() || document.querySelector('main, article, div[role="main"]') || document.body;
 
-    const anchors = Array.from(reelContainer.querySelectorAll('a[href^="/"]'));
+    const anchors = Array.from(root.querySelectorAll('a[href^="/"]'));
     const bannedRoutes = new Set([
       'explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv',
-      'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api'
+      'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api', 'notifications', 'create'
     ]);
 
     for (const a of anchors) {
-      if (a.closest('div[role="dialog"]') || a.closest('nav, aside')) continue;
+      if (a.closest('nav, aside') || a.closest('.instareply-card-overlay') || a.closest('li') || a.closest('.ig-comment')) continue;
       const href = a.getAttribute('href') || '';
       const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
       if (m && m[1]) {
         const handle = m[1];
         if (!bannedRoutes.has(handle.toLowerCase())) {
           // Check for nearby follow button
-          const parent = a.closest('div');
+          const parent = a.closest('div, header, span');
           const hasFollowNearby = parent && Array.from(parent.parentElement?.querySelectorAll('button, [role="button"]') || []).some(btn => {
             const t = (btn.textContent || '').trim().toLowerCase();
-            return ['follow', 'following', 'requested', '关注', '已关注', 'フォロー'].some(k => t.includes(k));
+            return ['follow', 'following', 'requested', '关注', '已关注', 'フォロー', 'suivre'].some(k => t.includes(k));
           });
           if (hasFollowNearby) {
             return handle;
@@ -1333,14 +1402,14 @@
 
     // Fallback: any valid profile link matching anchor text
     for (const a of anchors) {
-      if (a.closest('div[role="dialog"]') || a.closest('nav, aside')) continue;
+      if (a.closest('nav, aside') || a.closest('.instareply-card-overlay') || a.closest('li') || a.closest('.ig-comment')) continue;
       const href = a.getAttribute('href') || '';
       const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
       if (m && m[1]) {
         const handle = m[1];
         if (!bannedRoutes.has(handle.toLowerCase())) {
           const text = (a.textContent || '').trim().replace(/^@/, '');
-          if (text && text.toLowerCase() === handle.toLowerCase()) {
+          if (text && (text.toLowerCase() === handle.toLowerCase() || a.querySelector('strong, span'))) {
             return handle;
           }
         }
@@ -1348,8 +1417,8 @@
     }
 
     // Avatar profile picture alt text
-    const avatarImg = reelContainer.querySelector('img[alt*="profile picture" i], img[alt*="的照片" i], img[alt*="大头贴" i], img[alt*="プロフィール写真" i]');
-    if (avatarImg && !avatarImg.closest('div[role="dialog"]')) {
+    const avatarImg = root.querySelector('img[alt*="profile picture" i], img[alt*="的照片" i], img[alt*="大头贴" i], img[alt*="プロフィール写真" i]');
+    if (avatarImg && !avatarImg.closest('.instareply-card-overlay') && !avatarImg.closest('li')) {
       const alt = avatarImg.getAttribute('alt') || '';
       const m = alt.match(/([a-zA-Z0-9._]+)(?:'s profile picture|的(?:大头贴|照片)|のプロフィール写真)/i);
       if (m && m[1] && !bannedRoutes.has(m[1].toLowerCase())) {
@@ -1357,24 +1426,25 @@
       }
     }
 
-    return '';
+    return extractPostAuthor(root);
   }
 
   /**
    * Extracts post caption from an active Reel container
    */
   function extractReelCaption(reelContainer, postAuthor = '') {
-    if (!reelContainer) return '';
+    const root = reelContainer || findActiveReelContainer() || document.querySelector('main, article, div[role="main"]') || document.body;
 
-    const candidateSpans = Array.from(reelContainer.querySelectorAll('h1[dir="auto"], span[dir="auto"], div[dir="auto"], span'));
+    const candidateSpans = Array.from(root.querySelectorAll('h1[dir="auto"], span[dir="auto"], div[dir="auto"], h1, p'));
     for (const el of candidateSpans) {
       if (
-        el.closest('div[role="dialog"]') ||
         el.closest('button, [role="button"]') ||
         el.closest('.instareply-card-overlay') ||
         el.closest('form') ||
         el.closest('svg') ||
-        el.closest('nav, aside')
+        el.closest('nav, aside') ||
+        el.closest('li') ||
+        el.closest('.ig-comment')
       ) {
         continue;
       }
@@ -1399,30 +1469,31 @@
         continue;
       }
 
-      if (raw.includes('#') || (raw.length >= 5 && !/^\d+[\s,.]?\d*[KkMm]?$/.test(raw))) {
+      if (raw.includes('#') || (raw.length >= 3 && !/^\d+[\s,.]?\d*[KkMm]?$/.test(raw))) {
         if (isValidCaption(raw, postAuthor)) {
           return raw;
         }
       }
     }
 
-    return '';
+    return extractPostCaption(root, postAuthor);
   }
 
   /**
    * Extracts video visuals & poster for an active Reel
    */
   function extractReelVisuals(reelContainer, activeVideo) {
-    const video = activeVideo || reelContainer?.querySelector('video');
+    const root = reelContainer || findActiveReelContainer() || document.body;
+    const video = activeVideo || root.querySelector('video') || findActiveReelVideo();
     let thumbnailUrl = '';
 
     if (video) {
       thumbnailUrl = video.getAttribute('poster') || video.poster || '';
     }
 
-    if (!thumbnailUrl && reelContainer) {
-      const img = reelContainer.querySelector('img[src*="cdninstagram.com"]:not([alt*="profile"]):not([alt*="avatar"]):not([alt*="大头贴"])');
-      if (img && img.src && !img.closest('div[role="dialog"]')) {
+    if (!thumbnailUrl && root) {
+      const img = root.querySelector('img[src*="cdninstagram.com"]:not([alt*="profile"]):not([alt*="avatar"]):not([alt*="大头贴"])');
+      if (img && img.src && !img.closest('.instareply-card-overlay') && !img.closest('li')) {
         thumbnailUrl = img.src;
       }
     }
@@ -1444,7 +1515,7 @@
       if (parentArticle) return parentArticle;
 
       // Direct parent main container on dedicated post/reel route
-      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
         const parentMain = el.closest('main') || el.closest('div[role="main"]');
         if (parentMain) return parentMain;
       }
@@ -1467,7 +1538,7 @@
           headingText === 'comentarios'
         );
 
-        if (isCommentsDrawer || window.location.pathname.startsWith('/reel')) {
+        if (isCommentsDrawer || window.location.pathname.startsWith('/reel') || window.location.pathname.startsWith('/reels')) {
           const activeVideo = findActiveReelVideo();
           if (activeVideo) {
             const activeReel = findActiveReelContainer(activeVideo);
@@ -1479,8 +1550,8 @@
       }
     }
 
-    // 3. Active Reel on screen if on /reel/ route
-    if (window.location.pathname.startsWith('/reel')) {
+    // 3. Active Reel on screen if on /reel/ or /reels/ route
+    if (window.location.pathname.startsWith('/reel') || window.location.pathname.startsWith('/reels')) {
       const activeVideo = findActiveReelVideo();
       if (activeVideo) {
         const activeReel = findActiveReelContainer(activeVideo);
@@ -1495,7 +1566,7 @@
     }
 
     // 5. Fallback on dedicated single-post or reel URL
-    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
       return document.querySelector('article') ||
              document.querySelector('main') ||
              document.querySelector('div[role="main"]') ||
@@ -1512,8 +1583,8 @@
     if (!text) return false;
     const trimmed = text.trim();
 
-    // Must have at least 10 characters
-    if (trimmed.length < 10) return false;
+    // Must have at least 3 characters
+    if (trimmed.length < 3) return false;
 
     // Must not be the post author handle or current user
     if (author) {
@@ -1522,8 +1593,7 @@
       if (cleanTrimmed === cleanAuthor) return false;
     }
 
-    // Must not be a single username handle or single token (e.g. "gangshanjingyan1")
-    // Instagram usernames consist of letters, digits, periods, and underscores without spaces
+    // Must not be a single username handle or single token without spaces/emojis/punctuation
     if (/^@?[a-zA-Z0-9._]{1,35}$/.test(trimmed)) {
       return false;
     }
@@ -1549,11 +1619,11 @@
       return false;
     }
 
-    // Captions in Latin scripts MUST contain spaces (sentences/phrases); CJK text must have > 8 characters
     const hasSpaces = /\s/.test(trimmed);
     const isCjk = /[\u4e00-\u9fff\u3040-\u30ff]/.test(trimmed);
-    if (!hasSpaces && (!isCjk || trimmed.length < 8)) {
-      return false;
+    const hasEmoji = /\p{Extended_Pictographic}/u.test(trimmed);
+    if (!hasSpaces && !hasEmoji && (!isCjk || trimmed.length < 3)) {
+      if (/^[a-zA-Z0-9._]+$/.test(trimmed)) return false;
     }
 
     return true;
@@ -1735,22 +1805,60 @@
       }
     }
 
-    // 5. Open Graph meta tags (ONLY on dedicated post/reel URLs, NOT on profile or feed pages)
+    // 5. Open Graph & Meta tags (essential on dedicated post/reel URLs)
     if (!standardCaption) {
       const path = window.location.pathname;
-      if (path.startsWith('/p/') || path.startsWith('/reel/')) {
-        const ogDesc = document.querySelector('meta[property="og:description"]')?.content;
+      if (path.startsWith('/p/') || path.startsWith('/reel/') || path.startsWith('/reels/')) {
+        const ogDesc = document.querySelector('meta[property="og:description"]')?.content ||
+                       document.querySelector('meta[name="description"]')?.content || '';
         if (ogDesc) {
           // IG format: "1,234 likes, 56 comments - user on Date: \"Caption here\""
-          const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{10,})[”"']/);
+          const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{3,})[”"']/);
           if (quoteMatch && quoteMatch[1]) {
             const cleaned = cleanCaptionText(quoteMatch[1]);
+            if (isValidCaption(cleaned, author)) {
+              standardCaption = cleaned;
+            }
+          } else {
+            const descMatch = ogDesc.match(/-\s*[^:]+:\s*(.+)$/) || ogDesc.match(/shared a post on Instagram:\s*(.+)$/);
+            if (descMatch && descMatch[1]) {
+              const cleaned = cleanCaptionText(descMatch[1]);
+              if (isValidCaption(cleaned, author)) {
+                standardCaption = cleaned;
+              }
+            }
+          }
+        }
+
+        // Also check document.title
+        if (!standardCaption && document.title) {
+          const titleQuote = document.title.match(/:\s*[“"']([^”"']{3,})[”"']/);
+          if (titleQuote && titleQuote[1]) {
+            const cleaned = cleanCaptionText(titleQuote[1]);
             if (isValidCaption(cleaned, author)) {
               standardCaption = cleaned;
             }
           }
         }
       }
+    }
+
+    // 6. Try JSON-LD structured data on direct post/reel pages
+    if (!standardCaption) {
+      try {
+        const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const script of jsonLdScripts) {
+          const data = JSON.parse(script.textContent || '{}');
+          const cap = data.headline || data.articleBody || data.caption || data.description;
+          if (cap && typeof cap === 'string') {
+            const cleaned = cleanCaptionText(cap);
+            if (isValidCaption(cleaned, author)) {
+              standardCaption = cleaned;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
     }
 
     // 6. Post main image alt text fallback
@@ -1798,51 +1906,64 @@
    * Extracts post author username from post header or metadata
    */
   function extractPostAuthor(container) {
-    if (!container) return '';
+    if (!container) container = document.querySelector('main, article, div[role="main"]') || document.body;
 
-    // 1. Try anchor hrefs inside header (most reliable)
-    // Profile links are typically /username/ or https://www.instagram.com/username/
+    const bannedRoutes = new Set([
+      'explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv',
+      'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api', 'notifications', 'create'
+    ]);
+
+    // 1. Try anchor hrefs inside header or container
     const headerLinks = container.querySelectorAll(
-      'header a[href^="/"], .ig-post-header a[href^="/"], header a[role="link"], .ig-post-header a'
+      'header a[href^="/"], .ig-post-header a[href^="/"], header a[role="link"], .ig-post-header a, a[role="link"][href^="/"], a[href^="/"]'
     );
     for (const link of headerLinks) {
+      if (link.closest('.instareply-card-overlay') || link.closest('li') || link.closest('.ig-comment')) continue;
       const href = link.getAttribute('href') || '';
       const match = href.match(/(?:instagram\.com|^)\/([a-zA-Z0-9._]+)\/?$/);
       if (match && match[1]) {
         const handle = match[1];
         const lower = handle.toLowerCase();
-        if (!['explore', 'reels', 'direct', 'stories', 'p', 'reel', 'tv'].includes(lower)) {
+        if (!bannedRoutes.has(lower)) {
           return handle;
         }
       }
     }
 
-    // 2. Try text inside header link or strong (handling "username\nAI-generated profile" or "username • Following")
-    const headerAuthor = container.querySelector(
-      'header a[role="link"], header a, .ig-post-header strong, .ig-post-header a, header h2, header h3'
-    );
-    if (headerAuthor) {
-      // Split text by whitespace, newlines, and bullet separators
-      const tokens = (headerAuthor.textContent || '')
-        .trim()
-        .replace(/^@/, '')
-        .split(/[\s\n•·|]+/);
-      for (const token of tokens) {
-        const cleanToken = token.trim();
-        if (/^[a-zA-Z0-9._]{1,35}$/.test(cleanToken)) {
-          const lower = cleanToken.toLowerCase();
-          if (!['following', 'follow', 'verified', 'ai-generated', 'profile', 'audio', 'original', 'posts', 'reels'].includes(lower)) {
-            return cleanToken;
+    // 2. Try JSON-LD structured data on direct post/reel page
+    try {
+      const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of jsonLdScripts) {
+        const data = JSON.parse(script.textContent || '{}');
+        const authorObj = data.author || data.creator;
+        if (authorObj) {
+          const handle = authorObj.identifier?.value || authorObj.alternateName || authorObj.name;
+          if (handle) {
+            const clean = handle.replace(/^@/, '').trim();
+            if (/^[a-zA-Z0-9._]+$/.test(clean) && !bannedRoutes.has(clean.toLowerCase())) {
+              return clean;
+            }
           }
         }
       }
-    }
+    } catch (_) {}
 
-    // 3. Check Open Graph or page title if on post/reel page
-    const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
+    // 3. Try Open Graph meta tags (og:title, twitter:title, document.title)
+    const ogTitle = document.querySelector('meta[property="og:title"]')?.content ||
+                    document.querySelector('meta[name="twitter:title"]')?.content ||
+                    document.title || '';
     if (ogTitle) {
-      const match = ogTitle.match(/@([a-zA-Z0-9._]+)/);
-      if (match && match[1]) {
+      // Matches @username
+      let match = ogTitle.match(/@([a-zA-Z0-9._]+)/);
+      if (match && match[1] && !bannedRoutes.has(match[1].toLowerCase())) {
+        return match[1];
+      }
+
+      // Matches "username on Instagram" or "Display Name (@username)"
+      match = ogTitle.match(/^([a-zA-Z0-9._]+)\s+on\s+Instagram/i) ||
+              ogTitle.match(/by\s+([a-zA-Z0-9._]+)\b/i) ||
+              ogTitle.match(/([a-zA-Z0-9._]+)\s*•\s*Instagram/i);
+      if (match && match[1] && !bannedRoutes.has(match[1].toLowerCase())) {
         return match[1];
       }
     }
@@ -2083,30 +2204,22 @@
     let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
     if (postContainer) {
-      // Check if container is a Reel or has a video without normal post header
-      const isReel = postContainer.dataset?.instareplyReel === 'true' ||
-                     window.location.pathname.startsWith('/reel') ||
-                     (postContainer.querySelector('video') && !postContainer.querySelector('header, .ig-post-header'));
+      const isReel = isReelContainer(postContainer);
 
       if (isReel) {
-        postAuthor = extractReelAuthor(postContainer);
-        postCaption = extractReelCaption(postContainer, postAuthor);
-        postVisuals = extractReelVisuals(postContainer, postContainer.querySelector('video'));
-      }
-
-      if (!postAuthor) {
+        const activeReel = findActiveReelContainer() || postContainer;
+        postAuthor = extractReelAuthor(activeReel) || extractReelAuthor(postContainer);
+        postCaption = extractReelCaption(activeReel, postAuthor) || extractReelCaption(postContainer, postAuthor);
+        postVisuals = extractReelVisuals(activeReel, findActiveReelVideo());
+      } else {
         postAuthor = extractPostAuthor(postContainer);
-      }
-      if (!postCaption) {
         postCaption = extractPostCaption(postContainer, postAuthor);
-      }
-      if (!postVisuals.thumbnailUrl && !postVisuals.description) {
         postVisuals = extractPostVisuals(postContainer);
       }
     }
 
-    // Direct page fallbacks for dedicated /p/ and /reel/ routes
-    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+    // Direct page fallbacks for dedicated /p/, /reel/, and /reels/ routes
+    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
       if (!postVisuals.thumbnailUrl && !postVisuals.description) {
         postVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
       }
@@ -2210,82 +2323,75 @@
     if (contextType === 'comment') {
       const article = postContainer || findPostContainer(inputEl);
       if (article) {
-        postAuthor = extractPostAuthor(article);
-        postCaption = extractPostCaption(article, postAuthor);
-        postVisuals = extractPostVisuals(article);
+        const isReel = isReelContainer(article);
 
-        // In Reels, if postAuthor or postCaption was not inside the comments drawer, check active Reel
-        const isReelContext = window.location.pathname.startsWith('/reel') ||
-                              article.getAttribute('role') === 'dialog' ||
-                              Boolean(article.closest('div[role="dialog"]'));
-        if (isReelContext) {
-          const activeReel = findActiveReelContainer();
-          if (activeReel && activeReel !== article) {
-            if (!postAuthor) postAuthor = extractPostAuthor(activeReel);
-            if (!postCaption) postCaption = extractPostCaption(activeReel, postAuthor);
-            if (!postVisuals.thumbnailUrl && !postVisuals.description) {
-              const rv = extractPostVisuals(activeReel);
-              if (rv.thumbnailUrl || rv.description) postVisuals = rv;
-            }
+        if (isReel) {
+          const activeReel = findActiveReelContainer() || article;
+          postAuthor = extractReelAuthor(activeReel) || extractPostAuthor(article);
+          postCaption = extractReelCaption(activeReel, postAuthor) || extractPostCaption(article, postAuthor);
+          postVisuals = extractReelVisuals(activeReel, findActiveReelVideo());
+        } else {
+          postAuthor = extractPostAuthor(article);
+          postCaption = extractPostCaption(article, postAuthor);
+          postVisuals = extractPostVisuals(article);
+        }
+      }
+
+      // Also fallback to Open Graph meta tags for Reel pages
+      if ((!postAuthor || !postCaption) && (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/'))) {
+        if (!postAuthor) {
+          const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
+          const m = ogTitle.match(/@([a-zA-Z0-9._]+)/);
+          if (m) postAuthor = m[1];
+        }
+        if (!postCaption) {
+          const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
+          const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{5,})[”"']/);
+          if (quoteMatch && quoteMatch[1]) {
+            postCaption = cleanCaptionText(quoteMatch[1]);
           }
         }
+      }
 
-        // Also fallback to Open Graph meta tags for Reel pages
-        if ((!postAuthor || !postCaption) && (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/'))) {
-          if (!postAuthor) {
-            const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
-            const m = ogTitle.match(/@([a-zA-Z0-9._]+)/);
-            if (m) postAuthor = m[1];
-          }
-          if (!postCaption) {
-            const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
-            const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{5,})[”"']/);
-            if (quoteMatch && quoteMatch[1]) {
-              postCaption = cleanCaptionText(quoteMatch[1]);
-            }
-          }
-        }
+      // 1. Check if there is an author tagged in the input (e.g., "@username hello")
+      const mentionMatch = userDraftHint.match(/^@([a-zA-Z0-9._]+)/);
+      if (mentionMatch) {
+        author = mentionMatch[1];
+      }
 
-        // 1. Check if there is an author tagged in the input (e.g., "@username hello")
-        const mentionMatch = userDraftHint.match(/^@([a-zA-Z0-9._]+)/);
-        if (mentionMatch) {
-          author = mentionMatch[1];
-        }
-
-        // 2. Check for Instagram's reply banner near the form: e.g. "Replying to @username"
-        if (!author && article) {
-          const allTextEls = article.querySelectorAll('div, span');
-          for (const el of allTextEls) {
-            const txt = el.textContent?.trim() || '';
-            const match = txt.match(/^Replying to\s+@?([a-zA-Z0-9._]+)/i);
-            if (match) {
-              author = match[1];
-              break;
-            }
+      // 2. Check for Instagram's reply banner near the form: e.g. "Replying to @username"
+      if (!author && article) {
+        const allTextEls = article.querySelectorAll('div, span');
+        for (const el of allTextEls) {
+          const txt = el.textContent?.trim() || '';
+          const match = txt.match(/^Replying to\s+@?([a-zA-Z0-9._]+)/i);
+          if (match) {
+            author = match[1];
+            break;
           }
         }
+      }
 
-        // 3. Resolve specific comment text from either cached active comment or searching article
-        if (author) {
-          const found = findCommentByAuthor(article, author);
-          if (found && found.incomingText) {
-            incomingText = found.incomingText;
-            author = found.author;
-          }
-        } else if (lastActiveCommentContext && (Date.now() - lastActiveCommentContext.timestamp < 300000)) {
-          // If no @mention was in the box, but user recently clicked "Reply" on a comment
-          author = lastActiveCommentContext.author;
-          incomingText = lastActiveCommentContext.incomingText;
+      // 3. Resolve specific comment text from either cached active comment or searching article
+      if (author) {
+        const found = findCommentByAuthor(article, author);
+        if (found && found.incomingText) {
+          incomingText = found.incomingText;
+          author = found.author;
         }
+      } else if (lastActiveCommentContext && (Date.now() - lastActiveCommentContext.timestamp < 300000)) {
+        // If no @mention was in the box, but user recently clicked "Reply" on a comment
+        author = lastActiveCommentContext.author;
+        incomingText = lastActiveCommentContext.incomingText;
+      }
 
-        // Fallback: If author still not found, check post author
-        if (!author) {
-          author = postAuthor;
-        }
+      // Fallback: If author still not found, check post author
+      if (!author) {
+        author = postAuthor;
+      }
 
-        if (!incomingText) {
-          incomingText = '';
-        }
+      if (!incomingText) {
+        incomingText = '';
       }
     } else if (contextType === 'dm') {
       // Find DM conversation thread container for this input (PIP floating window or fullscreen direct)
@@ -2348,8 +2454,6 @@
   async function executeReplyGeneration() {
     if (!activeCard) return;
 
-    showCardLoading(activeCard, true);
-
     const payload = {
       contextType: lastContextData.contextType,
       replyMode: lastContextData.replyMode || 'post_comment',
@@ -2377,14 +2481,17 @@
       currentLanguage
     );
 
-    // 1. Instant Cache Hit: Return cached reply immediately if user hasn't asked for a new variation or custom draft
+    // 1. Instant Cache Hit: Return cached reply immediately without spinner flash if user hasn't asked for a new variation or custom draft
     if (currentVariation === 0 && !lastContextData.userDraftHint && replyCache.has(cacheKey)) {
       const cached = replyCache.get(cacheKey);
-      console.log('[InstaReply AI] ⚡ Instant reply served from cache for @' + lastContextData.author);
+      console.log(`[InstaReply AI] ⚡ Instant reply served from cache for @${lastContextData.author} (${currentStance} / ${currentTone})`);
       renderAIResult(cached, true);
+      schedulePrefetchForAlternativeStances();
       schedulePrefetchForVisibleComments();
       return;
     }
+
+    showCardLoading(activeCard, true);
 
     try {
       const config = await getConfig();
@@ -2403,9 +2510,34 @@
 
       if (response && response.success) {
         if (!lastContextData.userDraftHint) {
-          replyCache.set(cacheKey, response);
+          setReplyCacheEntry(cacheKey, response);
+
+          // Ingest any bundled alternative tone drafts into cache for instant switching
+          if (response.toneDrafts && typeof response.toneDrafts === 'object') {
+            for (const [altTone, altReply] of Object.entries(response.toneDrafts)) {
+              if (!altReply || typeof altReply !== 'string' || !altReply.trim()) continue;
+              const altKey = getReplyCacheKey(
+                lastContextData.postId,
+                lastContextData.postAuthor,
+                lastContextData.author,
+                lastContextData.incomingText,
+                currentStance,
+                altTone,
+                payload.replyLanguage || currentLanguage
+              );
+              if (!replyCache.has(altKey)) {
+                setReplyCacheEntry(altKey, {
+                  ...response,
+                  reply: altReply.trim(),
+                  toneUsed: altTone
+                });
+                console.log(`[InstaReply AI] ⚡ Pre-cached bundled tone '${altTone}' for instant switching`);
+              }
+            }
+          }
         }
         renderAIResult(response, false);
+        schedulePrefetchForAlternativeStances();
         schedulePrefetchForVisibleComments();
       } else {
         renderAIError(response?.error || 'Failed to generate reply. Check your API settings.');
@@ -2444,9 +2576,32 @@
 
         if (event.data.success) {
           if (cacheKey && !lastContextData?.userDraftHint) {
-            replyCache.set(cacheKey, event.data);
+            setReplyCacheEntry(cacheKey, event.data);
+
+            if (event.data.toneDrafts && typeof event.data.toneDrafts === 'object') {
+              for (const [altTone, altReply] of Object.entries(event.data.toneDrafts)) {
+                if (!altReply || typeof altReply !== 'string' || !altReply.trim()) continue;
+                const altKey = getReplyCacheKey(
+                  lastContextData.postId,
+                  lastContextData.postAuthor,
+                  lastContextData.author,
+                  lastContextData.incomingText,
+                  currentStance,
+                  altTone,
+                  currentLanguage
+                );
+                if (!replyCache.has(altKey)) {
+                  setReplyCacheEntry(altKey, {
+                    ...event.data,
+                    reply: altReply.trim(),
+                    toneUsed: altTone
+                  });
+                }
+              }
+            }
           }
           renderAIResult(event.data, false);
+          schedulePrefetchForAlternativeStances();
           schedulePrefetchForVisibleComments();
         } else {
           renderAIError(event.data.error || 'Edge AI generation failed.');
@@ -2463,6 +2618,100 @@
         payload
       }, '*');
     });
+  }
+
+  /**
+   * Proactively pre-fetches alternative reply stances (neutral, negative/firm)
+   * and their bundled tone styles for the current comment/post in the background.
+   * This enables instantaneous (0ms) stance & tone toggling without spinners.
+   */
+  function schedulePrefetchForAlternativeStances() {
+    clearTimeout(stancePrefetchTimer);
+    if (!lastContextData || lastContextData.userDraftHint) return;
+
+    // Freeze current context parameters
+    const snapshot = { ...lastContextData };
+    const baseTone = currentTone;
+    const baseStance = currentStance;
+    const baseLang = currentLanguage;
+
+    stancePrefetchTimer = setTimeout(async () => {
+      try {
+        const allStances = ['positive', 'neutral', 'negative'];
+        const remainingStances = allStances.filter(s => s !== baseStance);
+
+        for (const altStance of remainingStances) {
+          // If user moved to another comment/post during warmup, abort
+          if (!lastContextData || lastContextData.postId !== snapshot.postId || lastContextData.author !== snapshot.author) {
+            break;
+          }
+
+          const altKey = getReplyCacheKey(
+            snapshot.postId,
+            snapshot.postAuthor,
+            snapshot.author,
+            snapshot.incomingText,
+            altStance,
+            baseTone,
+            baseLang
+          );
+          if (replyCache.has(altKey)) continue;
+
+          const prefetchPayload = {
+            contextType: snapshot.contextType || 'comment',
+            replyMode: snapshot.replyMode || 'comment_reply',
+            isCurrentUserPostAuthor: Boolean(snapshot.isCurrentUserPostAuthor),
+            relationshipSummary: snapshot.relationshipSummary || '',
+            incomingText: snapshot.incomingText || '',
+            postCaption: snapshot.postCaption || '',
+            postAuthor: snapshot.postAuthor || '',
+            postVisuals: snapshot.postVisuals || null,
+            author: snapshot.author || '',
+            isSpecificCommentReply: Boolean(snapshot.isSpecificCommentReply),
+            userDraftHint: '',
+            stance: altStance,
+            tone: baseTone,
+            variationIndex: 0,
+            replyLanguage: baseLang
+          };
+
+          const res = await chrome.runtime.sendMessage({
+            action: 'GENERATE_REPLY',
+            payload: prefetchPayload
+          }).catch(() => null);
+
+          if (res && res.success) {
+            setReplyCacheEntry(altKey, res);
+
+            // Ingest any bundled tone drafts for this stance as well
+            if (res.toneDrafts && typeof res.toneDrafts === 'object') {
+              for (const [bundledTone, bundledReply] of Object.entries(res.toneDrafts)) {
+                if (!bundledReply || typeof bundledReply !== 'string' || !bundledReply.trim()) continue;
+                const bundledKey = getReplyCacheKey(
+                  snapshot.postId,
+                  snapshot.postAuthor,
+                  snapshot.author,
+                  snapshot.incomingText,
+                  altStance,
+                  bundledTone,
+                  baseLang
+                );
+                if (!replyCache.has(bundledKey)) {
+                  setReplyCacheEntry(bundledKey, {
+                    ...res,
+                    reply: bundledReply.trim(),
+                    toneUsed: bundledTone
+                  });
+                }
+              }
+            }
+            console.log(`[InstaReply AI] ⚡ Pre-cached stance '${altStance}' + tone drafts for @${snapshot.author}`);
+          }
+        }
+      } catch (err) {
+        console.debug('[InstaReply AI] Stance prefetch skipped:', err);
+      }
+    }, 350);
   }
 
   /**
@@ -2535,8 +2784,31 @@
             payload: prefetchPayload
           }).then(res => {
             if (res && res.success) {
-              replyCache.set(item.key, res);
-              console.log(`[InstaReply AI] ⚡ Pre-cached instant reply for @${item.author}`);
+              setReplyCacheEntry(item.key, res);
+
+              // Ingest bundled tone drafts for visible comments as well
+              if (res.toneDrafts && typeof res.toneDrafts === 'object') {
+                for (const [bundledTone, bundledReply] of Object.entries(res.toneDrafts)) {
+                  if (!bundledReply || typeof bundledReply !== 'string' || !bundledReply.trim()) continue;
+                  const bundledKey = getReplyCacheKey(
+                    lastContextData.postId,
+                    lastContextData.postAuthor,
+                    item.author,
+                    item.commentText,
+                    currentStance,
+                    bundledTone,
+                    currentLanguage
+                  );
+                  if (!replyCache.has(bundledKey)) {
+                    setReplyCacheEntry(bundledKey, {
+                      ...res,
+                      reply: bundledReply.trim(),
+                      toneUsed: bundledTone
+                    });
+                  }
+                }
+              }
+              console.log(`[InstaReply AI] ⚡ Pre-cached instant reply + tone drafts for @${item.author}`);
             }
           }).catch(() => {});
         }

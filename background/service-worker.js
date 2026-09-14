@@ -661,6 +661,21 @@ function buildStructuredPrompt({
   const isCommentReply = replyMode === 'comment_reply' || Boolean(isSpecificCommentReply);
   const isPostComment = replyMode === 'post_comment' && !isCommentReply && contextType !== 'dm';
 
+  const primaryTone = (tone || 'friendly').toLowerCase();
+  const popularTones = ['friendly', 'humorous', 'playful', 'savage', 'concise'];
+  const altTones = popularTones.filter(t => t !== primaryTone).slice(0, 4);
+
+  let multiToneInstruction = '';
+  let multiToneSchema = '';
+  if (variationIndex === 0 && !userDraftHint) {
+    multiToneInstruction = `   - In addition to your primary "reply" (crafted in the requested "${primaryTone}" tone), also generate distinct alternative drafts for these contrasting tone styles:
+${altTones.map(t => `     * ${t}: ${getToneInstruction(t)}`).join('\n')}
+   - Output these inside the "toneDrafts" object mapping each tone name to its drafted reply text.\n`;
+
+    const sampleDrafts = altTones.map(t => `    "${t}": "Distinct alternative reply in ${t} style"`).join(',\n');
+    multiToneSchema = `,\n  "toneDrafts": {\n${sampleDrafts}\n  }`;
+  }
+
   let roleHeader = '';
   if (relationshipSummary) {
     roleHeader = `- Relationship: ${relationshipSummary}\n`;
@@ -781,6 +796,8 @@ ${customInstructions ? `   - Custom Rule: ${customInstructions}\n` : ''}${variat
 6. LANGUAGE PREFERENCE:
 ${getLanguageInstruction(replyLanguage)}
 
+7. MULTI-TONE BUNDLING FOR INSTANT SWITCHING:
+${multiToneInstruction || '   - None required for this variation.'}
 ### OUTPUT FORMAT:
 You MUST respond with valid JSON matching this exact structure:
 {
@@ -788,7 +805,7 @@ You MUST respond with valid JSON matching this exact structure:
   "sentimentLabel": "Friendly & Positive" (short 2-4 word summary with sentiment emoji),
   "topics": ["Key Topic 1", "Key Topic 2"],
   "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining.",
-  "reply": "Your drafted reply text here"
+  "reply": "Your drafted reply text here in ${primaryTone} style"${multiToneSchema}
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
 }
@@ -871,7 +888,8 @@ function parseAIResponse(rawText) {
       sentimentLabel: json.sentimentLabel || formatSentimentLabel(json.sentiment),
       topics: Array.isArray(json.topics) ? json.topics : [],
       visualAnalysis: json.visualAnalysis || '',
-      reply: json.reply || clean
+      reply: json.reply || clean,
+      toneDrafts: (json.toneDrafts && typeof json.toneDrafts === 'object') ? json.toneDrafts : {}
     };
   } catch (err) {
     console.warn('[InstaReply AI] Could not parse strict JSON, falling back to regex extraction:', err);
@@ -881,7 +899,8 @@ function parseAIResponse(rawText) {
       sentimentLabel: '✨ Analyzed',
       topics: [],
       visualAnalysis: '',
-      reply: rawText.replace(/\{[\s\S]*"reply"\s*:\s*"([^"]+)"[\s\S]*\}/, '$1').trim()
+      reply: rawText.replace(/\{[\s\S]*"reply"\s*:\s*"([^"]+)"[\s\S]*\}/, '$1').trim(),
+      toneDrafts: {}
     };
   }
 }

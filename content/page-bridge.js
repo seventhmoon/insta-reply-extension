@@ -156,6 +156,7 @@ ${stanceRule}
 ${payload.postVisuals?.description ? '3. Visual Grounding: Reference what is depicted in the image/video ("' + payload.postVisuals.description + '").' : ''}
 4. Be authentic, concise (1-2 sentences), and tailored to Instagram. Avoid robotic marketing language.
 ${langRule}
+${(!payload.userDraftHint && (!payload.variationIndex || payload.variationIndex === 0)) ? '6. Also provide alternative reply drafts for contrasting tone styles inside "toneDrafts".' : ''}
 
 Respond with valid JSON:
 {
@@ -163,7 +164,7 @@ Respond with valid JSON:
   "sentimentLabel": "🟢 Positive",
   "topics": ["photography", "presets"],
   "visualAnalysis": "Brief 1-sentence description of what you see in the post visuals",
-  "reply": "Draft reply here"
+  "reply": "Draft reply here in requested tone"${(!payload.userDraftHint && (!payload.variationIndex || payload.variationIndex === 0)) ? ',\n  "toneDrafts": {\n    "humorous": "Funny draft",\n    "playful": "Playful draft",\n    "savage": "Savage draft",\n    "concise": "Short draft"\n  }' : ''}
 }`;
 
       let result = '';
