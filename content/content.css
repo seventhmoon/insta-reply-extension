@@ -490,6 +490,36 @@
   font-weight: 600;
 }
 
+.instareply-tone-chip.active[data-tone="playful"] {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  border-color: #8b5cf6;
+  box-shadow: 0 1px 6px rgba(139, 92, 246, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="savage"] {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  border-color: #ef4444;
+  box-shadow: 0 1px 6px rgba(239, 68, 68, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="geek"] {
+  background: linear-gradient(135deg, #06b6d4, #0284c7);
+  border-color: #06b6d4;
+  box-shadow: 0 1px 6px rgba(6, 182, 212, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="spicy"] {
+  background: linear-gradient(135deg, #f97316, #dc2626);
+  border-color: #f97316;
+  box-shadow: 0 1px 6px rgba(249, 115, 22, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="humorous"] {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #f59e0b;
+  box-shadow: 0 1px 6px rgba(245, 158, 11, 0.35);
+}
+
 /* Language Selector */
 .instareply-lang-wrapper {
   display: flex;

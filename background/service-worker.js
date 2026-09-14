@@ -774,7 +774,7 @@ ${postCaption ? `   - Specifically connect your reply to the topics, locations, 
    - Do NOT generate generic filler like "Nice post!" or "Great shot!".
    - Ground the reply in the specific details provided.` : '   - Ensure your reply directly engages with the specific subject matter.'}
 5. TONE & VOCABULARY:
-   - Tone: ${tone.toUpperCase()} (e.g. friendly, enthusiastic, humorous, professional, empathetic, or concise).
+   - Style: ${getToneInstruction(tone)}
    - Emojis: ${includeEmojis ? 'Include natural, tasteful Instagram-style emojis' : 'Do NOT use emojis'}.
 ${customInstructions ? `   - Custom Rule: ${customInstructions}\n` : ''}${variationIndex > 0 ? `   - Variation #${variationIndex + 1}: Make this variation noticeably distinct in phrasing and perspective from previous drafts.\n` : ''}   - Length: 1 to 3 natural, impactful sentences authentic to Instagram.
    - Avoid generic AI-sounding phrases, cliches, or corporate buzzwords.
@@ -791,6 +791,42 @@ You MUST respond with valid JSON matching this exact structure:
   "reply": "Your drafted reply text here"
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
+}
+
+/**
+ * Builds the tone style instruction string for AI prompt
+ */
+function getToneInstruction(tone) {
+  const t = (tone || 'friendly').toLowerCase();
+  switch (t) {
+    case 'playful':
+    case 'naughty':
+      return 'PLAYFUL & CHEEKY / NAUGHTY: Mischievous charm, witty banter, playful teasing, subtle innuendo or cheeky wink-and-nudge humor. Fun, magnetic, and socially savvy without violating platform safety.';
+    case 'savage':
+    case 'mean':
+    case 'roast':
+      return 'SAVAGE & ROAST: Sharp comedic wit, hilarious burn, deadpan sarcasm, bold clapback (in the viral style of Wendy\'s Twitter or comedy roast). Witty and entertaining without being hateful or abusive.';
+    case 'humorous':
+    case 'funny':
+      return 'FUNNY & WITTY: Relatable comedy, comedic punchlines, situational irony, punchy meme-like humor, laugh-out-loud amusement.';
+    case 'geek':
+    case 'nerd':
+      return 'GEEK & TECH: Analytical curiosity, smart tech/pop-culture/gaming references, nerd pride, clever specs or lore breakdown.';
+    case 'spicy':
+    case 'flirty':
+      return 'SPICY & FLIRTY: Confident, alluring charisma, charming compliment, subtle romantic tension, captivating magnetic energy.';
+    case 'enthusiastic':
+      return 'HYPED & ENTHUSIASTIC: High energy, pumped, celebratory excitement, hype-person energy.';
+    case 'professional':
+      return 'PROFESSIONAL & POLISHED: Courteous, articulate, business-savvy, respectful, and reliable.';
+    case 'empathetic':
+      return 'EMPATHETIC & CARING: Deeply warm, understanding, emotionally supportive, heartfelt compassion.';
+    case 'concise':
+      return 'SHORT & SWEET: Ultra punchy (under 12 words), straight to the point, minimal filler.';
+    case 'friendly':
+    default:
+      return 'FRIENDLY & CASUAL: Warm, approachable, authentic everyday Instagram conversation.';
+  }
 }
 
 /**

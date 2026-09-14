@@ -13,6 +13,15 @@
   let lastContextData = null;
   let lastActiveCommentContext = null;
 
+  // In-memory predictive cache for instant comment replies
+  const replyCache = new Map();
+  let prefetchTimer = null;
+
+  function getReplyCacheKey(postAuthor, incomingAuthor, incomingText, stance, tone, language) {
+    const textSnippet = (incomingText || '').trim().toLowerCase().slice(0, 80);
+    return `${postAuthor || ''}|${incomingAuthor || ''}|${textSnippet}|${stance || 'positive'}|${tone || 'friendly'}|${language || 'auto'}`;
+  }
+
   const SPARKLE_SVG = `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M12 2L14.39 8.26L21 9.27L16.2 13.97L17.5 20.5L12 17.27L6.5 20.5L7.8 13.97L3 9.27L9.61 8.26L12 2Z" fill="white"/>
@@ -2184,13 +2193,31 @@
       variationIndex: currentVariation
     };
 
+    const cacheKey = getReplyCacheKey(
+      lastContextData.postAuthor,
+      lastContextData.author,
+      lastContextData.incomingText,
+      currentStance,
+      currentTone,
+      currentLanguage
+    );
+
+    // 1. Instant Cache Hit: Return cached reply immediately if user hasn't asked for a new variation or custom draft
+    if (currentVariation === 0 && !lastContextData.userDraftHint && replyCache.has(cacheKey)) {
+      const cached = replyCache.get(cacheKey);
+      console.log('[InstaReply AI] ⚡ Instant reply served from cache for @' + lastContextData.author);
+      renderAIResult(cached, true);
+      schedulePrefetchForVisibleComments();
+      return;
+    }
+
     try {
       const config = await getConfig();
       payload.replyLanguage = currentLanguage || config.replyLanguage || 'auto';
 
       // Check if user chose Edge AI (Prompt API)
       if (config.provider === 'edge_ai') {
-        await generateViaEdgeAI(payload);
+        await generateViaEdgeAI(payload, cacheKey);
         return;
       }
 
@@ -2200,7 +2227,11 @@
       });
 
       if (response && response.success) {
-        renderAIResult(response);
+        if (!lastContextData.userDraftHint) {
+          replyCache.set(cacheKey, response);
+        }
+        renderAIResult(response, false);
+        schedulePrefetchForVisibleComments();
       } else {
         renderAIError(response?.error || 'Failed to generate reply. Check your API settings.');
       }
@@ -2212,7 +2243,7 @@
   /**
    * Edge AI on-device generation via Main World Bridge (Prompt API / Gemini Nano)
    */
-  async function generateViaEdgeAI(payload) {
+  async function generateViaEdgeAI(payload, cacheKey) {
     ensurePageBridgeInjected();
     const requestId = 'edge_ai_' + Math.random().toString(36).substring(2, 10);
 
@@ -2237,7 +2268,11 @@
         window.removeEventListener('message', handleBridgeResponse);
 
         if (event.data.success) {
-          renderAIResult(event.data);
+          if (cacheKey && !lastContextData?.userDraftHint) {
+            replyCache.set(cacheKey, event.data);
+          }
+          renderAIResult(event.data, false);
+          schedulePrefetchForVisibleComments();
         } else {
           renderAIError(event.data.error || 'Edge AI generation failed.');
         }
@@ -2256,9 +2291,90 @@
   }
 
   /**
+   * Proactively pre-fetches suggested replies for other visible comments in the thread
+   * so that when the creator moves to reply to the next comment, it loads instantly.
+   */
+  function schedulePrefetchForVisibleComments() {
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(async () => {
+      try {
+        if (!lastContextData || !lastContextData.postAuthor) return;
+
+        // Check if there is an active comments container (drawer or feed post)
+        const commentsContainer = document.querySelector('div[role="dialog"]') ||
+                                  (activeInputTarget ? findPostContainer(activeInputTarget) : null);
+        if (!commentsContainer) return;
+
+        const commentItems = commentsContainer.querySelectorAll('.ig-comment, li, ul > div');
+        const queue = [];
+
+        for (const item of commentItems) {
+          if (queue.length >= 3) break;
+          if (
+            item.closest('.instareply-card-overlay') ||
+            item.closest('form') ||
+            item.closest('header')
+          ) {
+            continue;
+          }
+
+          const authorEl = item.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong');
+          if (!authorEl) continue;
+          const author = authorEl.textContent.trim().replace(/^@/, '');
+          if (!author || author === lastContextData.postAuthor || author === lastContextData.author) continue;
+
+          const commentText = extractCommentTextFromContainer(item, author);
+          if (!commentText || commentText.length < 2 || isCommentMetadata(commentText, author)) continue;
+
+          const key = getReplyCacheKey(lastContextData.postAuthor, author, commentText, currentStance, currentTone, currentLanguage);
+          if (!replyCache.has(key)) {
+            queue.push({ author, commentText, key });
+          }
+        }
+
+        if (queue.length === 0) return;
+
+        console.log(`[InstaReply AI] ⚡ Background predictive pre-fetching for ${queue.length} visible comments...`);
+
+        for (const item of queue) {
+          const prefetchPayload = {
+            contextType: 'comment',
+            replyMode: 'comment_reply',
+            isCurrentUserPostAuthor: Boolean(lastContextData.isCurrentUserPostAuthor),
+            relationshipSummary: `Replying to @${item.author}'s comment`,
+            incomingText: item.commentText,
+            postCaption: lastContextData.postCaption || '',
+            postAuthor: lastContextData.postAuthor || '',
+            postVisuals: lastContextData.postVisuals || null,
+            author: item.author,
+            isSpecificCommentReply: true,
+            userDraftHint: '',
+            stance: currentStance,
+            tone: currentTone,
+            variationIndex: 0,
+            replyLanguage: currentLanguage
+          };
+
+          chrome.runtime.sendMessage({
+            action: 'GENERATE_REPLY',
+            payload: prefetchPayload
+          }).then(res => {
+            if (res && res.success) {
+              replyCache.set(item.key, res);
+              console.log(`[InstaReply AI] ⚡ Pre-cached instant reply for @${item.author}`);
+            }
+          }).catch(() => {});
+        }
+      } catch (err) {
+        console.debug('[InstaReply AI] Background prefetch skipped:', err);
+      }
+    }, 450);
+  }
+
+  /**
    * Renders AI response details: Sentiment pill, Topics, and Reply textarea
    */
-  function renderAIResult(data) {
+  function renderAIResult(data, isFromCache = false) {
     if (!activeCard) return;
 
     showCardLoading(activeCard, false);
@@ -2275,8 +2391,9 @@
       outputArea.focus();
     }
 
-    if (modelBadge && data.modelUsed) {
-      modelBadge.textContent = data.modelUsed;
+    if (modelBadge) {
+      const baseModel = data.modelUsed || 'AI Assistant';
+      modelBadge.innerHTML = isFromCache ? `${baseModel} &bull; <span style="color: #34d399; font-weight: 600;">⚡ Instant</span>` : baseModel;
     }
 
     // Sentiment Pill
@@ -2288,6 +2405,7 @@
       <span class="instareply-sentiment-pill ${sentimentClass}">
         ${data.sentimentLabel || '✨ Analyzed'}
       </span>
+      ${isFromCache ? `<span class="instareply-sentiment-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);" title="Loaded instantly from predictive reply cache">⚡ Instant Cache</span>` : ''}
     `;
 
     // Key Topics
@@ -2537,12 +2655,16 @@
             <span class="instareply-control-label">Tone Style</span>
           </div>
           <div class="instareply-tones-row">
-            <button type="button" class="instareply-tone-chip" data-tone="friendly">😊 Friendly</button>
-            <button type="button" class="instareply-tone-chip" data-tone="enthusiastic">🔥 Hyped</button>
-            <button type="button" class="instareply-tone-chip" data-tone="humorous">😄 Humorous</button>
-            <button type="button" class="instareply-tone-chip" data-tone="professional">💼 Professional</button>
-            <button type="button" class="instareply-tone-chip" data-tone="empathetic">❤️ Empathetic</button>
-            <button type="button" class="instareply-tone-chip" data-tone="concise">⚡ Short</button>
+            <button type="button" class="instareply-tone-chip" data-tone="friendly" title="Friendly & Casual">😊 Friendly</button>
+            <button type="button" class="instareply-tone-chip" data-tone="humorous" title="Witty & Funny">😄 Funny</button>
+            <button type="button" class="instareply-tone-chip" data-tone="playful" title="Playful & Naughty / Cheeky">😈 Playful</button>
+            <button type="button" class="instareply-tone-chip" data-tone="savage" title="Savage & Roast / Sarcastic Clapback">😏 Savage</button>
+            <button type="button" class="instareply-tone-chip" data-tone="geek" title="Geek & Tech / Nerd Culture">🤓 Geek</button>
+            <button type="button" class="instareply-tone-chip" data-tone="spicy" title="Spicy & Flirty / Charismatic">🌶️ Spicy</button>
+            <button type="button" class="instareply-tone-chip" data-tone="enthusiastic" title="Enthusiastic & Hyped">🔥 Hyped</button>
+            <button type="button" class="instareply-tone-chip" data-tone="professional" title="Professional & Polished">💼 Professional</button>
+            <button type="button" class="instareply-tone-chip" data-tone="empathetic" title="Empathetic & Caring">❤️ Empathetic</button>
+            <button type="button" class="instareply-tone-chip" data-tone="concise" title="Short & Punchy">⚡ Short</button>
           </div>
         </div>
 
