@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "AI-powered Instagram comment and DM reply assistant Chrome extension",
   "scripts": {
-    "test": "node test/automated-tests.js"
+    "test": "node test/automated-tests.js",
+    "package": "bash scripts/package.sh"
   },
   "author": "Fung Lam <fung@androidfung.com>",
   "license": "MIT"

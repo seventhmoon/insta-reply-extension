@@ -1,35 +1,58 @@
-# InstaReply AI - Smart Instagram Comment & DM Assistant
+# InstaReply AI - Smart Instagram Comment, DM, Reel & Story Assistant
 
-A Google Chrome Extension (Manifest V3) that provides a convenient, inline AI assistant directly within Instagram comments and Direct Messages (DMs).
+A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram Comments**, **Reels**, **Direct Messages (DMs)**, and **Stories**.
 
 ---
 
-## ✨ Features
+## ✨ Core Features
 
-- **Inline Shortcut Icon**: Seamlessly injects an Instagram-gradient shortcut button into comment boxes (right next to "Post") and DM composers (inside the pill on the right) on `instagram.com`.
-- **PIP & Fullscreen DM Support**: Works seamlessly in both fullscreen Direct Messages and floating bottom-right mini-windows, with inline "✨ AI Reply" chips on received chat bubbles.
-- **Visual Scene Awareness**: Automatically parses Instagram's computer vision alt text and media thumbnails to ground AI replies in the actual visual elements of the photo or video.
-- **Creator vs. Visitor Perspective**: Detects if you are the author of the post or an outside commenter, automatically speaking in the 1st person ("I", "my") when answering fans.
-- **1-Click Stance Control**: Toggle replies between `🟢 Positive` (enthusiastic/agree), `⚪ Neutral` (balanced/factual), and `🔴 Negative` (polite decline/firm boundary).
-- **Sentiment & Topic Analysis**:
-  - Automatically analyzes the incoming comment or conversation thread.
-  - Displays sentiment tags (e.g. `🟢 Positive / Praise`, `💼 Business Inquiry`, `🔴 Issue`) and extracted topic hashtags (`#Presets`, `#Pricing`, `#Collaboration`).
-  - Uses this context to craft authentic, relevant replies.
-- **Draft Hint Awareness**:
-  - If you type a quick thought or guidance into the reply box (e.g., *"friendly decline and ask for email"* or *"mention our new spring line"*), InstaReply reads your text as a **draft hint** and directs the AI according to your intention.
-- **AI Model Selection & Dynamic Model Fetching**:
-  - 🌟 **Google Gemini API**: Native integration with dynamic model fetching for `gemini-1.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, etc.
-  - ⚡ **Chrome Built-in Prompt API (Edge AI)**: Supports on-device Gemini Nano via Chrome's Prompt API (`chrome://flags/#prompt-api-for-gemini-nano`) for private, zero-latency inference.
-  - 🖥️ **Local LLM**: Supports local Ollama or OpenAI-compatible endpoints (e.g., `http://localhost:11434/v1`) with 1-click model detection.
-- **Tone Presets**: Quick switch between tones with one click:
-  - 😊 Friendly & Casual
-  - 💼 Professional & Polished
-  - 🔥 Enthusiastic & Hyped
-  - 😄 Witty & Humorous
-  - ❤️ Empathetic & Caring
-  - ⚡ Short & Sweet
-- **Regenerate ("Regen")**: Generates alternate response variations with different angles and phrasing.
-- **One-Click Insert**: Safely dispatches React synthetic input events to inject drafted replies directly into Instagram's inputs without breaking UI state.
+### 📸 Instagram Stories & Story DM Replies
+- **Seamless Story Composer Shortcut**: Automatically injects a branded shortcut button into the Story reply pill on desktop web, supporting standard and localized placeholders (*"Reply to..."*, *"Send message..."*, *"Responder..."*, *"メッセージ..."*).
+- **Active Slide Isolation**: Scopes extraction strictly to the active slide, preventing multi-slide carousel bleed or background feed post pollution.
+- **Smart Story Text Extraction**: Extracts text stickers overlaid on the slide while ignoring Instagram system elements (emoji *"Quick Reactions"* trays and navigation CTAs like *"Watch full reel"* or *"View post"*).
+- **Shared Reel & Post Awareness**: Automatically detects when a story is sharing a Reel or Post, identifying the original creator and describing the visual context.
+- **Auto-Pauses Story Playback**: Automatically pauses the Story timer and video while the assistant card is open, and resumes playback upon closing.
+- **Safe React Input Insertion**: Handles prototype setter resolution between `HTMLInputElement` and `HTMLTextAreaElement` without `TypeError: Illegal invocation`, cleanly updating React internal state.
+- **Dynamic Re-Injection**: Listens to React reconciliation and SPA slide transitions, ensuring the shortcut button remains accessible as you browse.
+
+### 💬 Post & Reel Comments
+- **Inline Shortcut Button**: Placed right beside Instagram's native "Post" button.
+- **Comment-Level "✨ AI Reply" Chips**: Injected next to each comment's "Reply" button for 1-click targeted responses.
+- **Reels Drawer Isolation**: Distinguishes comments drawer contents from the main Reel background container, preventing metadata cross-contamination.
+- **Creator vs. Fan Perspective**: Automatically detects if you are the author of the post (speaking warmly in 1st person) or a visitor participating in the conversation.
+
+### ✉️ Direct Messages (Fullscreen & Mini-Window PIP)
+- **Omnipresent DM Support**: Works in both fullscreen `/direct/` threads and floating bottom-right picture-in-picture (PIP) chat windows.
+- **Message Bubble Chips**: Inline "✨ AI Reply" chips on received incoming messages.
+- **Conversation Context**: Understands recent message context and addresses the sender naturally.
+
+### 👁️ Visual Scene & Multimodal Vision
+- **Multimodal Image Support**: Directly analyzes post/reel photos using the Gemini Vision API.
+- **Computer Vision Alt Parsing**: Parses Instagram's accessibility scene descriptions and video posters to ground replies in the actual visual elements of the photo or video.
+
+### 🎯 Customization & Control
+- **1-Click Stance Selector**:
+  - `🟢 Positive` (Supportive, appreciative, encouraging)
+  - `⚪ Neutral` (Objective, informative, balanced)
+  - `🔴 Negative` (Polite boundaries, decline, disagreement)
+- **10+ Tone Presets**: Quick-switch between *Friendly, Funny, Playful, Savage, Geek, Spicy, Hyped, Professional, Empathetic*, and *Short*.
+- **Zero-Latency Multi-Tone Bundling**: Bundles tone drafts in a single AI request for instant tone switching with zero extra API calls.
+- **Multi-Language Support**: Choose your response language (*Auto-Detect / Match Context, English, Spanish, French, German, Italian, Portuguese, Japanese, Traditional Chinese, Simplified Chinese, Korean*).
+- **Draft Hint Steering**: Type a quick thought into the reply box (e.g., *"friendly decline and ask for email"*), and InstaReply will follow your guidance.
+- **Sentiment & Topic Analysis**: Displays sentiment tags (*Praise, Business Inquiry, Issue*) and extracted topic hashtags.
+
+---
+
+## 🤖 Supported AI Providers
+
+| Provider | Description | Recommended Models |
+| :--- | :--- | :--- |
+| **Google Gemini** | Official API with dynamic model list fetching & multimodal vision. | `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-1.5-pro` |
+| **Groq Cloud** | Ultra-high-speed LPU inference (free tier available). | `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768` |
+| **OpenRouter** | Multi-model gateway with free tiers. | `meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free` |
+| **Custom OpenAI-Compatible** | Any OpenAI-spec API (GitHub Models, Mistral AI, Azure, DeepSeek). | `gpt-4o-mini`, `mistral-small-latest`, custom endpoints |
+| **Local LLM** | Self-hosted offline models via Ollama or LM Studio. | `llama3.2`, `mistral:latest`, `qwen2.5:7b` |
+| **Edge AI (Gemini Nano)** | On-device private inference via Chrome Built-in Prompt API. | Chrome Prompt API (`chrome://flags/#prompt-api-for-gemini-nano`) |
 
 ---
 
@@ -37,62 +60,93 @@ A Google Chrome Extension (Manifest V3) that provides a convenient, inline AI as
 
 ### 1. Load into Google Chrome
 
-1. Open Google Chrome and navigate to `chrome://extensions`.
-2. In the top-right corner, turn on **Developer mode**.
-3. Click the **Load unpacked** button.
-4. Select the extension directory:
-   `/Users/fung/.gemini/antigravity/scratch/insta-reply-extension`
-5. The **InstaReply AI** icon will appear in your Chrome toolbar.
+1. Clone or download this repository.
+2. Open Google Chrome and navigate to `chrome://extensions`.
+3. In the top-right corner, enable **Developer mode**.
+4. Click **Load unpacked**.
+5. Select the `insta-reply-extension` directory.
+6. The **InstaReply AI** icon will appear in your Chrome toolbar.
 
 ### 2. Configure Your AI Provider
 
 1. Click the **InstaReply AI** icon in your Chrome toolbar.
-2. Choose your preferred AI provider:
-   - **Gemini API (Recommended)**:
-     - Paste your Gemini API key (obtain a free key from [Google AI Studio](https://aistudio.google.com/app/apikey)).
-     - Select your model (e.g., `gemini-1.5-flash`).
-     - Click **Test Connection** to verify.
-   - **Edge AI (On-Device)**:
-     - Uses Chrome's built-in Prompt API if enabled via `chrome://flags/#prompt-api-for-gemini-nano`.
-   - **Local LLM**:
-     - Set endpoint (e.g. `http://localhost:11434/v1`) and model name (e.g. `llama3.2`).
-3. Set your preferred default tone and custom persona rules.
-4. Click **Save Settings**.
+2. Select your provider:
+   - **Gemini API**: Paste your API key from [Google AI Studio](https://aistudio.google.com/app/apikey) and click **Fetch Latest Models**.
+   - **Groq API**: Paste your key from [Groq Console](https://console.groq.com/keys).
+   - **OpenRouter**: Paste your key from [openrouter.ai](https://openrouter.ai/keys).
+   - **Local LLM**: Ensure Ollama or LM Studio is running (e.g. `http://localhost:11434/v1`) and click **Fetch Local Models**.
+3. Click **Test Connection** to verify your setup.
+4. Customize your default stance, tone, language, and custom persona rules, then click **Save Settings**.
 
 ---
 
-## 🧪 Local Testing & Verification
+## 🧪 Testing & Verification
 
-You can test the extension directly without needing to log in to Instagram:
+InstaReply AI includes a comprehensive test harness covering unit logic, regression edge cases, and live headless browser DOM integration:
 
-1. Open the mock test page in Chrome:
-   ```bash
-   open /Users/fung/.gemini/antigravity/scratch/insta-reply-extension/test/mock-instagram.html
-   ```
-2. The page simulates both an Instagram post feed comment section and a DM chat window.
-3. Test clicking the shortcut icon, typing draft hints into the comment box, regenerating responses, and inserting replies.
+### Automated Test Suite
+Run the test suite with Node.js:
+```bash
+npm test
+```
+
+The test runner validates **36 automated test cases** across:
+- **Suite 1: Syntax & Manifest Quality**: Validates all scripts and Manifest V3 structure.
+- **Suite 2: Dedicated Post Context Extraction**: Canonical author detection, semantic caption parsing, visual thumbnail filtering.
+- **Suite 2b: Instagram Reel Extraction**: Shortcode resolution, comments drawer isolation, reel video visuals.
+- **Suite 2c: Instagram Story Reply & Context Extraction**: Multilingual input detection, active slide scoping, React prototype setters, button re-injection, reaction tray exclusion, and shared Reel CTA rejection.
+- **Suite 3: Comment Isolation & Anti-Stale Caching**: Thread scoping and cache eviction.
+- **Suite 4: Multi-Tone Bundling & AI Response Parsing**: Markdown fence stripping and JSON parsing.
+- **Suite 5: Real Headless Chrome DOM Integration**: Automated headless Chrome test executing against `test/browser-test-runner.html`.
+- **Suite 6: Multi-Provider & Combobox Configuration**: URL normalization and request headers.
+
+### In-Browser Interactive Testing
+You can also run tests visually in Chrome without logging in to Instagram:
+- **Interactive DOM Test Runner**:
+  ```bash
+  open test/browser-test-runner.html
+  ```
+- **Simulated Instagram Interface**:
+  ```bash
+  open test/mock-instagram.html
+  ```
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
 insta-reply-extension/
-├── manifest.json                  # Chrome Extension Manifest V3 configuration
+├── manifest.json              # Chrome Extension Manifest V3 configuration
 ├── background/
-│   └── service-worker.js         # Service worker handling storage & AI APIs
+│   └── service-worker.js     # Background service worker for LLM API calls, cache & storage
 ├── content/
-│   ├── content.js                 # Content script for Instagram DOM injection & React events
-│   └── content.css                # Instagram-native UI styles & floating AI card
+│   ├── content.js             # Content script: DOM injection, Story/Reel scoping & event handlers
+│   ├── content.css            # Extension styling, dark mode floating assistant card & buttons
+│   └── page-bridge.js         # Page-context bridge for native React DOM interactions
 ├── popup/
-│   ├── popup.html                 # Settings & configuration popup UI
-│   ├── popup.css                  # Popup modern dark theme styling
-│   └── popup.js                   # Settings state & connection test controller
-├── icons/
-│   ├── icon16.png
-│   ├── icon48.png
-│   └── icon128.png
+│   ├── popup.html             # Extension settings UI with provider combobox
+│   ├── popup.css              # Settings popup styling
+│   └── popup.js               # Settings controller & API connection testing
 ├── test/
-│   └── mock-instagram.html        # Local Instagram test harness
-└── README.md
+│   ├── automated-tests.js     # Automated test suite (36 tests)
+│   ├── browser-test-runner.html # Headless Chrome DOM integration test harness
+│   └── mock-instagram.html    # Interactive Instagram UI test simulator
+├── icons/                     # Extension toolbar icons (16px, 48px, 128px)
+├── package.json               # Test script and package configuration
+└── README.md                  # Project documentation
 ```
+
+---
+
+## 🔒 Privacy & Permissions
+
+- **Direct Client-to-API**: All AI calls are made directly from your browser's service worker to your selected AI provider. No intermediate backend server is used.
+- **Local Storage**: API keys, preferences, and cached responses are stored securely in Chrome's local extension storage.
+- **Domain Scoped**: Active only on `instagram.com` domains.
+
+---
+
+## 📄 License
+
+MIT License. See [package.json](package.json) for details.
