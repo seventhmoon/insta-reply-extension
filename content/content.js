@@ -17,9 +17,30 @@
   const replyCache = new Map();
   let prefetchTimer = null;
 
-  function getReplyCacheKey(postAuthor, incomingAuthor, incomingText, stance, tone, language) {
+  /**
+   * Generates a unique post identifier (shortcode or unique caption snippet)
+   * to strictly scope cached replies and pre-fetches to the current post
+   */
+  function extractPostIdentifier(container, postAuthor = '', postCaption = '') {
+    if (container) {
+      const link = container.querySelector('a[href*="/p/"], a[href*="/reel/"]');
+      if (link) {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/\/(p|reel)\/([A-Za-z0-9_-]+)/);
+        if (match && match[2]) return match[2];
+      }
+    }
+    const path = window.location.pathname;
+    const pathMatch = path.match(/\/(p|reel)\/([A-Za-z0-9_-]+)/);
+    if (pathMatch && pathMatch[2]) return pathMatch[2];
+
+    const cleanCap = (postCaption || '').replace(/\[Author Comment #[0-9]+\]:?/g, '').trim().slice(0, 40);
+    return `${postAuthor || 'post'}_${cleanCap}`;
+  }
+
+  function getReplyCacheKey(postId, postAuthor, incomingAuthor, incomingText, stance, tone, language) {
     const textSnippet = (incomingText || '').trim().toLowerCase().slice(0, 80);
-    return `${postAuthor || ''}|${incomingAuthor || ''}|${textSnippet}|${stance || 'positive'}|${tone || 'friendly'}|${language || 'auto'}`;
+    return `${postId || 'post'}|${postAuthor || ''}|${incomingAuthor || ''}|${textSnippet}|${stance || 'positive'}|${tone || 'friendly'}|${language || 'auto'}`;
   }
 
   const SPARKLE_SVG = `
@@ -1233,7 +1254,7 @@
       return visibleVideos[0];
     }
 
-    return videos[0];
+    return null;
   }
 
   /**
@@ -1417,12 +1438,20 @@
    * Finds the closest Instagram post or dialog container for a given element
    */
   function findPostContainer(el) {
-    const activeVideo = findActiveReelVideo();
-
     if (el && el.closest) {
-      // 1. Direct modal dialog
+      // 1. Direct parent article / feed post (highest priority when interacting with feed post)
+      const parentArticle = el.closest('article') || el.closest('.ig-post-card');
+      if (parentArticle) return parentArticle;
+
+      // 2. Direct modal dialog
       const parentModal = el.closest('div[role="dialog"]');
       if (parentModal) {
+        // If parentModal contains the post's own article or video
+        const modalArticle = parentModal.querySelector('article, .ig-post-card');
+        if (modalArticle) {
+          return modalArticle;
+        }
+
         const heading = parentModal.querySelector('h1, h2, h3, [role="heading"]');
         const headingText = (heading?.textContent || '').trim().toLowerCase();
         const isCommentsDrawer = (
@@ -1430,45 +1459,33 @@
           headingText === '留言' ||
           headingText === 'コメント' ||
           headingText === 'comentarios'
-        ) || (
-          !parentModal.querySelector('video') &&
-          !parentModal.querySelector('article') &&
-          Boolean(activeVideo)
         );
 
-        if (isCommentsDrawer) {
-          const activeReel = findActiveReelContainer(activeVideo);
-          if (activeReel) return activeReel;
-        }
-
-        // If parentModal contains the post's own video or article
-        if (parentModal.querySelector('video, article, .ig-post-card')) {
-          return parentModal;
-        }
-
-        if (activeVideo) {
-          const activeReel = findActiveReelContainer(activeVideo);
-          if (activeReel) return activeReel;
+        if (isCommentsDrawer || window.location.pathname.startsWith('/reel')) {
+          const activeVideo = findActiveReelVideo();
+          if (activeVideo) {
+            const activeReel = findActiveReelContainer(activeVideo);
+            if (activeReel) return activeReel;
+          }
         }
 
         return parentModal;
       }
-
-      // 2. Direct parent article / feed post
-      const parentArticle = el.closest('article') || el.closest('.ig-post-card');
-      if (parentArticle) return parentArticle;
     }
 
-    // 3. Active Reel on screen
-    if (activeVideo) {
-      const activeReel = findActiveReelContainer(activeVideo);
-      if (activeReel) return activeReel;
+    // 3. Active Reel on screen if on /reel/ route
+    if (window.location.pathname.startsWith('/reel')) {
+      const activeVideo = findActiveReelVideo();
+      if (activeVideo) {
+        const activeReel = findActiveReelContainer(activeVideo);
+        if (activeReel) return activeReel;
+      }
     }
 
     // 4. Check if an active modal dialog is open
     const openModal = document.querySelector('div[role="dialog"] article') || document.querySelector('div[role="dialog"]');
-    if (openModal && openModal.querySelector('video, article, .ig-post-card')) {
-      return openModal;
+    if (openModal && openModal.querySelector('video, article, .ig-post-card, img')) {
+      return openModal.querySelector('article') || openModal;
     }
 
     // 5. Fallback only if on a dedicated single-post URL
@@ -2012,38 +2029,36 @@
     currentLanguage = config.replyLanguage || 'auto';
     const shouldIncludeCaption = config.includePostCaption !== false;
 
-    // 1. If an active Reel video is visible/playing on screen, prioritize active Reel
-    const activeVideo = findActiveReelVideo();
-    let postContainer = null;
+    // 1. Locate standard post container (feed post, photo modal, reels, etc.)
+    const postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
     let postAuthor = '';
     let postCaption = '';
     let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
-    if (activeVideo) {
-      postContainer = findActiveReelContainer(activeVideo);
-      if (postContainer) {
+    if (postContainer) {
+      // Check if container is a Reel or has a video without normal post header
+      const isReel = postContainer.dataset?.instareplyReel === 'true' ||
+                     window.location.pathname.startsWith('/reel') ||
+                     (postContainer.querySelector('video') && !postContainer.querySelector('header, .ig-post-header'));
+
+      if (isReel) {
         postAuthor = extractReelAuthor(postContainer);
         postCaption = extractReelCaption(postContainer, postAuthor);
-        postVisuals = extractReelVisuals(postContainer, activeVideo);
+        postVisuals = extractReelVisuals(postContainer, postContainer.querySelector('video'));
+      }
+
+      if (!postAuthor) {
+        postAuthor = extractPostAuthor(postContainer);
+      }
+      if (!postCaption) {
+        postCaption = extractPostCaption(postContainer, postAuthor);
+      }
+      if (!postVisuals.thumbnailUrl && !postVisuals.description) {
+        postVisuals = extractPostVisuals(postContainer);
       }
     }
 
-    // 2. Otherwise locate standard post container (feed post, photo modal, etc.)
-    if (!postContainer) {
-      postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
-    }
-
-    if (!postAuthor && postContainer) {
-      postAuthor = extractPostAuthor(postContainer);
-    }
-    if (!postCaption && postContainer) {
-      postCaption = extractPostCaption(postContainer, postAuthor);
-    }
-    if (!postVisuals.thumbnailUrl && !postVisuals.description && postContainer) {
-      postVisuals = extractPostVisuals(postContainer);
-    }
-
-    // 3. Scan author comments across the thread or comments drawer
+    // 2. Scan author comments across the thread or comments drawer
     if (postContainer && postAuthor) {
       const authorComments = extractAllAuthorComments(postContainer, postAuthor);
       if (authorComments.length > 0) {
@@ -2055,6 +2070,8 @@
         }
       }
     }
+
+    const postId = extractPostIdentifier(postContainer, postAuthor, postCaption);
 
     // Extract Context
     let context;
@@ -2075,6 +2092,7 @@
 
       context = {
         contextType: contextType || 'comment',
+        postId,
         incomingText: specificComment.incomingText,
         author: specificComment.author,
         postCaption,
@@ -2086,6 +2104,7 @@
       };
     } else {
       context = extractContext(inputEl, contextType, postContainer);
+      context.postId = postId || context.postId || extractPostIdentifier(postContainer, context.postAuthor, context.postCaption);
       if (!context.postCaption) context.postCaption = postCaption;
       if (!context.postAuthor) context.postAuthor = postAuthor;
       if (!context.postVisuals) context.postVisuals = postVisuals;
@@ -2099,7 +2118,7 @@
       Object.assign(context, rel);
     }
 
-    lastContextData = { ...context, contextType };
+    lastContextData = { ...context, contextType, postId: context.postId || postId };
 
     // Create & Position Card
     activeCard = createCardDOM(context);
@@ -2136,13 +2155,18 @@
         postVisuals = extractPostVisuals(article);
 
         // In Reels, if postAuthor or postCaption was not inside the comments drawer, check active Reel
-        const activeReel = findActiveReelContainer();
-        if (activeReel && activeReel !== article) {
-          if (!postAuthor) postAuthor = extractPostAuthor(activeReel);
-          if (!postCaption) postCaption = extractPostCaption(activeReel, postAuthor);
-          if (!postVisuals.thumbnailUrl && !postVisuals.description) {
-            const rv = extractPostVisuals(activeReel);
-            if (rv.thumbnailUrl || rv.description) postVisuals = rv;
+        const isReelContext = window.location.pathname.startsWith('/reel') ||
+                              article.getAttribute('role') === 'dialog' ||
+                              Boolean(article.closest('div[role="dialog"]'));
+        if (isReelContext) {
+          const activeReel = findActiveReelContainer();
+          if (activeReel && activeReel !== article) {
+            if (!postAuthor) postAuthor = extractPostAuthor(activeReel);
+            if (!postCaption) postCaption = extractPostCaption(activeReel, postAuthor);
+            if (!postVisuals.thumbnailUrl && !postVisuals.description) {
+              const rv = extractPostVisuals(activeReel);
+              if (rv.thumbnailUrl || rv.description) postVisuals = rv;
+            }
           }
         }
 
@@ -2284,6 +2308,7 @@
     };
 
     const cacheKey = getReplyCacheKey(
+      lastContextData.postId,
       lastContextData.postAuthor,
       lastContextData.author,
       lastContextData.incomingText,
@@ -2391,8 +2416,8 @@
         if (!lastContextData || !lastContextData.postAuthor) return;
 
         // Check if there is an active comments container (drawer or feed post)
-        const commentsContainer = document.querySelector('div[role="dialog"]') ||
-                                  (activeInputTarget ? findPostContainer(activeInputTarget) : null);
+        const commentsContainer = (activeInputTarget ? findPostContainer(activeInputTarget) : null) ||
+                                  document.querySelector('div[role="dialog"]');
         if (!commentsContainer) return;
 
         const commentItems = commentsContainer.querySelectorAll('.ig-comment, li, ul > div');
@@ -2416,7 +2441,7 @@
           const commentText = extractCommentTextFromContainer(item, author);
           if (!commentText || commentText.length < 2 || isCommentMetadata(commentText, author)) continue;
 
-          const key = getReplyCacheKey(lastContextData.postAuthor, author, commentText, currentStance, currentTone, currentLanguage);
+          const key = getReplyCacheKey(lastContextData.postId, lastContextData.postAuthor, author, commentText, currentStance, currentTone, currentLanguage);
           if (!replyCache.has(key)) {
             queue.push({ author, commentText, key });
           }
@@ -2609,6 +2634,7 @@
         if (lastContextData) {
           lastContextData.postCaption = '';
           lastContextData.postAuthor = '';
+          lastContextData.postId = 'unbound_' + Date.now();
         }
         const banner = unbindPostBtn.closest('.instareply-context-banner');
         if (banner) {
@@ -3162,6 +3188,7 @@
    * Closes the active card
    */
   function closeCard() {
+    clearTimeout(prefetchTimer);
     if (activeCard && activeCard.parentNode) {
       activeCard.parentNode.removeChild(activeCard);
     }
