@@ -520,6 +520,30 @@
   box-shadow: 0 1px 6px rgba(245, 158, 11, 0.35);
 }
 
+.instareply-tone-chip.active[data-tone="enthusiastic"] {
+  background: linear-gradient(135deg, #f43f5e, #be123c);
+  border-color: #f43f5e;
+  box-shadow: 0 1px 6px rgba(244, 63, 94, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="professional"] {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-color: #3b82f6;
+  box-shadow: 0 1px 6px rgba(59, 130, 246, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="empathetic"] {
+  background: linear-gradient(135deg, #ec4899, #be185d);
+  border-color: #ec4899;
+  box-shadow: 0 1px 6px rgba(236, 72, 153, 0.35);
+}
+
+.instareply-tone-chip.active[data-tone="concise"] {
+  background: linear-gradient(135deg, #10b981, #047857);
+  border-color: #10b981;
+  box-shadow: 0 1px 6px rgba(16, 185, 129, 0.35);
+}
+
 /* Language Selector */
 .instareply-lang-wrapper {
   display: flex;

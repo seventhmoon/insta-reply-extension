@@ -880,7 +880,13 @@ function parseAIResponse(rawText) {
     let clean = rawText.trim();
     // Remove markdown ```json ... ``` wrapper if present
     if (clean.startsWith('```')) {
-      clean = clean.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+      clean = clean.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim();
+    }
+    // Extract substring between first { and last } if preamble exists
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      clean = clean.slice(firstBrace, lastBrace + 1);
     }
     const json = JSON.parse(clean);
     return {

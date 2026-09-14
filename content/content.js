@@ -17,6 +17,8 @@
   const replyCache = new Map();
   let prefetchTimer = null;
   let stancePrefetchTimer = null;
+  let currentGenerationId = 0;
+  let activeGenerationContext = null;
 
   function setReplyCacheEntry(key, value) {
     if (replyCache.size > 250) {
@@ -2454,6 +2456,8 @@
   async function executeReplyGeneration() {
     if (!activeCard) return;
 
+    const thisGenId = ++currentGenerationId;
+
     const payload = {
       contextType: lastContextData.contextType,
       replyMode: lastContextData.replyMode || 'post_comment',
@@ -2491,6 +2495,31 @@
       return;
     }
 
+    // 2. In-Flight Bundling Reuse: If an active primary request is already computing that bundles this requested tone, wait on it instead of duplicating network call
+    if (
+      currentVariation === 0 &&
+      !lastContextData.userDraftHint &&
+      activeGenerationContext &&
+      activeGenerationContext.postId === lastContextData.postId &&
+      activeGenerationContext.author === lastContextData.author &&
+      activeGenerationContext.stance === currentStance &&
+      activeGenerationContext.bundledTones.includes(currentTone.toLowerCase())
+    ) {
+      console.log(`[InstaReply AI] ⏳ Waiting on in-flight bundled generation for '${currentTone}'...`);
+      showCardLoading(activeCard, true);
+      await activeGenerationContext.promise.catch(() => null);
+
+      if (thisGenId !== currentGenerationId) return;
+
+      if (replyCache.has(cacheKey)) {
+        const cached = replyCache.get(cacheKey);
+        renderAIResult(cached, true);
+        schedulePrefetchForAlternativeStances();
+        schedulePrefetchForVisibleComments();
+        return;
+      }
+    }
+
     showCardLoading(activeCard, true);
 
     try {
@@ -2499,14 +2528,33 @@
 
       // Check if user chose Edge AI (Prompt API)
       if (config.provider === 'edge_ai') {
-        await generateViaEdgeAI(payload, cacheKey);
+        await generateViaEdgeAI(payload, cacheKey, thisGenId);
         return;
       }
 
-      const response = await chrome.runtime.sendMessage({
+      const bundledCandidates = ['friendly', 'humorous', 'playful', 'savage', 'concise'];
+      const currentBundled = bundledCandidates.filter(t => t !== currentTone.toLowerCase());
+
+      const requestPromise = chrome.runtime.sendMessage({
         action: 'GENERATE_REPLY',
         payload
       });
+
+      if (currentVariation === 0 && !lastContextData.userDraftHint) {
+        activeGenerationContext = {
+          promise: requestPromise,
+          postId: lastContextData.postId,
+          author: lastContextData.author,
+          stance: currentStance,
+          bundledTones: currentBundled
+        };
+      }
+
+      const response = await requestPromise;
+
+      if (activeGenerationContext && activeGenerationContext.promise === requestPromise) {
+        activeGenerationContext = null;
+      }
 
       if (response && response.success) {
         if (!lastContextData.userDraftHint) {
@@ -2536,28 +2584,43 @@
             }
           }
         }
+
+        // Stale check: Discard rendering if a newer user click arrived while waiting
+        if (thisGenId !== currentGenerationId) {
+          console.log(`[InstaReply AI] Discarding outdated generation response (#${thisGenId} vs current #${currentGenerationId})`);
+          return;
+        }
+
         renderAIResult(response, false);
         schedulePrefetchForAlternativeStances();
         schedulePrefetchForVisibleComments();
       } else {
+        if (thisGenId !== currentGenerationId) return;
         renderAIError(response?.error || 'Failed to generate reply. Check your API settings.');
       }
     } catch (err) {
+      if (thisGenId !== currentGenerationId) return;
       renderAIError(err.message || 'Error communicating with AI service.');
+    } finally {
+      if (activeGenerationContext && activeGenerationContext.promise === requestPromise) {
+        activeGenerationContext = null;
+      }
     }
   }
 
   /**
    * Edge AI on-device generation via Main World Bridge (Prompt API / Gemini Nano)
    */
-  async function generateViaEdgeAI(payload, cacheKey) {
+  async function generateViaEdgeAI(payload, cacheKey, genId) {
     ensurePageBridgeInjected();
     const requestId = 'edge_ai_' + Math.random().toString(36).substring(2, 10);
 
     return new Promise((resolve) => {
       let timeoutId = setTimeout(() => {
         window.removeEventListener('message', handleBridgeResponse);
-        renderAIError('Edge AI request timed out. Chrome Prompt API may not be enabled (visit chrome://flags/#prompt-api-for-gemini-nano) or model is still downloading.');
+        if (!genId || genId === currentGenerationId) {
+          renderAIError('Edge AI request timed out. Chrome Prompt API may not be enabled (visit chrome://flags/#prompt-api-for-gemini-nano) or model is still downloading.');
+        }
         resolve();
       }, 12000);
 
@@ -2600,11 +2663,15 @@
               }
             }
           }
-          renderAIResult(event.data, false);
-          schedulePrefetchForAlternativeStances();
-          schedulePrefetchForVisibleComments();
+          if (!genId || genId === currentGenerationId) {
+            renderAIResult(event.data, false);
+            schedulePrefetchForAlternativeStances();
+            schedulePrefetchForVisibleComments();
+          }
         } else {
-          renderAIError(event.data.error || 'Edge AI generation failed.');
+          if (!genId || genId === currentGenerationId) {
+            renderAIError(event.data.error || 'Edge AI generation failed.');
+          }
         }
         resolve();
       }
@@ -2622,7 +2689,7 @@
 
   /**
    * Proactively pre-fetches alternative reply stances (neutral, negative/firm)
-   * and their bundled tone styles for the current comment/post in the background.
+   * and their bundled tone styles for the current comment/post concurrently in the background.
    * This enables instantaneous (0ms) stance & tone toggling without spinners.
    */
   function schedulePrefetchForAlternativeStances() {
@@ -2640,10 +2707,10 @@
         const allStances = ['positive', 'neutral', 'negative'];
         const remainingStances = allStances.filter(s => s !== baseStance);
 
-        for (const altStance of remainingStances) {
+        await Promise.all(remainingStances.map(async (altStance) => {
           // If user moved to another comment/post during warmup, abort
           if (!lastContextData || lastContextData.postId !== snapshot.postId || lastContextData.author !== snapshot.author) {
-            break;
+            return;
           }
 
           const altKey = getReplyCacheKey(
@@ -2655,7 +2722,7 @@
             baseTone,
             baseLang
           );
-          if (replyCache.has(altKey)) continue;
+          if (replyCache.has(altKey)) return;
 
           const prefetchPayload = {
             contextType: snapshot.contextType || 'comment',
@@ -2707,7 +2774,7 @@
             }
             console.log(`[InstaReply AI] ⚡ Pre-cached stance '${altStance}' + tone drafts for @${snapshot.author}`);
           }
-        }
+        }));
       } catch (err) {
         console.debug('[InstaReply AI] Stance prefetch skipped:', err);
       }
@@ -3189,6 +3256,7 @@
     // Tone chip clicks
     card.querySelectorAll('.instareply-tone-chip').forEach(chip => {
       chip.addEventListener('click', () => {
+        if (currentTone === chip.dataset.tone) return;
         currentTone = chip.dataset.tone;
         setCardActiveTone(card, currentTone);
         currentVariation = 0;
@@ -3527,6 +3595,9 @@
    */
   function closeCard() {
     clearTimeout(prefetchTimer);
+    clearTimeout(stancePrefetchTimer);
+    currentGenerationId++;
+    activeGenerationContext = null;
     if (activeCard && activeCard.parentNode) {
       activeCard.parentNode.removeChild(activeCard);
     }
