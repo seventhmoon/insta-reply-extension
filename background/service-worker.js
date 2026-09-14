@@ -874,7 +874,8 @@ function buildStructuredPrompt({
   customInstructions
 }) {
   const isCommentReply = replyMode === 'comment_reply' || Boolean(isSpecificCommentReply);
-  const isPostComment = replyMode === 'post_comment' && !isCommentReply && contextType !== 'dm';
+  const isStoryReply = replyMode === 'story_reply' || contextType === 'story';
+  const isPostComment = replyMode === 'post_comment' && !isCommentReply && !isStoryReply && contextType !== 'dm';
 
   const primaryTone = (tone || 'friendly').toLowerCase();
   const popularTones = ['friendly', 'humorous', 'playful', 'savage', 'concise'];
@@ -897,6 +898,8 @@ ${altTones.map(t => `     * ${t}: ${getToneInstruction(t)}`).join('\n')}
   }
   if (isCurrentUserPostAuthor) {
     roleHeader += `- User Perspective: CREATOR of the post (@${postAuthor}). Replying directly to audience/commenters.\n`;
+  } else if (isStoryReply) {
+    roleHeader += `- User Perspective: FOLLOWER / FRIEND replying directly to @${postAuthor || 'creator'}'s Instagram Story (sent via DM).\n`;
   } else if (isCommentReply) {
     roleHeader += `- User Perspective: FOLLOWER / VISITOR replying to @${author}'s comment on @${postAuthor || 'creator'}'s post.\n`;
   } else if (isPostComment) {
@@ -935,10 +938,14 @@ Writing a top-level engaging comment on the post described above.`;
 
   let engagementRequirement = '';
   if (isCurrentUserPostAuthor) {
-    engagementRequirement = `1. CREATOR PERSPECTIVE (YOU ARE @${postAuthor}):
-   - Speak in the first person ("I", "my", "we").
+    engagementRequirement = `1. CREATOR ENGAGEMENT:
    - You are the creator responding to a fan or follower. Answer their questions warmly, thank them for their appreciation, or share background details about your work/post.
    - NEVER speak about @${postAuthor} in the third person or say "Love this post @${postAuthor}!".`;
+  } else if (isStoryReply) {
+    engagementRequirement = `1. INSTAGRAM STORY REPLY (SENT VIA DM):
+   - You are sending a direct reaction/reply to @${postAuthor || 'the creator'}'s Instagram Story.
+   - React naturally, enthusiastically, or wittily to what is shown in the Story (photo, video, or text sticker).
+   - Keep it concise, casual, authentic, and conversational like a real Instagram direct message reaction.`;
   } else if (isCommentReply) {
     engagementRequirement = `1. DIRECT COMMENT REPLY:
    - You are replying to @${author}'s specific comment, NOT writing a top-level post comment.
@@ -974,10 +981,10 @@ Writing a top-level engaging comment on the post described above.`;
   }
 
   return `You are an expert Instagram engagement assistant.
-Your goal is to craft a high-quality, authentic Instagram ${contextType === 'dm' ? 'Direct Message (DM) reply' : (isCommentReply ? 'reply to a comment' : 'top-level comment on a post')}.
+Your goal is to craft a high-quality, authentic Instagram ${isStoryReply ? 'Story reply (direct message)' : (contextType === 'dm' ? 'Direct Message (DM) reply' : (isCommentReply ? 'reply to a comment' : 'top-level comment on a post'))}.
 
 ### INTERACTION CONTEXT:
-- Context Type: ${contextType === 'dm' ? 'Direct Message (private chat)' : 'Public Post Comment'}
+- Context Type: ${isStoryReply ? 'Instagram Story Reply (via Direct Message)' : (contextType === 'dm' ? 'Direct Message (private chat)' : 'Public Post Comment')}
 - Reply Stance: ${stance.toUpperCase()} (${stance === 'negative' ? 'Critical / Firm / Boundary' : (stance === 'neutral' ? 'Neutral / Balanced / Objective' : 'Positive / Supportive / Warm')})
 ${roleHeader}${postAuthor ? `- Post Author: @${postAuthor}\n` : ''}${author && author !== postAuthor ? `- Commenter: @${author}\n` : ''}
 ${visualContextBlock}

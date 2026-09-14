@@ -303,6 +303,90 @@ async function main() {
   });
 
   // =========================================================================
+  // SUITE 2c: Instagram Story Reply & Context Extraction
+  // =========================================================================
+  console.log('\n📸 Suite 2c: Instagram Story Reply & Context Extraction');
+
+  runTest('StoryInputDiscovery', 'Identifies Story reply input and pill container', () => {
+    function isStoryInput(placeholder, ariaLabel, insideViewer) {
+      const p = (placeholder || '').toLowerCase();
+      const a = (ariaLabel || '').toLowerCase();
+      return insideViewer || p.startsWith('reply to') || a.startsWith('reply to') || p.includes('reply') || a.includes('reply');
+    }
+
+    assert.strictEqual(isStoryInput('Reply to story_creator...', '', false), true);
+    assert.strictEqual(isStoryInput('', 'Reply to story_creator...', false), true);
+    assert.strictEqual(isStoryInput('', '', true), true);
+    assert.strictEqual(isStoryInput('Add a comment...', '', false), false);
+    assert.strictEqual(isStoryInput('Message...', '', false), false);
+  });
+
+  runTest('StoryAuthorExtraction', 'Extracts author from /stories/<username>/ route URL and header', () => {
+    function extractStoryAuthor(pathname, headerLink) {
+      const urlMatch = pathname.match(/\/stories\/([a-zA-Z0-9._]+)/);
+      if (urlMatch && urlMatch[1]) {
+        const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories']);
+        if (!banned.has(urlMatch[1].toLowerCase())) return urlMatch[1];
+      }
+      if (headerLink) {
+        const m = headerLink.match(/^\/([a-zA-Z0-9._]+)\/?/);
+        if (m && m[1]) return m[1];
+      }
+      return '';
+    }
+
+    assert.strictEqual(extractStoryAuthor('/stories/nature_photographer/312345/', ''), 'nature_photographer');
+    assert.strictEqual(extractStoryAuthor('/stories/travel_diaries/', ''), 'travel_diaries');
+    assert.strictEqual(extractStoryAuthor('/direct/t/123/', '/travel_diaries/'), 'travel_diaries');
+  });
+
+  runTest('StoryIdentifier', 'Generates unique story identifier scoping replies to active slide', () => {
+    function extractStoryIdentifier(pathname, storyAuthor) {
+      const match = pathname.match(/\/stories\/([a-zA-Z0-9._]+)(?:\/([0-9]+))?/);
+      if (match) {
+        const user = match[1];
+        const storyId = match[2];
+        return storyId ? `story_${user}_${storyId}` : `story_${user}_active`;
+      }
+      return `story_${storyAuthor || 'user'}_active`;
+    }
+
+    assert.strictEqual(extractStoryIdentifier('/stories/nature_photographer/312345/', 'nature_photographer'), 'story_nature_photographer_312345');
+    assert.strictEqual(extractStoryIdentifier('/stories/nature_photographer/', 'nature_photographer'), 'story_nature_photographer_active');
+  });
+
+  runTest('StoryRelationship', 'Correctly sets story_reply mode, target, and relationshipSummary', () => {
+    function determineReplyRelationship({ contextType, postAuthor, currentUsername }) {
+      const isCurrentUserPostAuthor = Boolean(currentUsername && postAuthor && currentUsername.toLowerCase() === postAuthor.toLowerCase());
+      if (contextType === 'story') {
+        return {
+          replyMode: 'story_reply',
+          target: postAuthor || 'Story Author',
+          relationshipSummary: isCurrentUserPostAuthor
+            ? `Replying to your own Story (@${postAuthor})`
+            : (postAuthor ? `Replying to @${postAuthor}'s Story (sent via DM)` : 'Replying to Story (sent via DM)')
+        };
+      }
+      return { replyMode: 'post_comment' };
+    }
+
+    const relVisitor = determineReplyRelationship({ contextType: 'story', postAuthor: 'travel_diaries', currentUsername: 'bob' });
+    assert.strictEqual(relVisitor.replyMode, 'story_reply');
+    assert.strictEqual(relVisitor.target, 'travel_diaries');
+    assert.strictEqual(relVisitor.relationshipSummary, "Replying to @travel_diaries's Story (sent via DM)");
+
+    const relOwner = determineReplyRelationship({ contextType: 'story', postAuthor: 'bob', currentUsername: 'bob' });
+    assert.strictEqual(relOwner.relationshipSummary, 'Replying to your own Story (@bob)');
+  });
+
+  runTest('StoryPromptFormatting', 'Formats prompt specifically for Instagram Story DM reply', () => {
+    const swContent = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swContent.includes('isStoryReply'), 'Must check isStoryReply in service worker');
+    assert.ok(swContent.includes('INSTAGRAM STORY REPLY (SENT VIA DM)'), 'Must contain Story Reply engagement instructions');
+    assert.ok(swContent.includes('FOLLOWER / FRIEND replying directly to @'), 'Must contain Story role header');
+  });
+
+  // =========================================================================
   // SUITE 3: Comment Isolation & Anti-Stale Caching
   // =========================================================================
   console.log('\n🛡️ Suite 3: Comment Isolation & Anti-Stale Caching');

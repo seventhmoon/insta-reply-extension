@@ -89,6 +89,24 @@
     scanAndInjectShortcuts();
     setupMutationObserver();
     setupGlobalClickListener();
+    setupFocusListener();
+  }
+
+  /**
+   * Listens for focus/interaction on inputs to immediately inject shortcuts if newly mounted
+   */
+  function setupFocusListener() {
+    document.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (!el) return;
+      if (
+        (el.matches && el.matches('textarea, div[contenteditable="true"], div[role="textbox"], input')) &&
+        !el.closest('.instareply-card-overlay') &&
+        !el.closest('.instareply-card')
+      ) {
+        scanAndInjectShortcuts();
+      }
+    }, true);
   }
 
   /**
@@ -130,7 +148,7 @@
   }
 
   /**
-   * Scan for Instagram Comment and DM input fields
+   * Scan for Instagram Comment, DM, and Story input fields
    */
   function scanAndInjectShortcuts() {
     // 0. Clean up any accidental duplicate buttons first
@@ -197,10 +215,24 @@
       injectShortcutButton(el, 'dm');
     });
 
-    // 3. Inline Comment "✨ AI Reply" buttons next to each comment's Reply link
+    // 3. Instagram Stories Reply Inputs
+    const storyInputs = findStoryInputElements();
+    storyInputs.forEach((el) => {
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
+      injectShortcutButton(el, 'story');
+    });
+
+    // 4. Inline Comment "✨ AI Reply" buttons next to each comment's Reply link
     scanAndInjectCommentActionButtons();
 
-    // 4. Inline DM Message "✨ AI Reply" chips on incoming DM chat bubbles (Fullscreen + PIP)
+    // 5. Inline DM Message "✨ AI Reply" chips on incoming DM chat bubbles (Fullscreen + PIP)
     scanAndInjectDmMessageReplyButtons();
   }
 
@@ -325,6 +357,17 @@
         return;
       }
 
+      // Exclude story inputs and story viewer
+      if (
+        window.location.pathname.includes('/stories') ||
+        el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]') ||
+        ariaLabel.startsWith('reply to') ||
+        placeholder.startsWith('reply to') ||
+        ariaPlaceholder.startsWith('reply to')
+      ) {
+        return;
+      }
+
       // 3. Positive identification for DM:
       // Walk up ancestors up to 6 levels to catch Lexical editor placeholder text
       let ancestor = el.parentElement;
@@ -391,6 +434,16 @@
           for (let i = 1; i < btns.length; i++) {
             btns[i].remove();
           }
+        }
+      }
+    });
+
+    // Check individual Story composer bars
+    document.querySelectorAll('.ig-story-composer, .ig-story-viewer').forEach((row) => {
+      const btns = row.querySelectorAll('.instareply-shortcut-btn');
+      if (btns.length > 1) {
+        for (let i = 1; i < btns.length; i++) {
+          btns[i].remove();
         }
       }
     });
@@ -1017,6 +1070,413 @@
   }
 
   /**
+   * Discovers all active Story reply inputs across Story viewers, route URLs, and test harnesses
+   */
+  function findStoryInputElements() {
+    const results = [];
+    const isStoriesRoute = window.location.pathname.includes('/stories');
+
+    // Candidate inputs matching story reply composer
+    const candidates = document.querySelectorAll(`
+      .ig-story-composer textarea,
+      .ig-story-composer input,
+      .ig-story-composer div[contenteditable="true"],
+      .ig-story-viewer textarea,
+      .ig-story-viewer input,
+      .ig-story-viewer div[contenteditable="true"],
+      [data-testid="story-viewer"] textarea,
+      [data-testid="story-viewer"] input,
+      textarea[placeholder*="Reply to" i],
+      input[placeholder*="Reply to" i],
+      textarea[placeholder*="Reply" i],
+      input[placeholder*="Reply" i],
+      textarea[aria-label*="Reply to" i],
+      input[aria-label*="Reply to" i],
+      textarea[aria-label*="Reply" i],
+      input[aria-label*="Reply" i],
+      div[contenteditable="true"][aria-label*="Reply" i],
+      div[role="textbox"][aria-label*="Reply" i]
+    `);
+
+    candidates.forEach((el) => {
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.closest('.instareply-shortcut-btn') ||
+        el.closest('.instareply-dm-reply-chip') ||
+        el.closest('.instareply-comment-reply-chip') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
+
+      // Exclude regular post comment forms and articles
+      if (el.closest('form:not(.ig-story-composer)') && (el.closest('article') || el.closest('.ig-post-card'))) {
+        return;
+      }
+
+      if (!results.includes(el)) {
+        results.push(el);
+      }
+    });
+
+    // If on /stories/ route, scan any input or textarea on the page not part of header/nav
+    if (isStoriesRoute) {
+      const routeInputs = document.querySelectorAll(`
+        textarea,
+        input[type="text"],
+        input:not([type]),
+        div[role="textbox"][contenteditable="true"],
+        div[contenteditable="true"]
+      `);
+
+      routeInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.closest('.instareply-shortcut-btn') ||
+          el.closest('nav') ||
+          el.closest('header') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) {
+          return;
+        }
+
+        const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        if (placeholder.includes('search') || ariaLabel.includes('search')) {
+          return;
+        }
+
+        const isStoryCue =
+          placeholder.includes('reply') ||
+          placeholder.includes('message') ||
+          placeholder.includes('responder') ||
+          placeholder.includes('返信') ||
+          placeholder.includes('回复') ||
+          placeholder.includes('回覆') ||
+          ariaLabel.includes('reply') ||
+          ariaLabel.includes('message') ||
+          ariaLabel.includes('responder') ||
+          ariaLabel.includes('返信') ||
+          ariaLabel.includes('回复') ||
+          ariaLabel.includes('回覆') ||
+          el.closest('.ig-story-composer, .ig-story-viewer, section, div[role="dialog"]');
+
+        if (isStoryCue && !results.includes(el)) {
+          results.push(el);
+        }
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Helper to locate the rounded pill / capsule container of a Story composer
+   */
+  function findStoryPillContainer(inputEl) {
+    if (!inputEl) return null;
+    if (
+      inputEl.closest('.instareply-card-overlay') ||
+      inputEl.closest('.instareply-card') ||
+      inputEl.classList.contains('instareply-textarea') ||
+      inputEl.id === 'instareply-output-text'
+    ) {
+      return null;
+    }
+
+    // 1. Test harness mock
+    const mock = inputEl.closest('.ig-story-composer');
+    if (mock) return mock;
+
+    let curr = inputEl.parentElement;
+    let bestPill = null;
+
+    // 2. Walk up looking for rounded pill capsule
+    for (let i = 0; i < 8 && curr && curr !== document.body; i++) {
+      if (
+        curr.getAttribute('role') === 'dialog' ||
+        curr.getAttribute('role') === 'main' ||
+        curr.tagName === 'SECTION' ||
+        curr.classList.contains('instareply-card-overlay') ||
+        curr.classList.contains('instareply-card')
+      ) {
+        break;
+      }
+
+      if (window.getComputedStyle) {
+        const s = window.getComputedStyle(curr);
+        const rTL = parseFloat(s.borderTopLeftRadius) || 0;
+        const rTR = parseFloat(s.borderTopRightRadius) || 0;
+        const rBL = parseFloat(s.borderBottomLeftRadius) || 0;
+        const rBR = parseFloat(s.borderBottomRightRadius) || 0;
+        const maxR = Math.max(rTL, rTR, rBL, rBR, parseFloat(s.borderRadius) || 0);
+
+        const bT = parseFloat(s.borderTopWidth) || 0;
+        const bR = parseFloat(s.borderRightWidth) || 0;
+        const bB = parseFloat(s.borderBottomWidth) || 0;
+        const bL = parseFloat(s.borderLeftWidth) || 0;
+        const hasBorder = (bT > 0 || bR > 0 || bB > 0 || bL > 0) && s.borderStyle !== 'none';
+
+        const h = curr.offsetHeight;
+        // Story composer pill: rounded corners (>=14px) and height ~28px-100px
+        if (maxR >= 14 && h >= 28 && h <= 100) {
+          bestPill = curr;
+          break;
+        }
+        if (hasBorder && h >= 28 && h <= 80) {
+          if (!bestPill) bestPill = curr;
+        }
+      }
+      curr = curr.parentElement;
+    }
+
+    return bestPill || inputEl.parentElement?.parentElement || inputEl.parentElement;
+  }
+
+  /**
+   * Inserts the shortcut button into a Story composer pill
+   * Anchors it cleanly on the far right inside the pill without colliding with action icons
+   */
+  function insertShortcutIntoStory(btn, inputEl) {
+    if (!inputEl || inputEl.closest('.instareply-card-overlay') || inputEl.closest('.instareply-card')) return;
+
+    const pill = findStoryPillContainer(inputEl);
+    if (!pill) {
+      inputEl.insertAdjacentElement('afterend', btn);
+      return;
+    }
+
+    // Guard against duplicates
+    if (pill.querySelector('.instareply-shortcut-btn')) return;
+
+    btn.classList.add('instareply-story-shortcut-btn');
+
+    // Ensure pill has relative positioning
+    if (window.getComputedStyle) {
+      const pos = window.getComputedStyle(pill).position;
+      if (pos === 'static' || !pos) {
+        pill.style.position = 'relative';
+      }
+    } else {
+      pill.style.position = 'relative';
+    }
+
+    // Add right padding to input so typed message doesn't collide with the button
+    if (inputEl && inputEl.style) {
+      inputEl.style.paddingRight = '38px';
+    }
+
+    // Check for other buttons/icons inside the pill (Heart, Like, Send, Quick reactions)
+    const otherButtons = Array.from(pill.querySelectorAll('button:not(.instareply-shortcut-btn), [role="button"]:not(.instareply-shortcut-btn), svg'))
+      .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn'));
+
+    if (otherButtons.length > 0) {
+      let rightOffset = 10;
+      const pRect = pill.getBoundingClientRect();
+      if (pRect.width > 0) {
+        otherButtons.forEach(b => {
+          const bRect = b.getBoundingClientRect();
+          if (bRect.width > 0 && bRect.height > 0) {
+            const fromRight = pRect.right - bRect.left + 6;
+            if (fromRight > rightOffset && fromRight < pRect.width - 40) {
+              rightOffset = Math.round(fromRight);
+            }
+          }
+        });
+      }
+      btn.style.right = `${rightOffset}px`;
+    } else {
+      btn.style.right = '10px';
+    }
+
+    pill.appendChild(btn);
+  }
+
+  /**
+   * Finds active story slide container or dialog
+   */
+  function findActiveStoryContainer(el = null) {
+    if (el) {
+      const container = el.closest('.ig-story-viewer, [data-testid="story-viewer"], section, div[role="dialog"], article');
+      if (container) return container;
+    }
+
+    return (
+      document.querySelector('.ig-story-viewer, [data-testid="story-viewer"]') ||
+      document.querySelector('div[role="dialog"]') ||
+      document.querySelector('section') ||
+      document.body
+    );
+  }
+
+  /**
+   * Extracts author handle of the active Story
+   */
+  function extractStoryAuthor(storyContainer) {
+    // 1. URL route (highest priority: /stories/<username>/...)
+    const urlMatch = window.location.pathname.match(/\/stories\/([a-zA-Z0-9._]+)/);
+    if (urlMatch && urlMatch[1]) {
+      const u = urlMatch[1].replace(/^@/, '').trim();
+      const banned = new Set(['explore', 'direct', 'reels', 'reel', 'p', 'stories']);
+      if (u && !banned.has(u.toLowerCase())) {
+        return u;
+      }
+    }
+
+    if (!storyContainer) return '';
+
+    // 2. Test harness mock
+    const mockAuthor = storyContainer.querySelector('.ig-story-author, [data-testid="story-author"]');
+    if (mockAuthor) {
+      const txt = (mockAuthor.innerText || mockAuthor.textContent || '').replace(/^@/, '').trim();
+      if (txt) return txt;
+    }
+
+    // 3. Header link or span
+    const header = storyContainer.querySelector('header');
+    if (header) {
+      const link = header.querySelector('a[role="link"], a[href^="/"]');
+      if (link) {
+        const href = link.getAttribute('href') || '';
+        const m = href.match(/^\/([a-zA-Z0-9._]+)\/?/);
+        if (m && m[1]) return m[1];
+        const txt = (link.innerText || link.textContent || '').replace(/^@/, '').trim();
+        if (txt) return txt;
+      }
+      const avatar = header.querySelector('img[alt*="profile picture" i]');
+      if (avatar) {
+        const m = avatar.alt.match(/([a-zA-Z0-9._]+)'s profile picture/i);
+        if (m && m[1]) return m[1];
+      }
+    }
+
+    // 4. Any avatar with profile picture alt in storyContainer
+    const avatar = storyContainer.querySelector('img[alt*="profile picture" i]');
+    if (avatar) {
+      const m = avatar.alt.match(/([a-zA-Z0-9._]+)'s profile picture/i);
+      if (m && m[1]) return m[1];
+    }
+
+    return '';
+  }
+
+  /**
+   * Extracts visual info (photo/video) from the active Story slide
+   */
+  function extractStoryVisuals(storyContainer) {
+    if (!storyContainer) {
+      return { description: '', thumbnailUrl: '', mediaType: 'image' };
+    }
+
+    // 1. Check for video story
+    const video = storyContainer.querySelector('video');
+    if (video) {
+      const poster = video.getAttribute('poster') || '';
+      return {
+        mediaType: 'video',
+        thumbnailUrl: poster,
+        description: 'Instagram Story video'
+      };
+    }
+
+    // 2. Check for photo story
+    const images = Array.from(storyContainer.querySelectorAll('img')).filter((img) => {
+      const alt = (img.getAttribute('alt') || '').toLowerCase();
+      if (alt.includes('profile picture') || alt.includes('icon') || alt.includes('logo')) return false;
+      if (img.closest('header')) return false;
+      if (img.naturalWidth && img.naturalWidth < 120) return false;
+      if (img.width && img.width < 120) return false;
+      return true;
+    });
+
+    if (images.length > 0) {
+      let bestImg = images[0];
+      let maxArea = 0;
+      for (const img of images) {
+        const area = (img.naturalWidth || img.width || 1) * (img.naturalHeight || img.height || 1);
+        if (area > maxArea) {
+          maxArea = area;
+          bestImg = img;
+        }
+      }
+
+      const alt = bestImg.getAttribute('alt') || '';
+      const cleanDesc = alt.replace(/^May be an? (image|illustration|graphic) of\s*/i, '').trim();
+
+      return {
+        mediaType: 'image',
+        thumbnailUrl: bestImg.currentSrc || bestImg.src || '',
+        description: cleanDesc || alt || 'Instagram Story photo'
+      };
+    }
+
+    return { description: 'Instagram Story', thumbnailUrl: '', mediaType: 'image' };
+  }
+
+  /**
+   * Extracts text stickers / overlay caption from the active Story slide
+   */
+  function extractStoryCaption(storyContainer, storyAuthor = '') {
+    if (!storyContainer) return '';
+
+    const textElements = storyContainer.querySelectorAll('div[dir="auto"], span[dir="auto"], p, h1, h2');
+    const seenTexts = new Set();
+    const captionLines = [];
+
+    const bannedWords = new Set([
+      (storyAuthor || '').toLowerCase(),
+      'reply', 'send message', 'responder', '返信', '回复', '回覆', 'story'
+    ]);
+
+    textElements.forEach((el) => {
+      if (
+        el.closest('header') ||
+        el.closest('.ig-story-composer') ||
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.closest('form')
+      ) {
+        return;
+      }
+
+      const txt = (el.innerText || el.textContent || '').trim();
+      if (!txt || txt.length < 2) return;
+
+      // Filter out timestamp patterns like "3h", "12m", "2d"
+      if (/^[0-9]+[smhd]$/i.test(txt)) return;
+
+      const lower = txt.toLowerCase();
+      if (bannedWords.has(lower)) return;
+      if (lower.startsWith('reply to ') || lower.startsWith('responder a ')) return;
+
+      if (!seenTexts.has(lower)) {
+        seenTexts.add(lower);
+        captionLines.push(txt);
+      }
+    });
+
+    return captionLines.join('\n');
+  }
+
+  /**
+   * Generates a unique story identifier to scope cached replies
+   */
+  function extractStoryIdentifier(inputEl, storyAuthor = '') {
+    const path = window.location.pathname;
+    const match = path.match(/\/stories\/([a-zA-Z0-9._]+)(?:\/([0-9]+))?/);
+    if (match) {
+      const user = match[1];
+      const storyId = match[2];
+      return storyId ? `story_${user}_${storyId}` : `story_${user}_active`;
+    }
+    return `story_${storyAuthor || 'user'}_active`;
+  }
+
+  /**
    * Injects the InstaReply shortcut button into/near the target input
    */
   function injectShortcutButton(inputEl, contextType) {
@@ -1059,6 +1519,21 @@
       }
     }
 
+    // Check if Story composer pill already has an InstaReply button
+    if (contextType === 'story') {
+      const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
+      if (storyRow) {
+        const existingBtns = storyRow.querySelectorAll('.instareply-shortcut-btn');
+        if (existingBtns.length > 0) {
+          for (let i = 1; i < existingBtns.length; i++) {
+            existingBtns[i].remove();
+          }
+          inputEl.dataset.instareplyInjected = 'true';
+          return;
+        }
+      }
+    }
+
     if (inputEl.dataset.instareplyInjected === 'true') {
       return;
     }
@@ -1068,7 +1543,7 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'instareply-shortcut-btn';
-    btn.title = `Draft ${contextType === 'dm' ? 'DM Reply' : 'Comment'} with InstaReply AI`;
+    btn.title = `Draft ${contextType === 'story' ? 'Story Reply' : contextType === 'dm' ? 'DM Reply' : 'Comment'} with InstaReply AI`;
     btn.innerHTML = SPARKLE_SVG;
 
     btn.addEventListener('click', (e) => {
@@ -1080,6 +1555,8 @@
 
     if (contextType === 'comment') {
       insertShortcutIntoComment(btn, inputEl);
+    } else if (contextType === 'story') {
+      insertShortcutIntoStory(btn, inputEl);
     } else {
       insertShortcutIntoDm(btn, inputEl);
     }
@@ -1100,6 +1577,20 @@
       const container = btn.closest('article') || btn.closest('div[role="dialog"]');
       if (container) {
         return container.querySelector('form div[role="textbox"][contenteditable="true"], form textarea');
+      }
+    } else if (contextType === 'story') {
+      const storyContainer = btn.closest('.ig-story-composer') ||
+                             findStoryPillContainer(btn) ||
+                             findActiveStoryContainer(btn) ||
+                             btn.parentElement;
+      if (storyContainer) {
+        return storyContainer.querySelector('textarea:not([aria-hidden="true"])') ||
+               storyContainer.querySelector('input[type="text"]') ||
+               storyContainer.querySelector('input:not([type])') ||
+               storyContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
+               storyContainer.querySelector('div[contenteditable="true"]') ||
+               storyContainer.querySelector('textarea') ||
+               storyContainer.querySelector('input');
       }
     } else if (contextType === 'dm') {
       const dmContainer = btn.closest('.ig-dm-composer') ||
@@ -2308,11 +2799,21 @@
       currentUsername.toLowerCase() === postAuthor.toLowerCase()
     );
 
-    let replyMode = 'post_comment'; // 'post_comment' | 'comment_reply' | 'dm'
+    let replyMode = 'post_comment'; // 'post_comment' | 'comment_reply' | 'dm' | 'story_reply'
     let relationshipSummary = '';
     let target = '';
 
-    if (contextType === 'dm') {
+    if (contextType === 'story') {
+      replyMode = 'story_reply';
+      target = postAuthor || author || 'Story Author';
+      if (isCurrentUserPostAuthor) {
+        relationshipSummary = `Replying to your own Story (@${postAuthor})`;
+      } else if (postAuthor) {
+        relationshipSummary = `Replying to @${postAuthor}'s Story (sent via DM)`;
+      } else {
+        relationshipSummary = `Replying to Story (sent via DM)`;
+      }
+    } else if (contextType === 'dm') {
       replyMode = 'dm';
       relationshipSummary = author ? `Direct Message with @${author}` : 'Direct Message Conversation';
       target = author || 'Chat partner';
@@ -2368,53 +2869,63 @@
     currentLanguage = config.replyLanguage || 'auto';
     const shouldIncludeCaption = config.includePostCaption !== false;
 
-    // 1. Locate standard post container (feed post, photo modal, reels, etc.)
-    const postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
+    // 1. Locate standard post container (feed post, photo modal, reels, etc.) or story
+    let postContainer = null;
     let postAuthor = '';
     let postCaption = '';
     let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
-    if (postContainer) {
-      const isReel = isReelContainer(postContainer);
+    if (contextType === 'story') {
+      const storyContainer = findActiveStoryContainer(inputEl || triggerBtn);
+      postAuthor = extractStoryAuthor(storyContainer);
+      postCaption = extractStoryCaption(storyContainer, postAuthor);
+      postVisuals = extractStoryVisuals(storyContainer);
+    } else {
+      postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
+      if (postContainer) {
+        const isReel = isReelContainer(postContainer);
 
-      if (isReel) {
-        const activeReel = findActiveReelContainer() || postContainer;
-        postAuthor = extractReelAuthor(activeReel) || extractReelAuthor(postContainer);
-        postCaption = extractReelCaption(activeReel, postAuthor) || extractReelCaption(postContainer, postAuthor);
-        postVisuals = extractReelVisuals(activeReel, findActiveReelVideo());
-      } else {
-        postAuthor = extractPostAuthor(postContainer);
-        postCaption = extractPostCaption(postContainer, postAuthor);
-        postVisuals = extractPostVisuals(postContainer);
-      }
-    }
-
-    // Direct page fallbacks for dedicated /p/, /reel/, and /reels/ routes
-    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
-      if (!postVisuals.thumbnailUrl || !postVisuals.description || postVisuals.description === 'Instagram Reel video') {
-        const canonicalVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
-        if (canonicalVisuals.thumbnailUrl && !postVisuals.thumbnailUrl) postVisuals.thumbnailUrl = canonicalVisuals.thumbnailUrl;
-        if (canonicalVisuals.description && (!postVisuals.description || postVisuals.description === 'Instagram Reel video')) {
-          postVisuals.description = canonicalVisuals.description;
+        if (isReel) {
+          const activeReel = findActiveReelContainer() || postContainer;
+          postAuthor = extractReelAuthor(activeReel) || extractReelAuthor(postContainer);
+          postCaption = extractReelCaption(activeReel, postAuthor) || extractReelCaption(postContainer, postAuthor);
+          postVisuals = extractReelVisuals(activeReel, findActiveReelVideo());
+        } else {
+          postAuthor = extractPostAuthor(postContainer);
+          postCaption = extractPostCaption(postContainer, postAuthor);
+          postVisuals = extractPostVisuals(postContainer);
         }
       }
-      if (!postAuthor) {
-        postAuthor = extractPostAuthor(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+
+      // Direct page fallbacks for dedicated /p/, /reel/, and /reels/ routes
+      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
+        if (!postVisuals.thumbnailUrl || !postVisuals.description || postVisuals.description === 'Instagram Reel video') {
+          const canonicalVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+          if (canonicalVisuals.thumbnailUrl && !postVisuals.thumbnailUrl) postVisuals.thumbnailUrl = canonicalVisuals.thumbnailUrl;
+          if (canonicalVisuals.description && (!postVisuals.description || postVisuals.description === 'Instagram Reel video')) {
+            postVisuals.description = canonicalVisuals.description;
+          }
+        }
+        if (!postAuthor) {
+          postAuthor = extractPostAuthor(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+        }
+        if (!postCaption) {
+          postCaption = extractPostCaption(postContainer || document.querySelector('main, article, div[role="main"]') || document.body, postAuthor);
+        }
       }
-      if (!postCaption) {
-        postCaption = extractPostCaption(postContainer || document.querySelector('main, article, div[role="main"]') || document.body, postAuthor);
+
+      // 2. Scan author comments across the thread or comments drawer if caption is still missing
+      if (!postCaption && postContainer && postAuthor) {
+        const authorComments = extractAllAuthorComments(postContainer, postAuthor);
+        if (authorComments.length > 0) {
+          postCaption = authorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
+        }
       }
     }
 
-    // 2. Scan author comments across the thread or comments drawer if caption is still missing
-    if (!postCaption && postContainer && postAuthor) {
-      const authorComments = extractAllAuthorComments(postContainer, postAuthor);
-      if (authorComments.length > 0) {
-        postCaption = authorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
-      }
-    }
-
-    const postId = extractPostIdentifier(postContainer, postAuthor, postCaption);
+    const postId = contextType === 'story'
+      ? extractStoryIdentifier(inputEl || triggerBtn, postAuthor)
+      : extractPostIdentifier(postContainer, postAuthor, postCaption);
 
     // Extract Context
     let context;
@@ -2490,7 +3001,14 @@
     let postAuthor = '';
     let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
-    if (contextType === 'comment') {
+    if (contextType === 'story') {
+      const storyContainer = findActiveStoryContainer(inputEl);
+      postAuthor = extractStoryAuthor(storyContainer);
+      postCaption = extractStoryCaption(storyContainer, postAuthor);
+      postVisuals = extractStoryVisuals(storyContainer);
+      author = postAuthor;
+      incomingText = postCaption ? `[Story Content]: ${postCaption}` : '';
+    } else if (contextType === 'comment') {
       const article = postContainer || findPostContainer(inputEl);
       if (article) {
         const isReel = isReelContainer(article);
@@ -3285,7 +3803,7 @@
         <!-- Interaction Role & Relationship Badge -->
         ${context.relationshipSummary ? `
           <div class="instareply-relationship-badge ${context.replyMode === 'comment_reply' ? 'is-comment-reply' : 'is-post-comment'}">
-            <span>${context.replyMode === 'comment_reply' ? '💬' : (context.contextType === 'dm' ? '✉️' : '📝')}</span>
+            <span>${context.replyMode === 'comment_reply' ? '💬' : ((context.contextType === 'story' || context.replyMode === 'story_reply') ? '📸' : context.contextType === 'dm' ? '✉️' : '📝')}</span>
             <span>${escapeHTML(context.relationshipSummary)}</span>
           </div>
         ` : ''}
@@ -3313,7 +3831,7 @@
           <div class="instareply-context-banner instareply-post-banner" title="Referenced Post Caption">
             <span class="instareply-banner-icon">📌</span>
             <div class="instareply-context-text">
-              <strong>Post:</strong> "${escapeHTML(context.postCaption)}"
+              <strong>${context.contextType === 'story' ? 'Story Text:' : 'Post:'}</strong> "${escapeHTML(context.postCaption)}"
             </div>
             <button type="button" class="instareply-unbind-btn" id="instareply-unbind-post" title="Unbind / Remove post context">&times;</button>
           </div>
@@ -3321,10 +3839,10 @@
 
         <!-- Specific Comment / DM Message Target Banner (if different from caption) -->
         ${context.incomingText && context.incomingText !== context.postCaption ? `
-          <div class="instareply-context-banner instareply-comment-banner" style="border-left-color: ${context.contextType === 'dm' ? '#8b5cf6' : '#ec4899'}; background: ${context.contextType === 'dm' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(236, 72, 153, 0.08)'}; color: ${context.contextType === 'dm' ? '#ddd6fe' : '#fbcfe8'};" title="${context.contextType === 'dm' ? 'Replying to DM Message' : 'Replying to Comment'}">
-            <span class="instareply-banner-icon">${context.contextType === 'dm' ? '✉️' : '💬'}</span>
+          <div class="instareply-context-banner instareply-comment-banner" style="border-left-color: ${context.contextType === 'story' ? '#f43f5e' : context.contextType === 'dm' ? '#8b5cf6' : '#ec4899'}; background: ${context.contextType === 'story' ? 'rgba(244, 63, 94, 0.08)' : context.contextType === 'dm' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(236, 72, 153, 0.08)'}; color: ${context.contextType === 'story' ? '#fecdd3' : context.contextType === 'dm' ? '#ddd6fe' : '#fbcfe8'};" title="${context.contextType === 'story' ? 'Replying to Story' : context.contextType === 'dm' ? 'Replying to DM Message' : 'Replying to Comment'}">
+            <span class="instareply-banner-icon">${context.contextType === 'story' ? '📸' : context.contextType === 'dm' ? '✉️' : '💬'}</span>
             <div class="instareply-context-text">
-              <strong>${context.author ? `@${escapeHTML(context.author)}` : (context.contextType === 'dm' ? 'Incoming Message' : 'Replying')}:</strong> "${escapeHTML(context.incomingText)}"
+              <strong>${context.author ? `@${escapeHTML(context.author)}` : (context.contextType === 'story' ? 'Story' : context.contextType === 'dm' ? 'Incoming Message' : 'Replying')}:</strong> "${escapeHTML(context.incomingText)}"
             </div>
             <button type="button" class="instareply-unbind-btn" id="instareply-unbind-comment" title="Unbind / Remove message context">&times;</button>
           </div>

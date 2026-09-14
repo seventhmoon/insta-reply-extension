@@ -130,6 +130,20 @@
         </a>
       </div>
     </section>
+
+    <!-- Mock Instagram Story Viewer and Composer -->
+    <div class="ig-story-viewer" style="position: relative; width: 300px; height: 500px;">
+      <header>
+        <a href="/story_creator/" role="link">story_creator</a>
+      </header>
+      <div class="story-media">
+        <img src="https://instagram.com/story1.jpg" alt="Sunset over Tokyo skyline" width="300" height="400">
+      </div>
+      <div dir="auto" class="story-sticker-text">Golden hour views from Shibuya! 🌆</div>
+      <div class="ig-story-composer" style="border-radius: 20px; height: 44px; display: flex; align-items: center;">
+        <input id="story-reply-input" type="text" placeholder="Reply to story_creator..." style="width: 100%; border: none;">
+      </div>
+    </div>
   </main>
 
   <div id="test-results" style="padding: 20px; font-family: monospace;">Running tests...</div>
@@ -196,6 +210,15 @@
           assert("Assistant card opens on Bob comment chip click", Boolean(card));
           const cardText = card ? card.innerText : "";
           assert("Assistant card targets @bob", cardText.includes("bob") || inputEl.innerText.includes("bob"));
+        }
+
+        // Test 5: Story Reply shortcut button injection
+        const storyInput = document.getElementById("story-reply-input");
+        assert("Story reply input exists in DOM", Boolean(storyInput));
+        const storyBtn = document.querySelector(".ig-story-composer .instareply-story-shortcut-btn, .ig-story-composer .instareply-shortcut-btn");
+        assert("AI shortcut button injected into Story composer pill", Boolean(storyBtn));
+        if (storyBtn) {
+          assert("Story button has correct title", storyBtn.title.includes("Story Reply"));
         }
 
         const summary = failed === 0 ? "ALL BROWSER TESTS PASSED" : failed + " BROWSER TESTS FAILED";
