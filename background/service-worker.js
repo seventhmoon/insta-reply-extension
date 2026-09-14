@@ -787,7 +787,7 @@ You MUST respond with valid JSON matching this exact structure:
   "sentiment": "positive" | "neutral" | "negative" | "question" | "praise" | "complaint",
   "sentimentLabel": "Friendly & Positive" (short 2-4 word summary with sentiment emoji),
   "topics": ["Key Topic 1", "Key Topic 2"],
-  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood)",
+  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining.",
   "reply": "Your drafted reply text here"
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;

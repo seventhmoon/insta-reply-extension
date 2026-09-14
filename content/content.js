@@ -1443,6 +1443,12 @@
       const parentArticle = el.closest('article') || el.closest('.ig-post-card');
       if (parentArticle) return parentArticle;
 
+      // Direct parent main container on dedicated post/reel route
+      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+        const parentMain = el.closest('main') || el.closest('div[role="main"]');
+        if (parentMain) return parentMain;
+      }
+
       // 2. Direct modal dialog
       const parentModal = el.closest('div[role="dialog"]');
       if (parentModal) {
@@ -1488,9 +1494,12 @@
       return openModal.querySelector('article') || openModal;
     }
 
-    // 5. Fallback only if on a dedicated single-post URL
-    if (window.location.pathname.startsWith('/p/')) {
-      return document.querySelector('article') || document.querySelector('.ig-post-card') || null;
+    // 5. Fallback on dedicated single-post or reel URL
+    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+      return document.querySelector('article') ||
+             document.querySelector('main') ||
+             document.querySelector('div[role="main"]') ||
+             document.querySelector('.ig-post-card') || null;
     }
 
     return null;
@@ -1854,25 +1863,40 @@
    * Extracts visual context from the post (photo alt text, scene tags, video type, thumbnail)
    */
   function extractPostVisuals(container) {
-    if (!container) return { description: '', thumbnailUrl: '', mediaType: 'image' };
+    let target = container;
+    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/');
+
+    // On dedicated post URLs, fallback to main container if container is null or has no media
+    if (!target || (!target.querySelector('img') && !target.querySelector('video'))) {
+      if (isDedicatedPost) {
+        target = document.querySelector('article') ||
+                 document.querySelector('main') ||
+                 document.querySelector('div[role="main"]') ||
+                 document.body;
+      }
+    }
+
+    if (!target) return { description: '', thumbnailUrl: '', mediaType: 'image' };
 
     let description = '';
     let thumbnailUrl = '';
     let mediaType = 'image';
 
     // 1. Check for video or reel
-    const video = container.querySelector('video');
+    const video = target.querySelector('video') || (isDedicatedPost ? document.querySelector('video') : null);
     if (video) {
       mediaType = 'video';
       if (video.poster) thumbnailUrl = video.poster;
     }
 
     // 2. Scan media images for visual descriptions and thumbnails
-    const images = Array.from(container.querySelectorAll('img')).filter(img => {
+    const images = Array.from(target.querySelectorAll('img')).filter(img => {
       if (img.closest('.instareply-card-overlay')) return false;
       const alt = (img.getAttribute('alt') || '').toLowerCase();
       if (alt.includes('profile picture') || alt.includes('avatar')) return false;
       if (!img.src || img.src.startsWith('data:image/svg')) return false;
+      // Filter out small action icons
+      if (img.clientWidth > 0 && img.clientWidth < 80 && img.clientHeight > 0 && img.clientHeight < 80) return false;
       return true;
     });
 
@@ -1900,17 +1924,40 @@
           if (match && match[1]) {
             description = match[1].trim();
             break;
-          } else if (alt.length > 15 && !alt.toLowerCase().includes('profile picture')) {
-            description = alt.trim();
+          } else if (alt.length > 12 && !alt.toLowerCase().includes('profile picture')) {
+            const cleanAlt = alt.replace(/^Photo (?:shared|by) [^.]+?\s*(?:on [^.]+?\.)?\s*/i, '').trim();
+            if (cleanAlt.length > 5) {
+              description = cleanAlt;
+            } else {
+              description = alt.trim();
+            }
             break;
           }
         }
       }
     }
 
-    // 3. Check aria-label descriptions
+    // 3. Fallback: Open Graph meta tags (essential for dedicated /p/ or /reel/ URLs)
+    if (isDedicatedPost || !thumbnailUrl) {
+      if (!thumbnailUrl) {
+        const ogImage = document.querySelector('meta[property="og:image"]')?.content ||
+                        document.querySelector('meta[name="twitter:image"]')?.content;
+        if (ogImage && ogImage.startsWith('http')) {
+          thumbnailUrl = ogImage;
+        }
+      }
+      if (!description) {
+        const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
+        const imgAltMatch = ogDesc.match(/(?:Photo|Video) (?:by|shared by) .+?: (.+)$/i);
+        if (imgAltMatch && imgAltMatch[1] && imgAltMatch[1].length > 8) {
+          description = imgAltMatch[1].trim();
+        }
+      }
+    }
+
+    // 4. Check aria-label descriptions
     if (!description) {
-      const imgRole = container.querySelector('[role="img"][aria-label]');
+      const imgRole = target.querySelector('[role="img"][aria-label]');
       if (imgRole) {
         const label = imgRole.getAttribute('aria-label') || '';
         if (label && label.length > 12 && !label.toLowerCase().includes('profile')) {
@@ -2055,6 +2102,19 @@
       }
       if (!postVisuals.thumbnailUrl && !postVisuals.description) {
         postVisuals = extractPostVisuals(postContainer);
+      }
+    }
+
+    // Direct page fallbacks for dedicated /p/ and /reel/ routes
+    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+      if (!postVisuals.thumbnailUrl && !postVisuals.description) {
+        postVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+      }
+      if (!postAuthor) {
+        postAuthor = extractPostAuthor(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
+      }
+      if (!postCaption) {
+        postCaption = extractPostCaption(postContainer || document.querySelector('main, article, div[role="main"]') || document.body, postAuthor);
       }
     }
 
@@ -2533,7 +2593,10 @@
     }
 
     // Update or dynamically insert AI Visual Analysis ("What does the AI see in this post")
-    if (data.visualAnalysis) {
+    const isGenericFallback = !data.visualAnalysis ||
+      /no visual provided|no image provided|assuming a high-quality|lacks visual details/i.test(data.visualAnalysis);
+
+    if (data.visualAnalysis && !isGenericFallback) {
       const visionTextEl = activeCard.querySelector('.instareply-vision-text');
       if (visionTextEl) {
         visionTextEl.textContent = `"${data.visualAnalysis}"`;
@@ -2561,6 +2624,9 @@
           setupUnbindButtons(activeCard);
         }
       }
+    } else {
+      const existingBanner = activeCard.querySelector('.instareply-visual-banner');
+      if (existingBanner) existingBanner.remove();
     }
   }
 
