@@ -1087,59 +1087,271 @@
    * Opens or toggles the AI Reply Assistant Card
    */
   /**
-   * Finds the currently visible active Reel on the page
+   * Finds the currently visible active Reel video element on the page
    */
-  function findActiveReelContainer() {
-    // 1. Look for active article on the page containing video
-    const articles = Array.from(document.querySelectorAll('article'));
-    for (const a of articles) {
-      if (a.querySelector('video')) {
-        const rect = a.getBoundingClientRect();
-        if (rect.bottom > 0 && rect.top < window.innerHeight) {
-          return a;
-        }
-      }
-    }
-    if (articles.length > 0) return articles[0];
-
-    // 2. Find currently visible video
+  function findActiveReelVideo() {
     const videos = Array.from(document.querySelectorAll('video'));
-    for (const v of videos) {
-      const rect = v.getBoundingClientRect();
-      if (rect.width > 80 && rect.height > 80 && rect.bottom > 0 && rect.top < window.innerHeight) {
-        let p = v.parentElement;
-        while (p && p !== document.body) {
-          if (
-            p.tagName.toLowerCase() === 'article' ||
-            p.getAttribute('role') === 'region' ||
-            p.classList.contains('ig-post-card') ||
-            (p.getAttribute('tabindex') === '0' && p.clientHeight > 300)
-          ) {
-            return p;
-          }
-          p = p.parentElement;
+    if (videos.length === 0) return null;
+
+    // 1. First priority: video that is actively playing (not paused and has played frames)
+    const playingVideos = videos.filter(v => {
+      try {
+        return !v.paused && v.currentTime > 0;
+      } catch (_) {
+        return false;
+      }
+    });
+
+    if (playingVideos.length === 1) return playingVideos[0];
+    if (playingVideos.length > 1) {
+      const center = window.innerHeight / 2;
+      playingVideos.sort((a, b) => {
+        const rA = a.getBoundingClientRect();
+        const rB = b.getBoundingClientRect();
+        return Math.abs((rA.top + rA.bottom) / 2 - center) - Math.abs((rB.top + rB.bottom) / 2 - center);
+      });
+      return playingVideos[0];
+    }
+
+    // 2. Visible video in viewport with substantial dimensions
+    const visibleVideos = videos.filter(v => {
+      const r = v.getBoundingClientRect();
+      return (
+        r.width > 120 &&
+        r.height > 150 &&
+        r.bottom > window.innerHeight * 0.15 &&
+        r.top < window.innerHeight * 0.85
+      );
+    });
+
+    if (visibleVideos.length > 0) {
+      const center = window.innerHeight / 2;
+      visibleVideos.sort((a, b) => {
+        const rA = a.getBoundingClientRect();
+        const rB = b.getBoundingClientRect();
+        return Math.abs((rA.top + rA.bottom) / 2 - center) - Math.abs((rB.top + rB.bottom) / 2 - center);
+      });
+      return visibleVideos[0];
+    }
+
+    return videos[0];
+  }
+
+  /**
+   * Finds the active Reel item container enclosing the video and its overlay metadata
+   */
+  function findActiveReelContainer(activeVideo) {
+    const video = activeVideo || findActiveReelVideo();
+    if (!video) return null;
+
+    let curr = video.parentElement;
+    let bestContainer = null;
+
+    while (curr && curr !== document.body) {
+      // Skip dialogs (such as the comments drawer)
+      if (curr.getAttribute('role') === 'dialog') {
+        curr = curr.parentElement;
+        continue;
+      }
+
+      // Look for author profile link inside this ancestor
+      const hasAuthor = curr.querySelector('a[href^="/"]:not([href*="/reel/"]):not([href*="/reels/"]):not([href*="/explore/"]):not([href*="/direct/"])');
+      const hasButtons = curr.querySelector('button, [role="button"]');
+
+      if (hasAuthor && hasButtons) {
+        bestContainer = curr;
+        if (
+          curr.tagName.toLowerCase() === 'article' ||
+          curr.getAttribute('role') === 'region' ||
+          curr.classList.contains('ig-post-card')
+        ) {
+          return curr;
         }
-        return v.parentElement || v;
+      }
+
+      if (curr.getAttribute('role') === 'main' || curr.tagName.toLowerCase() === 'main') {
+        return bestContainer || curr;
+      }
+
+      curr = curr.parentElement;
+    }
+
+    return bestContainer || video.parentElement;
+  }
+
+  /**
+   * Extracts post author from an active Reel container
+   */
+  function extractReelAuthor(reelContainer) {
+    if (!reelContainer) return '';
+
+    const anchors = Array.from(reelContainer.querySelectorAll('a[href^="/"]'));
+    const bannedRoutes = new Set([
+      'explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv',
+      'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api'
+    ]);
+
+    for (const a of anchors) {
+      if (a.closest('div[role="dialog"]') || a.closest('nav, aside')) continue;
+      const href = a.getAttribute('href') || '';
+      const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+      if (m && m[1]) {
+        const handle = m[1];
+        if (!bannedRoutes.has(handle.toLowerCase())) {
+          // Check for nearby follow button
+          const parent = a.closest('div');
+          const hasFollowNearby = parent && Array.from(parent.parentElement?.querySelectorAll('button, [role="button"]') || []).some(btn => {
+            const t = (btn.textContent || '').trim().toLowerCase();
+            return ['follow', 'following', 'requested', '关注', '已关注', 'フォロー'].some(k => t.includes(k));
+          });
+          if (hasFollowNearby) {
+            return handle;
+          }
+        }
       }
     }
-    return null;
+
+    // Fallback: any valid profile link matching anchor text
+    for (const a of anchors) {
+      if (a.closest('div[role="dialog"]') || a.closest('nav, aside')) continue;
+      const href = a.getAttribute('href') || '';
+      const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+      if (m && m[1]) {
+        const handle = m[1];
+        if (!bannedRoutes.has(handle.toLowerCase())) {
+          const text = (a.textContent || '').trim().replace(/^@/, '');
+          if (text && text.toLowerCase() === handle.toLowerCase()) {
+            return handle;
+          }
+        }
+      }
+    }
+
+    // Avatar profile picture alt text
+    const avatarImg = reelContainer.querySelector('img[alt*="profile picture" i], img[alt*="的照片" i], img[alt*="大头贴" i], img[alt*="プロフィール写真" i]');
+    if (avatarImg && !avatarImg.closest('div[role="dialog"]')) {
+      const alt = avatarImg.getAttribute('alt') || '';
+      const m = alt.match(/([a-zA-Z0-9._]+)(?:'s profile picture|的(?:大头贴|照片)|のプロフィール写真)/i);
+      if (m && m[1] && !bannedRoutes.has(m[1].toLowerCase())) {
+        return m[1];
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * Extracts post caption from an active Reel container
+   */
+  function extractReelCaption(reelContainer, postAuthor = '') {
+    if (!reelContainer) return '';
+
+    const candidateSpans = Array.from(reelContainer.querySelectorAll('h1[dir="auto"], span[dir="auto"], div[dir="auto"], span'));
+    for (const el of candidateSpans) {
+      if (
+        el.closest('div[role="dialog"]') ||
+        el.closest('button, [role="button"]') ||
+        el.closest('.instareply-card-overlay') ||
+        el.closest('form') ||
+        el.closest('svg') ||
+        el.closest('nav, aside')
+      ) {
+        continue;
+      }
+
+      if (el.closest('a') && !el.textContent.includes('#')) {
+        continue;
+      }
+
+      const raw = cleanCaptionText(el.textContent || '').trim();
+      if (!raw || raw.length < 3) continue;
+
+      if (postAuthor && (raw.toLowerCase() === postAuthor.toLowerCase() || raw.toLowerCase() === `@${postAuthor.toLowerCase()}`)) {
+        continue;
+      }
+
+      const lower = raw.toLowerCase();
+      if (['follow', 'following', 'requested', 'original audio', 'audio', 'like', 'comment', 'share', 'save', 'verified'].includes(lower)) {
+        continue;
+      }
+
+      if (lower.startsWith('原声') || lower.startsWith('original audio') || lower.startsWith('audio -')) {
+        continue;
+      }
+
+      if (raw.includes('#') || (raw.length >= 5 && !/^\d+[\s,.]?\d*[KkMm]?$/.test(raw))) {
+        if (isValidCaption(raw, postAuthor)) {
+          return raw;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * Extracts video visuals & poster for an active Reel
+   */
+  function extractReelVisuals(reelContainer, activeVideo) {
+    const video = activeVideo || reelContainer?.querySelector('video');
+    let thumbnailUrl = '';
+
+    if (video) {
+      thumbnailUrl = video.getAttribute('poster') || video.poster || '';
+    }
+
+    if (!thumbnailUrl && reelContainer) {
+      const img = reelContainer.querySelector('img[src*="cdninstagram.com"]:not([alt*="profile"]):not([alt*="avatar"]):not([alt*="大头贴"])');
+      if (img && img.src && !img.closest('div[role="dialog"]')) {
+        thumbnailUrl = img.src;
+      }
+    }
+
+    return {
+      mediaType: 'video',
+      thumbnailUrl,
+      description: 'Instagram Reel video'
+    };
   }
 
   /**
    * Finds the closest Instagram post or dialog container for a given element
    */
   function findPostContainer(el) {
+    const activeVideo = findActiveReelVideo();
+
     if (el && el.closest) {
       // 1. Direct modal dialog
       const parentModal = el.closest('div[role="dialog"]');
       if (parentModal) {
-        // If parentModal is a post modal (contains header or video), return it
-        if (parentModal.querySelector('header, .ig-post-header, video')) {
+        const heading = parentModal.querySelector('h1, h2, h3, [role="heading"]');
+        const headingText = (heading?.textContent || '').trim().toLowerCase();
+        const isCommentsDrawer = (
+          headingText === 'comments' ||
+          headingText === '留言' ||
+          headingText === 'コメント' ||
+          headingText === 'comentarios'
+        ) || (
+          !parentModal.querySelector('video') &&
+          !parentModal.querySelector('article') &&
+          Boolean(activeVideo)
+        );
+
+        if (isCommentsDrawer) {
+          const activeReel = findActiveReelContainer(activeVideo);
+          if (activeReel) return activeReel;
+        }
+
+        // If parentModal contains the post's own video or article
+        if (parentModal.querySelector('video, article, .ig-post-card')) {
           return parentModal;
         }
-        // If parentModal is a comments drawer (Reels), look for the active Reel behind it
-        const activeReel = findActiveReelContainer();
-        if (activeReel) return activeReel;
+
+        if (activeVideo) {
+          const activeReel = findActiveReelContainer(activeVideo);
+          if (activeReel) return activeReel;
+        }
+
         return parentModal;
       }
 
@@ -1148,23 +1360,20 @@
       if (parentArticle) return parentArticle;
     }
 
-    // 3. Check if an active modal dialog is open on the screen
-    const openModal = document.querySelector('div[role="dialog"] article') || document.querySelector('div[role="dialog"]');
-    if (openModal) {
-      if (openModal.querySelector('header, .ig-post-header, video')) {
-        return openModal;
-      }
-      const activeReel = findActiveReelContainer();
+    // 3. Active Reel on screen
+    if (activeVideo) {
+      const activeReel = findActiveReelContainer(activeVideo);
       if (activeReel) return activeReel;
+    }
+
+    // 4. Check if an active modal dialog is open
+    const openModal = document.querySelector('div[role="dialog"] article') || document.querySelector('div[role="dialog"]');
+    if (openModal && openModal.querySelector('video, article, .ig-post-card')) {
       return openModal;
     }
 
-    // 4. If an element was clicked but was outside an article/dialog, check active Reel
-    const activeReel = findActiveReelContainer();
-    if (activeReel) return activeReel;
-
     // 5. Fallback only if on a dedicated single-post URL
-    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/')) {
+    if (window.location.pathname.startsWith('/p/')) {
       return document.querySelector('article') || document.querySelector('.ig-post-card') || null;
     }
 
@@ -1704,35 +1913,46 @@
     currentLanguage = config.replyLanguage || 'auto';
     const shouldIncludeCaption = config.includePostCaption !== false;
 
-    // Locate post container to extract post caption, author, and visuals
-    const postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
-    let postAuthor = postContainer ? extractPostAuthor(postContainer) : '';
-    let postCaption = postContainer ? extractPostCaption(postContainer, postAuthor) : '';
-    let postVisuals = postContainer ? extractPostVisuals(postContainer) : { description: '', thumbnailUrl: '', mediaType: 'image' };
+    // 1. If an active Reel video is visible/playing on screen, prioritize active Reel
+    const activeVideo = findActiveReelVideo();
+    let postContainer = null;
+    let postAuthor = '';
+    let postCaption = '';
+    let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
-    // In Reels or dialogs, if postAuthor or postCaption was not inside the comments drawer, check active Reel
-    const activeReel = findActiveReelContainer();
-    if (activeReel && activeReel !== postContainer) {
-      if (!postAuthor) postAuthor = extractPostAuthor(activeReel);
-      if (!postCaption) postCaption = extractPostCaption(activeReel, postAuthor);
-      if (!postVisuals.thumbnailUrl && !postVisuals.description) {
-        const rv = extractPostVisuals(activeReel);
-        if (rv.thumbnailUrl || rv.description) postVisuals = rv;
+    if (activeVideo) {
+      postContainer = findActiveReelContainer(activeVideo);
+      if (postContainer) {
+        postAuthor = extractReelAuthor(postContainer);
+        postCaption = extractReelCaption(postContainer, postAuthor);
+        postVisuals = extractReelVisuals(postContainer, activeVideo);
       }
     }
 
-    // Also fallback to Open Graph meta tags for Reel pages
-    if ((!postAuthor || !postCaption) && (window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/'))) {
-      if (!postAuthor) {
-        const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
-        const m = ogTitle.match(/@([a-zA-Z0-9._]+)/);
-        if (m) postAuthor = m[1];
-      }
-      if (!postCaption) {
-        const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
-        const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{5,})[”"']/);
-        if (quoteMatch && quoteMatch[1]) {
-          postCaption = cleanCaptionText(quoteMatch[1]);
+    // 2. Otherwise locate standard post container (feed post, photo modal, etc.)
+    if (!postContainer) {
+      postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
+    }
+
+    if (!postAuthor && postContainer) {
+      postAuthor = extractPostAuthor(postContainer);
+    }
+    if (!postCaption && postContainer) {
+      postCaption = extractPostCaption(postContainer, postAuthor);
+    }
+    if (!postVisuals.thumbnailUrl && !postVisuals.description && postContainer) {
+      postVisuals = extractPostVisuals(postContainer);
+    }
+
+    // 3. Scan author comments across the thread or comments drawer
+    if (postContainer && postAuthor) {
+      const authorComments = extractAllAuthorComments(postContainer, postAuthor);
+      if (authorComments.length > 0) {
+        const commentsBlock = authorComments.map((c, idx) => `[Author Comment #${idx + 1}]:\n${c}`).join('\n\n');
+        if (!postCaption) {
+          postCaption = commentsBlock;
+        } else if (!postCaption.includes(authorComments[0])) {
+          postCaption = `${postCaption}\n\n${commentsBlock}`;
         }
       }
     }
