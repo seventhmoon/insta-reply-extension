@@ -99,12 +99,28 @@
     ];
 
     document.querySelectorAll(commentSelectors.join(',')).forEach((el) => {
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
       injectShortcutButton(el, 'comment');
     });
 
     // 2. Instagram Direct Message (DM) Composers (Fullscreen + PIP / Mini-window mode)
     const dmInputs = findDmInputElements();
     dmInputs.forEach((el) => {
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
       injectShortcutButton(el, 'dm');
     });
 
@@ -120,6 +136,17 @@
    */
   function isInsideFloatingChat(el) {
     if (!el) return false;
+
+    // Explicitly exclude any InstaReply UI elements
+    if (
+      el.closest('.instareply-card-overlay') ||
+      el.closest('.instareply-card') ||
+      el.closest('.instareply-shortcut-btn') ||
+      el.classList.contains('instareply-textarea') ||
+      el.id === 'instareply-output-text'
+    ) {
+      return false;
+    }
 
     // Explicitly exclude comment forms, articles, post cards, and comments dialogs
     if (el.closest('form') || el.closest('article') || el.closest('.ig-post-card')) {
@@ -163,6 +190,7 @@
       }
       curr = curr.parentElement;
     }
+
     return false;
   }
 
@@ -183,6 +211,19 @@
     `);
 
     candidates.forEach((el) => {
+      // 0. Exclude any element inside InstaReply card or overlay
+      if (
+        el.closest('.instareply-card-overlay') ||
+        el.closest('.instareply-card') ||
+        el.closest('.instareply-shortcut-btn') ||
+        el.closest('.instareply-dm-reply-chip') ||
+        el.closest('.instareply-comment-reply-chip') ||
+        el.classList.contains('instareply-textarea') ||
+        el.id === 'instareply-output-text'
+      ) {
+        return;
+      }
+
       // 1. Exclude if inside an article (post card on feed or post page)
       if (el.closest('article') || el.closest('.ig-post-card')) {
         return;
@@ -289,6 +330,11 @@
       ) {
         btn.remove();
       }
+    });
+
+    // Purge any button mistakenly placed inside the InstaReply assistant card itself
+    document.querySelectorAll('.instareply-card-overlay .instareply-shortcut-btn, .instareply-card-overlay .instareply-dm-reply-chip, .instareply-card-overlay .instareply-comment-reply-chip').forEach((btn) => {
+      btn.remove();
     });
 
     // Purge any reply chip mistakenly placed inside or near follow buttons, notification items, or headers
@@ -617,6 +663,14 @@
    */
   function findDmPillContainer(inputEl) {
     if (!inputEl) return null;
+    if (
+      inputEl.closest('.instareply-card-overlay') ||
+      inputEl.closest('.instareply-card') ||
+      inputEl.classList.contains('instareply-textarea') ||
+      inputEl.id === 'instareply-output-text'
+    ) {
+      return null;
+    }
 
     // 1. Test harness mock
     const mock = inputEl.closest('.ig-dm-composer');
@@ -627,7 +681,12 @@
 
     // 2. Walk up looking for the rounded pill container (typically has border-radius >= 14px or border)
     for (let i = 0; i < 8 && curr && curr !== document.body; i++) {
-      if (curr.getAttribute('role') === 'main' || curr.tagName === 'FORM') {
+      if (
+        curr.getAttribute('role') === 'main' ||
+        curr.tagName === 'FORM' ||
+        curr.classList.contains('instareply-card-overlay') ||
+        curr.classList.contains('instareply-card')
+      ) {
         break;
       }
       if (window.getComputedStyle) {
@@ -666,6 +725,14 @@
    */
   function findCommentInputContainer(inputEl) {
     if (!inputEl) return null;
+    if (
+      inputEl.closest('.instareply-card-overlay') ||
+      inputEl.closest('.instareply-card') ||
+      inputEl.classList.contains('instareply-textarea') ||
+      inputEl.id === 'instareply-output-text'
+    ) {
+      return null;
+    }
     const form = inputEl.closest('form');
     if (form) return form;
 
@@ -674,7 +741,12 @@
     let pillContainer = curr;
 
     while (curr && curr !== document.body) {
-      if (curr.getAttribute('role') === 'dialog' || curr.tagName.toLowerCase() === 'article') {
+      if (
+        curr.getAttribute('role') === 'dialog' ||
+        curr.tagName.toLowerCase() === 'article' ||
+        curr.classList.contains('instareply-card-overlay') ||
+        curr.classList.contains('instareply-card')
+      ) {
         break;
       }
       // Check if curr is a container holding the input and action icons (⚡, 😊, Post)
@@ -701,6 +773,8 @@
    * ensuring it NEVER stacks vertically, overlaps buttons, or escapes to dialog headers.
    */
   function insertShortcutIntoComment(btn, inputEl) {
+    if (!inputEl || inputEl.closest('.instareply-card-overlay') || inputEl.closest('.instareply-card')) return;
+
     const container = findCommentInputContainer(inputEl);
     if (!container) {
       inputEl.insertAdjacentElement('afterend', btn);
@@ -726,7 +800,13 @@
       .filter(b => b !== btn && !inputEl.contains(b) && !b.closest('.instareply-shortcut-btn'));
 
     // Check if there is an existing submit/post button
-    let postBtn = container.querySelector('button[type="submit"], .ig-post-btn');
+    let postBtn = null;
+    for (const b of allActions) {
+      if (b.tagName === 'BUTTON' && (b.type === 'submit' || b.classList.contains('ig-post-btn'))) {
+        postBtn = b;
+        break;
+      }
+    }
     if (!postBtn) {
       for (const b of allActions) {
         const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
@@ -770,6 +850,8 @@
    * Absolutely positions it inside the input pill, vertically centered on the far right
    */
   function insertShortcutIntoDm(btn, inputEl) {
+    if (!inputEl || inputEl.closest('.instareply-card-overlay') || inputEl.closest('.instareply-card')) return;
+
     const pill = findDmPillContainer(inputEl);
     if (!pill) {
       inputEl.insertAdjacentElement('afterend', btn);
@@ -827,6 +909,14 @@
    */
   function injectShortcutButton(inputEl, contextType) {
     if (!inputEl) return;
+    if (
+      inputEl.closest('.instareply-card-overlay') ||
+      inputEl.closest('.instareply-card') ||
+      inputEl.classList.contains('instareply-textarea') ||
+      inputEl.id === 'instareply-output-text'
+    ) {
+      return;
+    }
 
     // Check if the parent comment container or form already has an InstaReply button
     const commentContainer = findCommentInputContainer(inputEl);
