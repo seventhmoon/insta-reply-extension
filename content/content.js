@@ -3934,7 +3934,7 @@
         return;
       }
 
-      const bundledCandidates = ['friendly', 'humorous', 'playful', 'savage', 'concise'];
+      const bundledCandidates = ['friendly', 'flirting', 'sexy', 'seductive', 'alluring', 'mean', 'evil', 'humorous', 'playful', 'savage', 'concise'];
       const currentBundled = bundledCandidates.filter(t => t !== currentTone.toLowerCase());
 
       requestPromise = chrome.runtime.sendMessage({
@@ -4604,11 +4604,17 @@
           </div>
           <div class="instareply-tones-row">
             <button type="button" class="instareply-tone-chip" data-tone="friendly" title="Friendly & Casual">😊 Friendly</button>
+            <button type="button" class="instareply-tone-chip" data-tone="flirting" title="Flirting & Romantic">😘 Flirty</button>
+            <button type="button" class="instareply-tone-chip" data-tone="sexy" title="Sexy & Sensual">💋 Sexy</button>
+            <button type="button" class="instareply-tone-chip" data-tone="seductive" title="Seductive & Tantalizing">🥀 Seductive</button>
+            <button type="button" class="instareply-tone-chip" data-tone="alluring" title="Alluring & Enchanting">✨ Alluring</button>
             <button type="button" class="instareply-tone-chip" data-tone="humorous" title="Witty & Funny">😄 Funny</button>
             <button type="button" class="instareply-tone-chip" data-tone="playful" title="Playful & Naughty / Cheeky">😈 Playful</button>
             <button type="button" class="instareply-tone-chip" data-tone="savage" title="Savage & Roast / Sarcastic Clapback">😏 Savage</button>
+            <button type="button" class="instareply-tone-chip" data-tone="mean" title="Mean & Haughty / Elite Snark">💅 Mean</button>
+            <button type="button" class="instareply-tone-chip" data-tone="evil" title="Evil & Villain Era / Wicked Mastermind">🦹 Evil</button>
             <button type="button" class="instareply-tone-chip" data-tone="geek" title="Geek & Tech / Nerd Culture">🤓 Geek</button>
-            <button type="button" class="instareply-tone-chip" data-tone="spicy" title="Spicy & Flirty / Charismatic">🌶️ Spicy</button>
+            <button type="button" class="instareply-tone-chip" data-tone="spicy" title="Spicy & Bold / Charismatic">🌶️ Spicy</button>
             <button type="button" class="instareply-tone-chip" data-tone="enthusiastic" title="Enthusiastic & Hyped">🔥 Hyped</button>
             <button type="button" class="instareply-tone-chip" data-tone="professional" title="Professional & Polished">💼 Professional</button>
             <button type="button" class="instareply-tone-chip" data-tone="empathetic" title="Empathetic & Caring">❤️ Empathetic</button>

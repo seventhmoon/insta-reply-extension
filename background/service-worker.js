@@ -1081,8 +1081,14 @@ function buildStructuredPrompt({
   const isPostComment = replyMode === 'post_comment' && !isCommentReply && !isStoryReply && contextType !== 'dm';
 
   const primaryTone = (tone || 'friendly').toLowerCase();
-  const popularTones = ['friendly', 'humorous', 'playful', 'savage', 'concise'];
-  const altTones = popularTones.filter(t => t !== primaryTone).slice(0, 4);
+  let altTones;
+  if (['sexy', 'seductive', 'flirting', 'flirty', 'alluring'].includes(primaryTone)) {
+    altTones = ['flirting', 'sexy', 'seductive', 'alluring', 'playful', 'savage', 'friendly'].filter(t => t !== primaryTone && t !== 'flirty').slice(0, 4);
+  } else if (['mean', 'evil', 'savage'].includes(primaryTone)) {
+    altTones = ['savage', 'mean', 'evil', 'playful', 'humorous'].filter(t => t !== primaryTone).slice(0, 4);
+  } else {
+    altTones = ['friendly', 'flirting', 'humorous', 'playful', 'savage', 'concise'].filter(t => t !== primaryTone).slice(0, 4);
+  }
 
   let multiToneInstruction = '';
   let multiToneSchema = '';
@@ -1244,11 +1250,24 @@ Only output the JSON object. Do not include markdown code block backticks if pos
 function getToneInstruction(tone) {
   const t = (tone || 'friendly').toLowerCase();
   switch (t) {
+    case 'sexy':
+      return 'SEXY & SENSUAL: Sultry, confident, sensual charm, bold magnetic allure, and uninhibited charisma. Warm, intoxicating, and tasteful while turning up the heat.';
+    case 'seductive':
+      return 'SEDUCTIVE & TANTALIZING: Hypnotic, irresistible charm, slow-burn mystery, smooth and whisper-soft temptation. Leaves them wanting more.';
+    case 'flirting':
+    case 'flirty':
+      return 'FLIRTING & CHARMING: Playful romantic banter, cute teasing, charming compliments, magnetic spark, and witty chemistry. Heart-fluttering and fun.';
+    case 'alluring':
+      return 'ALLURING & ENCHANTING: Sophisticated elegance, graceful fascination, captivating mystery, poetically mesmerizing compliments, and irresistible poise.';
+    case 'mean':
+      return 'MEAN & HAUGHTY: Unapologetic bad-bitch energy, condescending side-eye, cutting deadpan shade, elite snark, and deliciously icy dismissiveness. Hilariously ruthless without violating safety guidelines.';
+    case 'evil':
+    case 'villain':
+      return 'EVIL & VILLAIN ERA: Deliciously wicked mastermind energy, dramatic theatrical flair, nefarious chuckle (muahaha), cunning schemes, dark comedic sarcasm, and unapologetic chaos.';
     case 'playful':
     case 'naughty':
       return 'PLAYFUL & CHEEKY / NAUGHTY: Mischievous charm, witty banter, playful teasing, subtle innuendo or cheeky wink-and-nudge humor. Fun, magnetic, and socially savvy without violating platform safety.';
     case 'savage':
-    case 'mean':
     case 'roast':
       return 'SAVAGE & ROAST: Sharp comedic wit, hilarious burn, deadpan sarcasm, bold clapback (in the viral style of Wendy\'s Twitter or comedy roast). Witty and entertaining without being hateful or abusive.';
     case 'humorous':
@@ -1258,8 +1277,7 @@ function getToneInstruction(tone) {
     case 'nerd':
       return 'GEEK & TECH: Analytical curiosity, smart tech/pop-culture/gaming references, nerd pride, clever specs or lore breakdown.';
     case 'spicy':
-    case 'flirty':
-      return 'SPICY & FLIRTY: Confident, alluring charisma, charming compliment, subtle romantic tension, captivating magnetic energy.';
+      return 'SPICY & BOLD: Confident, fiery attitude, unapologetic bold energy, feisty punch, and magnetic charisma.';
     case 'enthusiastic':
       return 'HYPED & ENTHUSIASTIC: High energy, pumped, celebratory excitement, hype-person energy.';
     case 'professional':

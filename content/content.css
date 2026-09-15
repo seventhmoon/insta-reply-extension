@@ -459,6 +459,23 @@
   align-items: center;
   gap: 5px;
   padding: 2px 0;
+  max-height: 96px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.instareply-tones-row::-webkit-scrollbar {
+  width: 4px;
+}
+
+.instareply-tones-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.instareply-tones-row::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 .instareply-tone-chip {
@@ -491,6 +508,42 @@
   border-color: #E1306C;
   color: #ffffff;
   font-weight: 600;
+}
+
+.instareply-tone-chip.active[data-tone="flirting"] {
+  background: linear-gradient(135deg, #f43f5e, #ec4899);
+  border-color: #f43f5e;
+  box-shadow: 0 1px 6px rgba(244, 63, 94, 0.4);
+}
+
+.instareply-tone-chip.active[data-tone="sexy"] {
+  background: linear-gradient(135deg, #e11d48, #9f1239);
+  border-color: #e11d48;
+  box-shadow: 0 1px 6px rgba(225, 29, 72, 0.45);
+}
+
+.instareply-tone-chip.active[data-tone="seductive"] {
+  background: linear-gradient(135deg, #881337, #4c0519);
+  border-color: #9f1239;
+  box-shadow: 0 1px 6px rgba(136, 19, 55, 0.45);
+}
+
+.instareply-tone-chip.active[data-tone="alluring"] {
+  background: linear-gradient(135deg, #7c3aed, #db2777);
+  border-color: #a855f7;
+  box-shadow: 0 1px 6px rgba(168, 85, 247, 0.4);
+}
+
+.instareply-tone-chip.active[data-tone="mean"] {
+  background: linear-gradient(135deg, #475569, #0f172a);
+  border-color: #64748b;
+  box-shadow: 0 1px 6px rgba(71, 85, 105, 0.4);
+}
+
+.instareply-tone-chip.active[data-tone="evil"] {
+  background: linear-gradient(135deg, #581c87, #18181b);
+  border-color: #7e22ce;
+  box-shadow: 0 1px 6px rgba(88, 28, 135, 0.45);
 }
 
 .instareply-tone-chip.active[data-tone="playful"] {

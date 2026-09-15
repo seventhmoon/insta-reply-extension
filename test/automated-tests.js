@@ -1075,6 +1075,41 @@ Hope this helps!
     assert.notStrictEqual(key1, key3, 'Different posts must have distinct cache keys');
   });
 
+  runTest('ToneStyleCoverage', 'All extended tone styles (sexy, seductive, flirting, alluring, mean, evil) are consistently defined across service-worker, popup, content script, and CSS', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const contentCss = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    const extendedTones = ['flirting', 'sexy', 'seductive', 'alluring', 'mean', 'evil'];
+
+    for (const tone of extendedTones) {
+      // 1. Check service-worker has tone case in getToneInstruction
+      assert.ok(
+        swCode.includes(`case '${tone}':`),
+        `background/service-worker.js must define case '${tone}' in getToneInstruction`
+      );
+
+      // 2. Check popup.html has option
+      assert.ok(
+        popupHtml.includes(`value="${tone}"`),
+        `popup/popup.html must have <option value="${tone}">`
+      );
+
+      // 3. Check content.js has button with data-tone
+      assert.ok(
+        contentJs.includes(`data-tone="${tone}"`),
+        `content/content.js must render <button ... data-tone="${tone}">`
+      );
+
+      // 4. Check content.css has dedicated active styling
+      assert.ok(
+        contentCss.includes(`[data-tone="${tone}"]`),
+        `content/content.css must define custom styling for [data-tone="${tone}"]`
+      );
+    }
+  });
+
   // =========================================================================
   // SUITE 5: Real Headless Chrome End-to-End DOM Integration
   // =========================================================================
