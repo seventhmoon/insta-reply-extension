@@ -64,6 +64,21 @@ async function main() {
     execSync(`node -c "${path.join(ROOT_DIR, 'content/page-bridge.js')}"`, { stdio: 'pipe' });
   });
 
+  runTest('Scope', 'content/content.js scopes requestPromise before try-finally block', () => {
+    const code = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const execReplyDef = code.indexOf('async function executeReplyGeneration()');
+    assert.ok(execReplyDef !== -1, 'executeReplyGeneration function must exist');
+    const execReplyBody = code.slice(execReplyDef, execReplyDef + 2500);
+    assert.ok(
+      execReplyBody.includes('let requestPromise = null;') || execReplyBody.includes('let requestPromise;'),
+      'requestPromise must be declared outside try block with let'
+    );
+    assert.ok(
+      !execReplyBody.includes('const requestPromise ='),
+      'requestPromise must not be block-scoped with const inside try'
+    );
+  });
+
   runTest('Manifest', 'manifest.json valid Manifest V3 structure', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8'));
     assert.strictEqual(manifest.manifest_version, 3, 'Must be Manifest V3');

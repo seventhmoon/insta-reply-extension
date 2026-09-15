@@ -3763,8 +3763,9 @@
    * Main generator execution: sends message to service worker
    */
   async function executeReplyGeneration() {
-    if (!activeCard) return;
+    if (!activeCard || !lastContextData) return;
 
+    let requestPromise = null;
     const thisGenId = ++currentGenerationId;
 
     const payload = {
@@ -3844,7 +3845,7 @@
       const bundledCandidates = ['friendly', 'humorous', 'playful', 'savage', 'concise'];
       const currentBundled = bundledCandidates.filter(t => t !== currentTone.toLowerCase());
 
-      const requestPromise = chrome.runtime.sendMessage({
+      requestPromise = chrome.runtime.sendMessage({
         action: 'GENERATE_REPLY',
         payload
       });
@@ -3911,7 +3912,7 @@
       if (thisGenId !== currentGenerationId) return;
       renderAIError(err.message || 'Error communicating with AI service.');
     } finally {
-      if (activeGenerationContext && activeGenerationContext.promise === requestPromise) {
+      if (activeGenerationContext && requestPromise && activeGenerationContext.promise === requestPromise) {
         activeGenerationContext = null;
       }
     }
