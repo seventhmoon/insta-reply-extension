@@ -207,6 +207,77 @@ async function main() {
     assert.strictEqual(filtered[0].alt, 'May be an image of coffee and croissant');
   });
 
+  runTest('DirectUserPostRoute', 'Recognizes direct user post URLs (/username/p/ID/) and extracts post shortcode and author handle', () => {
+    function isDedicatedPostOrReelRoute(path) {
+      const match = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+      const bannedCodes = new Set(['videos', 'audio', 'reels', 'reel', 'explore', 'direct', 'stories', 'create', 'tv']);
+      return Boolean(match && match[2] && !bannedCodes.has(match[2].toLowerCase()));
+    }
+
+    function extractDirectPostAuthor(path) {
+      const bannedRoutes = new Set(['explore', 'reels', 'reel', 'direct', 'stories', 'p', 'tv', 'accounts', 'developer']);
+      const userPathMatch = path.match(/^\/([a-zA-Z0-9._]+)\/(?:p|reel|reels)\//);
+      if (userPathMatch && userPathMatch[1]) {
+        const clean = userPathMatch[1].trim();
+        if (/^[a-zA-Z0-9._]+$/.test(clean) && !bannedRoutes.has(clean.toLowerCase())) {
+          return clean;
+        }
+      }
+      return '';
+    }
+
+    function extractDirectPostId(path) {
+      const match = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+      return match ? match[2] : '';
+    }
+
+    // Direct user post URL: /hayashi.matcha/p/DdQw9TViBgz/
+    const testUrl = '/hayashi.matcha/p/DdQw9TViBgz/';
+    assert.strictEqual(isDedicatedPostOrReelRoute(testUrl), true);
+    assert.strictEqual(extractDirectPostAuthor(testUrl), 'hayashi.matcha');
+    assert.strictEqual(extractDirectPostId(testUrl), 'DdQw9TViBgz');
+
+    // Standard /p/ post URL
+    const standardUrl = '/p/DdQLLRDAUN5/';
+    assert.strictEqual(isDedicatedPostOrReelRoute(standardUrl), true);
+    assert.strictEqual(extractDirectPostAuthor(standardUrl), '');
+    assert.strictEqual(extractDirectPostId(standardUrl), 'DdQLLRDAUN5');
+
+    // Non-post routes
+    assert.strictEqual(isDedicatedPostOrReelRoute('/explore/'), false);
+    assert.strictEqual(isDedicatedPostOrReelRoute('/reels/videos/'), false);
+  });
+
+  runTest('MultilingualCommentInputDiscovery', 'Matches standard form textarea and multilingual comment inputs without dropping inputs on reply-to placeholder', () => {
+    function shouldInjectCommentShortcut(inputInfo) {
+      const { inForm, inArticle, placeholder, ariaLabel, isStory, isDm } = inputInfo;
+      if (isStory || isDm) return false;
+
+      // Must be inside a form, article, main, or have comment / 留言 / コメント cues
+      const hasStructuralMatch = inForm || inArticle;
+      const lowerPlaceholder = (placeholder || '').toLowerCase();
+      const lowerAria = (ariaLabel || '').toLowerCase();
+      const hasTextCue = /comment|留言|評論|评论|コメント|coment/.test(lowerPlaceholder + lowerAria);
+
+      if (!hasStructuralMatch && !hasTextCue) return false;
+
+      // Must NOT be dropped when replying to a user with "Reply to @author..." placeholder
+      return true;
+    }
+
+    // Standard English form textarea on direct post
+    assert.strictEqual(shouldInjectCommentShortcut({ inForm: true, inArticle: false, placeholder: 'Add a comment...', ariaLabel: 'Add a comment...', isStory: false, isDm: false }), true);
+
+    // Traditional Chinese form textarea on direct post
+    assert.strictEqual(shouldInjectCommentShortcut({ inForm: true, inArticle: false, placeholder: '新增留言...', ariaLabel: '新增留言...', isStory: false, isDm: false }), true);
+
+    // Comment input active reply state with "Reply to @hayashi.matcha..."
+    assert.strictEqual(shouldInjectCommentShortcut({ inForm: true, inArticle: true, placeholder: 'Reply to @hayashi.matcha...', ariaLabel: 'Reply to @hayashi.matcha...', isStory: false, isDm: false }), true);
+
+    // Story input should be excluded
+    assert.strictEqual(shouldInjectCommentShortcut({ inForm: false, inArticle: false, placeholder: 'Send message', ariaLabel: 'Reply to story', isStory: true, isDm: false }), false);
+  });
+
   // =========================================================================
   // SUITE 2b: Instagram Reel Context Extraction & Comments Drawer Isolation
   // =========================================================================

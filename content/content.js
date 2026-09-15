@@ -65,6 +65,17 @@
     return `${postAuthor || 'reel'}_${cleanCap}`;
   }
 
+  /**
+   * Helper to check if current page is a dedicated post or reel URL:
+   * Matches /p/<id>/, /reel/<id>/, /reels/<id>/, and /<username>/p/<id>/, /<username>/reel/<id>/
+   */
+  function isDedicatedPostOrReelRoute() {
+    const path = window.location.pathname;
+    const match = path.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+    const bannedCodes = new Set(['videos', 'audio', 'reels', 'reel', 'explore', 'direct', 'stories', 'create', 'tv']);
+    return Boolean(match && match[2] && !bannedCodes.has(match[2].toLowerCase()));
+  }
+
   function getReplyCacheKey(postId, postAuthor, incomingAuthor, incomingText, stance, tone, language) {
     const textSnippet = (incomingText || '').trim().toLowerCase().slice(0, 80);
     return `${postId || 'post'}|${postAuthor || ''}|${incomingAuthor || ''}|${textSnippet}|${stance || 'positive'}|${tone || 'friendly'}|${language || 'auto'}`;
@@ -91,6 +102,11 @@
     setupGlobalClickListener();
     setupFocusListener();
     setupNavigationListener();
+
+    // Staggered retries to guarantee button injection on cold direct post loads (React client hydration)
+    [300, 800, 1500, 3000].forEach(delay => {
+      setTimeout(scanAndInjectShortcuts, delay);
+    });
   }
 
   /**
@@ -231,28 +247,53 @@
 
     // 3. Instagram Post & Modal Comment Inputs
     const commentCandidates = document.querySelectorAll(`
-      form textarea[aria-label*="comment" i],
-      form textarea[placeholder*="comment" i],
+      form textarea,
+      article textarea,
+      main textarea,
+      div[role="main"] textarea,
+      section form textarea,
+      form div[role="textbox"],
+      form div[contenteditable="true"],
+      article div[role="textbox"],
+      article div[contenteditable="true"],
+      main div[role="textbox"],
+      div[role="main"] div[role="textbox"],
+      .ig-post-card div[role="textbox"],
+      .ig-post-card div[contenteditable="true"],
       textarea[aria-label*="comment" i],
       textarea[placeholder*="comment" i],
-      form div[role="textbox"][contenteditable="true"],
-      form div[contenteditable="true"],
+      textarea[aria-label*="留言" i],
+      textarea[placeholder*="留言" i],
+      textarea[aria-label*="評論" i],
+      textarea[placeholder*="評論" i],
+      textarea[aria-label*="评论" i],
+      textarea[placeholder*="评论" i],
+      textarea[aria-label*="コメント" i],
+      textarea[placeholder*="コメント" i],
+      textarea[aria-label*="coment" i],
+      textarea[placeholder*="coment" i],
       div[role="textbox"][aria-label*="comment" i],
       div[role="textbox"][placeholder*="comment" i],
       div[role="textbox"][aria-placeholder*="comment" i],
+      div[role="textbox"][aria-label*="留言" i],
+      div[role="textbox"][aria-label*="評論" i],
+      div[role="textbox"][aria-label*="评论" i],
+      div[role="textbox"][aria-label*="コメント" i],
+      div[role="textbox"][aria-label*="coment" i],
       div[contenteditable="true"][aria-label*="comment" i],
       div[contenteditable="true"][placeholder*="comment" i],
       div[contenteditable="true"][aria-placeholder*="comment" i],
-      article div[role="textbox"][contenteditable="true"],
-      article div[contenteditable="true"],
-      .ig-post-card div[role="textbox"][contenteditable="true"],
-      .ig-post-card div[contenteditable="true"]
+      div[contenteditable="true"][aria-label*="留言" i],
+      div[contenteditable="true"][aria-label*="評論" i],
+      div[contenteditable="true"][aria-label*="评论" i],
+      div[contenteditable="true"][aria-label*="コメント" i]
     `);
 
     commentCandidates.forEach((el) => {
       if (
         el.closest('.instareply-card-overlay') ||
         el.closest('.instareply-card') ||
+        el.closest('header, nav, [role="navigation"]') ||
         el.classList.contains('instareply-textarea') ||
         el.id === 'instareply-output-text'
       ) {
@@ -263,19 +304,10 @@
       const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
       const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
 
-      // Strictly exclude Stories (routes, story composers, viewers, or "reply to" cues)
+      // Strictly exclude Stories (routes, story composers, viewers)
       if (
         window.location.pathname.includes('/stories') ||
-        el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]') ||
-        ariaLabel.startsWith('reply to') ||
-        placeholder.startsWith('reply to') ||
-        ariaPlaceholder.startsWith('reply to') ||
-        ariaLabel.includes('reply to') ||
-        placeholder.includes('reply to') ||
-        ariaPlaceholder.includes('reply to') ||
-        ariaLabel.startsWith('responder a') ||
-        placeholder.startsWith('responder a') ||
-        ariaPlaceholder.startsWith('responder a')
+        el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')
       ) {
         return;
       }
@@ -286,7 +318,7 @@
         placeholder.includes('message') ||
         ariaPlaceholder.includes('message') ||
         el.closest('.ig-dm-composer') ||
-        (window.location.pathname.includes('/direct') && !el.closest('article'))
+        (window.location.pathname.includes('/direct') && !el.closest('article, [role="article"]'))
       ) {
         return;
       }
@@ -859,10 +891,15 @@
         lowerText === 'responder' ||
         lowerText === 'répondre' ||
         lowerText === 'antworten' ||
+        lowerText === 'rispondi' ||
+        lowerText === '답글 달기' ||
+        lowerText === '답글' ||
         ariaLabel.includes('reply to') ||
         ariaLabel.includes('回覆') ||
         ariaLabel.includes('回复') ||
-        ariaLabel.includes('返信')
+        ariaLabel.includes('返信') ||
+        ariaLabel.includes('rispondi') ||
+        ariaLabel.includes('답글')
       );
 
       if (!isReplyBtn) return;
@@ -2813,7 +2850,7 @@
       }
 
       // 4. Direct parent main container on dedicated post route
-      if (window.location.pathname.startsWith('/p/')) {
+      if (isDedicatedPostOrReelRoute()) {
         const pageArticle = document.querySelector('article');
         if (pageArticle) return pageArticle;
         const parentMain = el.closest('main') || el.closest('div[role="main"]');
@@ -2822,7 +2859,7 @@
     }
 
     // 5. Active Reel on screen if on /reel/ or /reels/ route
-    if (window.location.pathname.startsWith('/reel') || window.location.pathname.startsWith('/reels')) {
+    if (window.location.pathname.includes('/reel') || window.location.pathname.includes('/reels')) {
       const activeVideo = findActiveReelVideo();
       if (activeVideo) {
         const activeReel = findActiveReelContainer(activeVideo);
@@ -2837,7 +2874,7 @@
     }
 
     // 7. Fallback on dedicated single-post or reel URL
-    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
+    if (isDedicatedPostOrReelRoute()) {
       return document.querySelector('article') ||
              document.querySelector('main') ||
              document.querySelector('div[role="main"]') ||
@@ -3026,7 +3063,7 @@
   function extractPostCaption(container, knownAuthor = '') {
     if (!container) return '';
     const author = (knownAuthor || extractPostAuthor(container) || '').trim().replace(/^@/, '');
-    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/');
+    const isDedicatedPost = isDedicatedPostOrReelRoute();
 
     let standardCaption = '';
 
@@ -3204,7 +3241,7 @@
       'accounts', 'developer', 'about', 'help', 'privacy', 'terms', 'api', 'notifications', 'create'
     ]);
 
-    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/');
+    const isDedicatedPost = isDedicatedPostOrReelRoute();
 
     const cleanCandidate = (handle) => {
       if (!handle) return '';
@@ -3214,6 +3251,13 @@
       }
       return '';
     };
+
+    // 0. Extract author directly from /<username>/p/<id>/ or /<username>/reel/<id>/ URL
+    const userPathMatch = window.location.pathname.match(/^\/([a-zA-Z0-9._]+)\/(?:p|reel|reels)\//);
+    if (userPathMatch && userPathMatch[1]) {
+      const c = cleanCandidate(userPathMatch[1]);
+      if (c) return c;
+    }
 
     // 1. On dedicated post/reel URLs, document.title and Open Graph title are authoritative and unpolluted
     const pageTitle = (document.title || '').trim();
@@ -3310,7 +3354,7 @@
    * Extracts visual context from the post (photo alt text, scene tags, video type, thumbnail)
    */
   function extractPostVisuals(container) {
-    const isDedicatedPost = window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/');
+    const isDedicatedPost = isDedicatedPostOrReelRoute();
     
     // Find the closest article or media root
     let target = container ? (container.closest('article') || (container.matches && container.matches('article') ? container : null)) : null;
@@ -3616,7 +3660,7 @@
       }
 
       // Direct page fallbacks for dedicated /p/, /reel/, and /reels/ routes
-      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
+      if (isDedicatedPostOrReelRoute()) {
         if (!postVisuals.thumbnailUrl || !postVisuals.description || postVisuals.description === 'Instagram Reel video') {
           const canonicalVisuals = extractPostVisuals(postContainer || document.querySelector('main, article, div[role="main"]') || document.body);
           if (canonicalVisuals.thumbnailUrl && !postVisuals.thumbnailUrl) postVisuals.thumbnailUrl = canonicalVisuals.thumbnailUrl;
@@ -3757,7 +3801,7 @@
       }
 
       // Also fallback to canonical page metadata on dedicated post/reel routes
-      if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/reel/') || window.location.pathname.startsWith('/reels/')) {
+      if (isDedicatedPostOrReelRoute()) {
         if (!postVisuals.thumbnailUrl || !postVisuals.description || postVisuals.description === 'Instagram Reel video') {
           const canonicalVisuals = extractPostVisuals(article || document.querySelector('main, article, div[role="main"]') || document.body);
           if (canonicalVisuals.thumbnailUrl && !postVisuals.thumbnailUrl) postVisuals.thumbnailUrl = canonicalVisuals.thumbnailUrl;
