@@ -913,6 +913,115 @@ async function main() {
     assert.strictEqual(result.isSpecificCommentReply, true);
   });
 
+  runTest('CommentContainerDiscovery', 'Accurately locates comment row container in modern nested div virtual list without li or ul', () => {
+    const authorLink1 = {
+      tag: 'A',
+      getAttribute: (k) => k === 'href' ? '/nk.l.1001/' : null
+    };
+    const replyBtn1 = {
+      tag: 'DIV',
+      role: 'button',
+      textContent: 'Reply'
+    };
+
+    const actionsDiv1 = {
+      tag: 'DIV',
+      className: 'actions',
+      children: [replyBtn1],
+      parentElement: null,
+      querySelectorAll: (sel) => sel.includes('button') ? [replyBtn1] : [],
+      querySelector: () => null
+    };
+    replyBtn1.parentElement = actionsDiv1;
+
+    const bodyDiv1 = {
+      tag: 'DIV',
+      className: 'comment-body',
+      children: [authorLink1, actionsDiv1],
+      parentElement: null,
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [authorLink1];
+        if (sel.includes('button')) return [replyBtn1];
+        return [];
+      },
+      querySelector: () => ({ tag: 'TIME' })
+    };
+    actionsDiv1.parentElement = bodyDiv1;
+
+    const rowDiv1 = {
+      tag: 'DIV',
+      className: 'comment-row',
+      children: [bodyDiv1],
+      parentElement: null,
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [authorLink1];
+        if (sel.includes('button')) return [replyBtn1];
+        return [];
+      },
+      querySelector: () => ({ tag: 'TIME' })
+    };
+    bodyDiv1.parentElement = rowDiv1;
+
+    const streamDiv = {
+      tag: 'DIV',
+      className: 'comments-stream',
+      children: [rowDiv1],
+      parentElement: { tagName: 'ARTICLE', getAttribute: () => null },
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [authorLink1, { getAttribute: () => '/asa_megane/' }];
+        if (sel.includes('button')) return [replyBtn1, { textContent: 'Reply' }];
+        return [];
+      },
+      querySelector: () => null
+    };
+    rowDiv1.parentElement = streamDiv;
+
+    function findContainer(node) {
+      let curr = node.parentElement;
+      let candidate = null;
+      while (curr && curr.tagName !== 'ARTICLE') {
+        const authorLinks = curr.querySelectorAll('a[href^="/"]');
+        const hasTimeOrReply = curr.querySelector('time') !== null;
+        if (authorLinks.length >= 1 && hasTimeOrReply) {
+          const replyButtons = curr.querySelectorAll('button');
+          if (replyButtons.length <= 1) {
+            candidate = curr;
+          } else {
+            break;
+          }
+        }
+        curr = curr.parentElement;
+      }
+      return candidate;
+    }
+
+    const found = findContainer(replyBtn1);
+    assert.strictEqual(found, rowDiv1, 'Must resolve to the individual comment row and stop before the stream');
+  });
+
+  runTest('CommentAuthorExtraction', 'Extracts author handle from comment container profile links', () => {
+    function extractAuthor(container) {
+      const banned = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'direct']);
+      const links = container.querySelectorAll('a[href^="/"]');
+      for (const link of links) {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        if (match && match[1] && !banned.has(match[1].toLowerCase())) {
+          return match[1];
+        }
+      }
+      return '';
+    }
+
+    const mockContainer = {
+      querySelectorAll: () => [
+        { getAttribute: () => '/explore/' },
+        { getAttribute: () => '/nk.l.1001/' }
+      ]
+    };
+    assert.strictEqual(extractAuthor(mockContainer), 'nk.l.1001');
+  });
+
   // =========================================================================
   // SUITE 4: Multi-Tone Bundling & AI Response Parsing
   // =========================================================================

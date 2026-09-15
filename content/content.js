@@ -678,6 +678,88 @@
   }
 
   /**
+   * Accurately locates a single comment row container from any element inside it.
+   * Works across semantic <li>, <ul > div>, and modern Instagram virtualized <div> comment lists.
+   */
+  function findCommentContainer(node) {
+    if (!node) return null;
+
+    // 1. Check explicit semantic containers
+    const semantic = node.closest('li, [role="listitem"], .ig-comment');
+    if (semantic && !semantic.closest('header')) {
+      return semantic;
+    }
+
+    // 2. Check if node is inside a direct ul > div
+    const ulDiv = node.closest('ul > div');
+    if (ulDiv && !ulDiv.closest('header')) {
+      return ulDiv;
+    }
+
+    // 3. Walk up ancestors (up to 9 levels)
+    let curr = node.parentElement;
+    let candidate = null;
+
+    while (curr && curr !== document.body && curr.tagName !== 'ARTICLE' && curr.tagName !== 'MAIN') {
+      if (curr.getAttribute('role') === 'dialog' && curr.querySelector('h1, h2, [role="heading"]')) {
+        break;
+      }
+
+      // Check if this sub-tree has an author profile link
+      const authorLinks = curr.querySelectorAll('a[href^="/"]:not([href*="/p/"]):not([href*="/reel/"]):not([href*="/explore/"]):not([href*="/stories/"])');
+      const hasTimeOrReply = curr.querySelector('time, button, [role="button"]') !== null;
+
+      if (authorLinks.length >= 1 && hasTimeOrReply) {
+        // Count how many reply buttons exist in curr to prevent capturing the entire comment list
+        const replyButtons = Array.from(curr.querySelectorAll('button, div[role="button"], span[role="button"], span'))
+          .filter(b => {
+            const t = b.textContent?.trim()?.toLowerCase() || '';
+            return t === 'reply' || t === '回覆' || t === '回复' || t === '返信' || t === 'responder' || t === 'répondre' || t === 'antworten';
+          });
+
+        if (replyButtons.length <= 1) {
+          candidate = curr;
+        } else {
+          break;
+        }
+      }
+
+      curr = curr.parentElement;
+    }
+
+    return candidate;
+  }
+
+  /**
+   * Helper to extract the comment author handle from a comment container
+   */
+  function extractAuthorFromCommentContainer(commentContainer) {
+    if (!commentContainer) return '';
+    const banned = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'direct', 'developer', 'about', 'legal', 'emails']);
+
+    // 1. Search for profile links
+    const links = commentContainer.querySelectorAll('a[href^="/"]');
+    for (const link of links) {
+      const href = link.getAttribute('href') || '';
+      const match = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+      if (match && match[1] && !banned.has(match[1].toLowerCase())) {
+        return match[1];
+      }
+    }
+
+    // 2. Fallback to existing selectors: a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong, h3
+    const authorEl = commentContainer.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong, h3');
+    if (authorEl) {
+      const txt = authorEl.textContent?.trim().replace(/^@/, '') || '';
+      if (txt && !banned.has(txt.toLowerCase())) {
+        return txt;
+      }
+    }
+
+    return '';
+  }
+
+  /**
    * Finds the comment text for a given author inside a post article or dialog
    */
   function findCommentByAuthor(article, targetAuthor) {
@@ -725,10 +807,10 @@
       if (!matchesAuthor) continue;
 
       // Ensure this is a comment and NOT the post author header
-      const commentItem = el.closest('li') ||
+      const commentItem = findCommentContainer(el) ||
+                          el.closest('li') ||
                           el.closest('.ig-comment') ||
-                          el.closest('ul > div') ||
-                          el.closest('div[role="button"]')?.parentElement;
+                          el.closest('ul > div');
 
       if (!commentItem) continue;
 
@@ -759,7 +841,6 @@
 
     replyElements.forEach((el) => {
       if (
-        el.dataset.instareplyCommentInjected ||
         el.closest('.instareply-card-overlay') ||
         el.closest('.instareply-shortcut-btn') ||
         el.closest('.instareply-comment-reply-chip')
@@ -794,8 +875,21 @@
         return;
       }
 
+      // Target the outermost interactive button element (avoid duplicate injection on both <button> and <span>)
+      const targetReplyBtn = el.closest('button, [role="button"]') || el;
+
+      // Allow re-injection if React unmounted the chip during reconciliation
+      if (targetReplyBtn.dataset.instareplyCommentInjected) {
+        const existingChip = targetReplyBtn.parentElement?.querySelector('.instareply-comment-reply-chip');
+        if (existingChip) {
+          return;
+        }
+        delete targetReplyBtn.dataset.instareplyCommentInjected;
+        delete el.dataset.instareplyCommentInjected;
+      }
+
       // Ensure this element is inside a comment row / container
-      const commentItem = el.closest('li') || el.closest('ul > div') || el.closest('div[role="button"]')?.parentElement || el.closest('.ig-comment');
+      const commentItem = findCommentContainer(targetReplyBtn);
       if (!commentItem) return;
 
       // Reject notification items
@@ -804,16 +898,14 @@
       }
 
       // Extract comment author
-      const authorEl = commentItem.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong');
-      if (!authorEl) return;
-
-      const rawAuthor = authorEl.textContent.trim().replace(/^@/, '');
+      const rawAuthor = extractAuthorFromCommentContainer(commentItem);
       if (!rawAuthor) return;
 
+      targetReplyBtn.dataset.instareplyCommentInjected = 'true';
       el.dataset.instareplyCommentInjected = 'true';
 
       // Listen for native Instagram "Reply" clicks to capture context immediately
-      el.addEventListener('click', () => {
+      targetReplyBtn.addEventListener('click', () => {
         try {
           const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
           const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
@@ -853,7 +945,7 @@
 
         // Trigger native reply button click so Instagram can initialize its reply state
         try {
-          el.click();
+          targetReplyBtn.click();
         } catch (_) {}
 
         // Locate the comment input for this post
@@ -884,7 +976,7 @@
       });
 
       // Insert immediately after native "Reply"
-      el.insertAdjacentElement('afterend', chip);
+      targetReplyBtn.insertAdjacentElement('afterend', chip);
     });
   }
 
@@ -2855,10 +2947,10 @@
           continue;
         }
 
-        const commentItem = link.closest('li') ||
+        const commentItem = findCommentContainer(link) ||
+                            link.closest('li') ||
                             link.closest('.ig-comment') ||
-                            link.closest('ul > div') ||
-                            link.closest('div[role="button"]')?.parentElement;
+                            link.closest('ul > div');
 
         if (!commentItem) continue;
 
@@ -4106,7 +4198,23 @@
                                   document.querySelector('div[role="dialog"]');
         if (!commentsContainer) return;
 
-        const commentItems = commentsContainer.querySelectorAll('.ig-comment, li, ul > div');
+        const seenItems = new Set();
+        const commentItems = [];
+        const replyButtons = commentsContainer.querySelectorAll('button, div[role="button"], span[role="button"], span');
+        for (const b of replyButtons) {
+          const t = b.textContent?.trim()?.toLowerCase() || '';
+          if (t === 'reply' || t === '回覆' || t === '回复' || t === '返信' || t === 'responder' || t === 'répondre' || t === 'antworten') {
+            const cont = findCommentContainer(b);
+            if (cont && !seenItems.has(cont)) {
+              seenItems.add(cont);
+              commentItems.push(cont);
+            }
+          }
+        }
+        if (commentItems.length === 0) {
+          commentsContainer.querySelectorAll('.ig-comment, li, ul > div').forEach(c => commentItems.push(c));
+        }
+
         const queue = [];
 
         for (const item of commentItems) {
@@ -4119,9 +4227,7 @@
             continue;
           }
 
-          const authorEl = item.querySelector('a[href*="/"] strong, a[href*="/"] span, a[role="link"], strong');
-          if (!authorEl) continue;
-          const author = authorEl.textContent.trim().replace(/^@/, '');
+          const author = extractAuthorFromCommentContainer(item);
           if (!author || author === lastContextData.postAuthor || author === lastContextData.author) continue;
 
           const commentText = extractCommentTextFromContainer(item, author);

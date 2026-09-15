@@ -104,6 +104,21 @@
           </li>
         </ul>
 
+        <!-- Modern Instagram virtualized comment stream (no li, no ul) -->
+        <div class="ig-virtual-comments-stream">
+          <div class="modern-comment-row charlie-comment" style="display: flex; gap: 8px;">
+            <div class="avatar-col"><a href="/charlie/"><img src="https://instagram.com/charlie.jpg" alt="charlie"></a></div>
+            <div class="content-col">
+              <a href="/charlie/" role="link">charlie</a>
+              <span dir="auto">Their cold brew is fantastic! Highly recommend it.</span>
+              <div class="actions-row">
+                <time title="Jul 10, 2024">9w</time>
+                <div role="button" tabindex="0" class="reply-button">Reply</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Comment Form -->
         <form class="comment-form">
           <div id="comment-input"
@@ -188,7 +203,10 @@
 
         // Test 1: Content script injection & chip creation
         const chips = document.querySelectorAll(".instareply-comment-reply-chip");
-        assert("AI Reply chip injected into comment items", chips.length >= 2, "Found " + chips.length);
+        assert("AI Reply chip injected into comment items", chips.length >= 3, "Found " + chips.length);
+
+        const charlieChip = document.querySelector(".charlie-comment .instareply-comment-reply-chip");
+        assert("AI Reply chip injected into modern non-li/non-ul comment row", Boolean(charlieChip));
 
         // Test 2: AI Trigger button injected for comment form
         const triggerBtn = document.querySelector(".instareply-shortcut-btn, .instareply-btn, .instareply-icon-chip");
