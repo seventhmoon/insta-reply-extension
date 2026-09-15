@@ -24,15 +24,17 @@ const DEFAULT_CONFIG = {
 };
 
 // Initialize configuration on install and migrate outdated model names
-chrome.runtime.onInstalled.addListener(async () => {
-  const existing = await chrome.storage.sync.get(null);
-  const updated = { ...DEFAULT_CONFIG, ...existing };
-  if (updated.geminiModel === 'gemini-2.5-flash') {
-    updated.geminiModel = 'gemini-1.5-flash';
-  }
-  await chrome.storage.sync.set(updated);
-  console.log('[InstaReply AI] Service worker initialized with settings:', updated);
-});
+if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
+  chrome.runtime.onInstalled.addListener(async () => {
+    const existing = await chrome.storage.sync.get(null);
+    const updated = { ...DEFAULT_CONFIG, ...existing };
+    if (updated.geminiModel === 'gemini-2.5-flash') {
+      updated.geminiModel = 'gemini-1.5-flash';
+    }
+    await chrome.storage.sync.set(updated);
+    console.log('[InstaReply AI] Service worker initialized with settings:', updated);
+  });
+}
 
 // Helper to resolve and normalize Gemini model names
 function resolveGeminiModel(rawModel) {
@@ -43,60 +45,62 @@ function resolveGeminiModel(rawModel) {
 }
 
 // Listener for messages from content scripts and popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'GET_CONFIG') {
-    chrome.storage.sync.get(DEFAULT_CONFIG).then(cfg => {
-      if (cfg.geminiModel === 'gemini-2.5-flash') {
-        cfg.geminiModel = 'gemini-1.5-flash';
-        chrome.storage.sync.set({ geminiModel: 'gemini-1.5-flash' });
-      }
-      sendResponse(cfg);
-    });
-    return true;
-  }
-
-  if (request.action === 'SAVE_CONFIG') {
-    if (request.config && request.config.geminiModel === 'gemini-2.5-flash') {
-      request.config.geminiModel = 'gemini-1.5-flash';
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'GET_CONFIG') {
+      chrome.storage.sync.get(DEFAULT_CONFIG).then(cfg => {
+        if (cfg.geminiModel === 'gemini-2.5-flash') {
+          cfg.geminiModel = 'gemini-1.5-flash';
+          chrome.storage.sync.set({ geminiModel: 'gemini-1.5-flash' });
+        }
+        sendResponse(cfg);
+      });
+      return true;
     }
-    chrome.storage.sync.set(request.config).then(() => {
-      sendResponse({ success: true });
-    }).catch(err => {
-      sendResponse({ success: false, error: err.message });
-    });
-    return true;
-  }
 
-  if (request.action === 'FETCH_GEMINI_MODELS') {
-    handleFetchGeminiModels(request.apiKey).then(sendResponse);
-    return true;
-  }
+    if (request.action === 'SAVE_CONFIG') {
+      if (request.config && request.config.geminiModel === 'gemini-2.5-flash') {
+        request.config.geminiModel = 'gemini-1.5-flash';
+      }
+      chrome.storage.sync.set(request.config).then(() => {
+        sendResponse({ success: true });
+      }).catch(err => {
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+    }
 
-  if (request.action === 'FETCH_GROQ_MODELS') {
-    handleFetchGroqModels(request.apiKey).then(sendResponse);
-    return true;
-  }
+    if (request.action === 'FETCH_GEMINI_MODELS') {
+      handleFetchGeminiModels(request.apiKey).then(sendResponse);
+      return true;
+    }
 
-  if (request.action === 'FETCH_OPENROUTER_MODELS') {
-    handleFetchOpenRouterModels(request.apiKey).then(sendResponse);
-    return true;
-  }
+    if (request.action === 'FETCH_GROQ_MODELS') {
+      handleFetchGroqModels(request.apiKey).then(sendResponse);
+      return true;
+    }
 
-  if (request.action === 'FETCH_LOCAL_MODELS') {
-    handleFetchLocalModels(request.url).then(sendResponse);
-    return true;
-  }
+    if (request.action === 'FETCH_OPENROUTER_MODELS') {
+      handleFetchOpenRouterModels(request.apiKey).then(sendResponse);
+      return true;
+    }
 
-  if (request.action === 'TEST_CONNECTION') {
-    handleTestConnection(request.config).then(sendResponse);
-    return true;
-  }
+    if (request.action === 'FETCH_LOCAL_MODELS') {
+      handleFetchLocalModels(request.url).then(sendResponse);
+      return true;
+    }
 
-  if (request.action === 'GENERATE_REPLY') {
-    handleGenerateReply(request.payload).then(sendResponse);
-    return true;
-  }
-});
+    if (request.action === 'TEST_CONNECTION') {
+      handleTestConnection(request.config).then(sendResponse);
+      return true;
+    }
+
+    if (request.action === 'GENERATE_REPLY') {
+      handleGenerateReply(request.payload).then(sendResponse);
+      return true;
+    }
+  });
+}
 
 /**
  * Dynamically fetches the list of available models from Google Generative Language API
@@ -550,9 +554,125 @@ async function fetchImageAsBase64(imageUrl) {
     const data = btoa(binary);
     return { mimeType, data };
   } catch (err) {
-    console.warn('[InstaReply AI] Error converting image to base64 for Gemini vision:', err);
+    console.warn('[InstaReply AI] Error converting image to base64 for vision analysis:', err);
     return null;
   }
+}
+
+/**
+ * Patterns of known multimodal vision-capable model names / families
+ */
+const VISION_MODEL_PATTERNS = [
+  /gemma-?3/i,                   // Gemma 3 (natively multimodal: 1b, 4b, 12b, 27b)
+  /paligemma/i,                  // PaliGemma & PaliGemma 2
+  /llama-?3\.2.*vision/i,        // Llama 3.2 Vision
+  /\bvision\b/i,                 // Generic -vision suffix / prefix
+  /-vl\b|\bvl-/i,                // Qwen2-VL, Qwen2.5-VL, DeepSeek-VL
+  /llava/i,                      // LLaVA, LLaVA-NeXT, LLaVA-Llama3
+  /minicpm-?v/i,                 // MiniCPM-V
+  /moondream/i,                  // Moondream
+  /pixtral/i,                    // Mistral Pixtral
+  /cogvlm/i,                     // CogVLM
+  /bakllava/i,                   // BakLLaVA
+  /internvl/i,                   // InternVL
+  /gpt-4(?:o|-turbo|-vision)/i,  // OpenAI GPT-4o, GPT-4o-mini, GPT-4 Vision
+  /claude-3/i,                   // Anthropic Claude 3
+  /gemini/i                      // Google Gemini
+];
+
+/**
+ * Checks if a model name matches known multimodal vision patterns.
+ */
+function isKnownVisionModel(modelName) {
+  if (!modelName || typeof modelName !== 'string') return false;
+  return VISION_MODEL_PATTERNS.some(pattern => pattern.test(modelName.trim()));
+}
+
+/**
+ * In-memory cache for detected model vision capability: "provider:model" -> boolean
+ */
+const visionCapabilityCache = new Map();
+
+/**
+ * Probes Ollama /api/show to inspect model architecture for vision/clip projector.
+ */
+async function checkOllamaVisionCapability(rootUrl, modelName) {
+  try {
+    const cleanUrl = (rootUrl || 'http://localhost:11434').replace(/\/+$/, '');
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 1500) : null;
+    const res = await fetch(`${cleanUrl}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: modelName }),
+      signal: controller ? controller.signal : undefined
+    }).catch(() => null);
+
+    if (timeoutId) clearTimeout(timeoutId);
+    if (!res || !res.ok) return false;
+
+    const data = await res.json().catch(() => ({}));
+    const families = Array.isArray(data.details?.families) ? data.details.families : [];
+    if (families.some(f => /clip|vision/i.test(String(f)))) return true;
+
+    const infoStr = JSON.stringify(data.model_info || {});
+    if (/clip|vision/i.test(infoStr)) return true;
+
+    const modelfile = String(data.modelfile || '');
+    if (/projector|vision/i.test(modelfile)) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Determines whether the specified model supports multimodal vision input.
+ */
+async function isModelVisionSupported({ provider, model, rootUrl }) {
+  if (!model) return false;
+  const cacheKey = `${provider}:${model}`;
+  if (visionCapabilityCache.has(cacheKey)) {
+    return visionCapabilityCache.get(cacheKey);
+  }
+
+  // 1. Fast regex match against known vision model families
+  if (isKnownVisionModel(model)) {
+    visionCapabilityCache.set(cacheKey, true);
+    return true;
+  }
+
+  // 2. Ollama /api/show architecture inspection
+  if (provider === 'local_llm' && rootUrl) {
+    const isVision = await checkOllamaVisionCapability(rootUrl, model);
+    visionCapabilityCache.set(cacheKey, isVision);
+    return isVision;
+  }
+
+  visionCapabilityCache.set(cacheKey, false);
+  return false;
+}
+
+/**
+ * Detects whether an API error indicates rejection of multimodal/image payload.
+ */
+function isVisionRejectionError(status, errText) {
+  if (!errText) return status === 400 || status === 422;
+  const lower = String(errText).toLowerCase();
+  return (
+    status === 400 ||
+    status === 422 ||
+    lower.includes('vision') ||
+    lower.includes('does not support image') ||
+    lower.includes('does not support multimodal') ||
+    lower.includes('unsupported image') ||
+    lower.includes('expected string') ||
+    lower.includes('image_url') ||
+    lower.includes('content must be a string') ||
+    lower.includes('not a multimodal model') ||
+    lower.includes('unknown parameter: images')
+  );
 }
 
 /**
@@ -754,32 +874,72 @@ async function generateWithOpenAiCompatible({
     providerBrand = 'Local';
   }
 
-  const prompt = buildStructuredPrompt({
-    contextType,
-    replyMode,
-    isCurrentUserPostAuthor,
-    relationshipSummary,
-    incomingText,
-    postCaption,
-    postAuthor,
-    postVisuals,
-    author,
-    isSpecificCommentReply,
-    userDraftHint,
-    stance,
-    tone,
-    variationIndex,
-    replyLanguage: replyLanguage || config.replyLanguage || 'auto',
-    enableAnalysis: config.enableAnalysis,
-    includeEmojis: config.includeEmojis,
-    customInstructions: config.customInstructions
-  });
+  // Check if Multimodal Image analysis is enabled and supported for this model
+  const canUseMultimodal = config.enableMultimodalVision !== false && Boolean(postVisuals?.thumbnailUrl);
+  let inlineImagePart = null;
+  let useVisionPayload = false;
+
+  if (canUseMultimodal) {
+    const supportsVision = await isModelVisionSupported({ provider, model, rootUrl });
+    if (supportsVision) {
+      try {
+        inlineImagePart = await fetchImageAsBase64(postVisuals.thumbnailUrl);
+        if (inlineImagePart) {
+          useVisionPayload = true;
+          console.log(`[InstaReply AI] Prepared base64 image data for ${providerBrand} Vision (${model}).`);
+        }
+      } catch (imgErr) {
+        console.warn(`[InstaReply AI] Could not prepare image for ${model}:`, imgErr);
+      }
+    }
+  }
+
+  function getPrompt(withVision) {
+    return buildStructuredPrompt({
+      contextType,
+      replyMode,
+      isCurrentUserPostAuthor,
+      relationshipSummary,
+      incomingText,
+      postCaption,
+      postAuthor,
+      postVisuals,
+      author,
+      isSpecificCommentReply,
+      userDraftHint,
+      stance,
+      tone,
+      variationIndex,
+      replyLanguage: replyLanguage || config.replyLanguage || 'auto',
+      enableAnalysis: config.enableAnalysis,
+      includeEmojis: config.includeEmojis,
+      customInstructions: config.customInstructions,
+      hasMultimodalImage: withVision
+    });
+  }
+
+  function formatUserContent(textPrompt, imagePart) {
+    if (!imagePart) {
+      return textPrompt;
+    }
+    return [
+      { type: 'text', text: textPrompt },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:${imagePart.mimeType};base64,${imagePart.data}`
+        }
+      }
+    ];
+  }
+
+  let prompt = getPrompt(useVisionPayload);
 
   const requestBody = {
     model,
     messages: [
       { role: 'system', content: 'You are an Instagram engagement assistant. Output valid JSON only.' },
-      { role: 'user', content: prompt }
+      { role: 'user', content: formatUserContent(prompt, inlineImagePart) }
     ],
     temperature: 0.7 + (variationIndex * 0.1)
   };
@@ -796,6 +956,24 @@ async function generateWithOpenAiCompatible({
     body: JSON.stringify(requestBody)
   }).catch(() => null);
 
+  // If server rejected the multimodal image payload, gracefully fallback to text-only prompt
+  if (useVisionPayload && res && !res.ok) {
+    const errPeek = await res.clone().text().catch(() => '');
+    if (isVisionRejectionError(res.status, errPeek)) {
+      console.warn(`[InstaReply AI] Model (${model}) does not accept vision payload (${errPeek.slice(0, 120)}). Retrying with text-only prompt.`);
+      visionCapabilityCache.set(`${provider}:${model}`, false);
+      useVisionPayload = false;
+      inlineImagePart = null;
+      prompt = getPrompt(false);
+      requestBody.messages[1].content = prompt;
+      res = await fetch(openAiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody)
+      }).catch(() => null);
+    }
+  }
+
   let rawOutput = '';
 
   if (res && res.ok) {
@@ -804,16 +982,41 @@ async function generateWithOpenAiCompatible({
   } else if (provider === 'local_llm' && rootUrl) {
     // 2. Fallback to Ollama native /api/chat endpoint
     const ollamaUrl = `${rootUrl}/api/chat`;
+    const ollamaUserMsg = { role: 'user', content: prompt };
+    if (useVisionPayload && inlineImagePart) {
+      ollamaUserMsg.images = [inlineImagePart.data];
+    }
     res = await fetch(ollamaUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [ollamaUserMsg],
         stream: false,
         format: 'json'
       })
     }).catch(() => null);
+
+    // If native Ollama rejected images, retry text-only
+    if (useVisionPayload && res && !res.ok) {
+      const errPeek = await res.clone().text().catch(() => '');
+      if (isVisionRejectionError(res.status, errPeek)) {
+        console.warn(`[InstaReply AI] Ollama native chat rejected image payload. Retrying with text-only prompt.`);
+        useVisionPayload = false;
+        inlineImagePart = null;
+        prompt = getPrompt(false);
+        res = await fetch(ollamaUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            stream: false,
+            format: 'json'
+          })
+        }).catch(() => null);
+      }
+    }
 
     if (res && res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -844,7 +1047,7 @@ async function generateWithOpenAiCompatible({
   const parsed = parseAIResponse(rawOutput);
   return {
     success: true,
-    modelUsed: `${providerBrand} (${model})`,
+    modelUsed: `${providerBrand} (${model})${useVisionPayload ? ' 👁️ Vision' : ''}`,
     ...parsed
   };
 }
@@ -1149,4 +1352,17 @@ function formatSentimentLabel(sentiment) {
     default:
       return '⚪ Neutral';
   }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    DEFAULT_CONFIG,
+    VISION_MODEL_PATTERNS,
+    isKnownVisionModel,
+    isModelVisionSupported,
+    isVisionRejectionError,
+    checkOllamaVisionCapability,
+    buildStructuredPrompt,
+    parseAIResponse
+  };
 }

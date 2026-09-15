@@ -906,6 +906,97 @@ Hope this helps!
     assert.strictEqual(openrouterHeaders['X-Title'], 'InstaReply AI');
   });
 
+  runTest('VisionModelDetection', 'Correctly identifies multimodal models and rejects text-only models', () => {
+    const sw = require(path.join(ROOT_DIR, 'background/service-worker.js'));
+    assert.strictEqual(typeof sw.isKnownVisionModel, 'function');
+
+    // Multimodal models that must return true
+    const visionModels = [
+      'gemma3',
+      'gemma3:4b',
+      'gemma-3-12b-it',
+      'paligemma',
+      'paligemma2',
+      'llama3.2-vision:11b',
+      'llama-3.2-11b-vision-instruct',
+      'qwen2-vl:7b',
+      'qwen2.5-vl:72b',
+      'llava:latest',
+      'llava-llama3',
+      'minicpm-v',
+      'moondream:latest',
+      'pixtral-12b',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'claude-3-haiku'
+    ];
+
+    for (const m of visionModels) {
+      assert.strictEqual(
+        sw.isKnownVisionModel(m),
+        true,
+        `Model ${m} should be recognized as a vision model`
+      );
+    }
+
+    // Text-only models that must return false
+    const textModels = [
+      'llama3.2',
+      'llama3.2:3b',
+      'llama3.1:8b',
+      'gemma2:9b',
+      'gemma:7b',
+      'mistral:7b',
+      'deepseek-r1:7b',
+      'qwen2.5:7b',
+      'phi3:mini'
+    ];
+
+    for (const m of textModels) {
+      assert.strictEqual(
+        sw.isKnownVisionModel(m),
+        false,
+        `Model ${m} should NOT be recognized as a vision model`
+      );
+    }
+  });
+
+  runTest('VisionPayloadFormatting', 'Formats OpenAI image_url and Ollama images correctly', () => {
+    const sw = require(path.join(ROOT_DIR, 'background/service-worker.js'));
+    const mockImagePart = { mimeType: 'image/jpeg', data: 'AQIDBA==' };
+    const prompt = 'Analyze this Instagram post';
+
+    // 1. OpenAI-compatible format
+    const openAiContent = [
+      { type: 'text', text: prompt },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:${mockImagePart.mimeType};base64,${mockImagePart.data}`
+        }
+      }
+    ];
+
+    assert.strictEqual(openAiContent.length, 2);
+    assert.strictEqual(openAiContent[0].type, 'text');
+    assert.strictEqual(openAiContent[1].type, 'image_url');
+    assert.strictEqual(openAiContent[1].image_url.url, 'data:image/jpeg;base64,AQIDBA==');
+
+    // 2. Ollama native format
+    const ollamaMsg = {
+      role: 'user',
+      content: prompt,
+      images: [mockImagePart.data]
+    };
+    assert.strictEqual(ollamaMsg.images[0], 'AQIDBA==');
+
+    // 3. Vision rejection error detection
+    assert.strictEqual(sw.isVisionRejectionError(400, 'model does not support images'), true);
+    assert.strictEqual(sw.isVisionRejectionError(400, 'unsupported image_url format'), true);
+    assert.strictEqual(sw.isVisionRejectionError(422, 'not a multimodal model'), true);
+    assert.strictEqual(sw.isVisionRejectionError(500, 'internal server error'), false);
+  });
+
 
   console.log('\n=================================================');
   console.log(`📊 Tests Executed: ${totalTests} | Passed: ${passedTests} | Failed: ${failedTests}`);
