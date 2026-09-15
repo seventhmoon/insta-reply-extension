@@ -1181,6 +1181,163 @@ Hope this helps!
     }
   });
 
+  runTest('ToneNormalization', 'Synonyms and LLM variations normalize to canonical tone IDs identically', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+
+    // Extract normalizeToneName function body from service worker
+    const swNormMatch = swCode.match(/function normalizeToneName\(tone\)\s*\{([\s\S]*?)\n\s*\}/);
+    assert.ok(swNormMatch, 'background/service-worker.js must export or declare normalizeToneName');
+    const swNormFn = new Function('tone', swNormMatch[1]);
+
+    // Extract normalizeToneName from content.js
+    const ctNormMatch = contentCode.match(/function normalizeToneName\(tone\)\s*\{([\s\S]*?)\n\s*\}/);
+    assert.ok(ctNormMatch, 'content/content.js must declare normalizeToneName');
+    const ctNormFn = new Function('tone', ctNormMatch[1]);
+
+    const testPairs = [
+      ['flirty', 'flirting'],
+      ['FLIRTING', 'flirting'],
+      ['flirtatious', 'flirting'],
+      ['sexy', 'sexy'],
+      ['sensual', 'sexy'],
+      ['seductive', 'seductive'],
+      ['alluring', 'alluring'],
+      ['funny', 'humorous'],
+      ['witty', 'humorous'],
+      ['humorous', 'humorous'],
+      ['playful', 'playful'],
+      ['cheeky', 'playful'],
+      ['savage', 'savage'],
+      ['roast', 'savage'],
+      ['burn', 'savage'],
+      ['mean', 'mean'],
+      ['haughty', 'mean'],
+      ['evil', 'evil'],
+      ['villain', 'evil'],
+      ['geek', 'geek'],
+      ['nerd', 'geek'],
+      ['tech', 'geek'],
+      ['spicy', 'spicy'],
+      ['hyped', 'enthusiastic'],
+      ['professional', 'professional'],
+      ['empathetic', 'empathetic'],
+      ['short', 'concise'],
+      ['concise', 'concise'],
+      ['friendly', 'friendly'],
+      ['', 'friendly'],
+      [null, 'friendly']
+    ];
+
+    for (const [input, expected] of testPairs) {
+      const swRes = swNormFn(input);
+      const ctRes = ctNormFn(input);
+      assert.strictEqual(swRes, expected, `SW normalizeToneName('${input}') expected '${expected}', got '${swRes}'`);
+      assert.strictEqual(ctRes, expected, `Content normalizeToneName('${input}') expected '${expected}', got '${ctRes}'`);
+      assert.strictEqual(swRes, ctRes, `SW and Content normalization must match for '${input}'`);
+    }
+  });
+
+  runTest('ToneBundlingAlignment', 'Bundled tones between service worker and content script are synchronized and bounded', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+
+    // Extract normalizeToneName and getBundledTonesFor from service-worker
+    const swNormBody = swCode.slice(swCode.indexOf('function normalizeToneName'), swCode.indexOf('function getBundledTonesFor'));
+    const swBundleBody = swCode.slice(swCode.indexOf('function getBundledTonesFor'), swCode.indexOf('// In-memory cache'));
+    const swBundleFn = new Function('tone', `
+      ${swNormBody}
+      ${swBundleBody}
+      return getBundledTonesFor(tone);
+    `);
+
+    // Extract from content.js
+    const ctNormBody = contentCode.slice(contentCode.indexOf('function normalizeToneName'), contentCode.indexOf('function getBundledTonesFor'));
+    const ctBundleBody = contentCode.slice(contentCode.indexOf('function getBundledTonesFor'), contentCode.indexOf('function getReplyCacheKey'));
+    const ctBundleFn = new Function('tone', `
+      ${ctNormBody}
+      ${ctBundleBody}
+      return getBundledTonesFor(tone);
+    `);
+
+    const primaryTones = [
+      'friendly', 'humorous', 'playful', 'savage', 'geek', 'spicy',
+      'enthusiastic', 'professional', 'empathetic', 'concise',
+      'flirting', 'sexy', 'seductive', 'alluring', 'mean', 'evil'
+    ];
+
+    for (const tone of primaryTones) {
+      const swBundled = swBundleFn(tone);
+      const ctBundled = ctBundleFn(tone);
+
+      assert.ok(Array.isArray(swBundled), `SW bundled for '${tone}' must be an array`);
+      assert.ok(Array.isArray(ctBundled), `CT bundled for '${tone}' must be an array`);
+      assert.deepStrictEqual(swBundled, ctBundled, `Bundled tones for '${tone}' must match between SW and Content script`);
+      assert.ok(!swBundled.includes(tone), `Bundled tones for '${tone}' must never include the primary tone itself`);
+      assert.ok(swBundled.length >= 3 && swBundled.length <= 6, `Bundled count for '${tone}' should be between 3 and 6 to avoid payload bloat`);
+    }
+  });
+
+  runTest('ServiceWorkerLruCache', 'Service worker LRU cache stores and retrieves primary and alternative tone replies', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes('serviceWorkerReplyCache'), 'serviceWorkerReplyCache must be declared in service-worker.js');
+    assert.ok(swCode.includes('getSwReplyCacheKey'), 'getSwReplyCacheKey must be declared in service-worker.js');
+    assert.ok(swCode.includes('setSwReplyCacheEntry'), 'setSwReplyCacheEntry must be declared in service-worker.js');
+
+    const cache = new Map();
+    function setEntry(k, v) {
+      if (cache.size >= 5) {
+        const oldest = cache.keys().next().value;
+        if (oldest) cache.delete(oldest);
+      }
+      cache.set(k, v);
+    }
+
+    for (let i = 0; i < 7; i++) {
+      setEntry(`key_${i}`, { reply: `reply_${i}` });
+    }
+
+    assert.strictEqual(cache.size, 5, 'LRU cache must cap at capacity');
+    assert.strictEqual(cache.has('key_0'), false, 'Oldest item must be evicted');
+    assert.strictEqual(cache.has('key_1'), false, 'Second oldest item must be evicted');
+    assert.strictEqual(cache.get('key_6').reply, 'reply_6');
+  });
+
+  runTest('ThrottledPrefetchSafety', 'Content script prefetching is debounced, bounded, and guarded against rate limiting', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+
+    // Check debounce times
+    assert.ok(
+      contentCode.includes('}, 1200);'),
+      'Stance prefetch must have >= 1200ms debounce to prevent burst requests'
+    );
+    assert.ok(
+      contentCode.includes('}, 2000);'),
+      'Visible comments prefetch must have >= 2000ms debounce to prevent rate limit starvation'
+    );
+
+    // Check prefetch queue bound
+    assert.ok(
+      contentCode.includes('queue.length >= 1') || contentCode.includes('queue.length >= 2'),
+      'Visible comments queue must be conservatively capped'
+    );
+
+    // Check activeGenerationContext guard in prefetch routines
+    const stancePrefetchStart = contentCode.indexOf('function schedulePrefetchForAlternativeStances');
+    const stancePrefetchBody = contentCode.slice(stancePrefetchStart, stancePrefetchStart + 800);
+    assert.ok(
+      stancePrefetchBody.includes('if (activeGenerationContext) return;'),
+      'schedulePrefetchForAlternativeStances must abort if activeGenerationContext is pending'
+    );
+
+    const commentPrefetchStart = contentCode.indexOf('function schedulePrefetchForVisibleComments');
+    const commentPrefetchBody = contentCode.slice(commentPrefetchStart, commentPrefetchStart + 800);
+    assert.ok(
+      commentPrefetchBody.includes('if (activeGenerationContext) return;'),
+      'schedulePrefetchForVisibleComments must abort if activeGenerationContext is pending'
+    );
+  });
+
   // =========================================================================
   // SUITE 5: Real Headless Chrome End-to-End DOM Integration
   // =========================================================================

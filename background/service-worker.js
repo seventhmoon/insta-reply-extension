@@ -44,6 +44,69 @@ function resolveGeminiModel(rawModel) {
   return rawModel.replace(/^models\//, '').trim();
 }
 
+/**
+ * Normalizes raw or model-generated tone strings into standard canonical tone names
+ */
+function normalizeToneName(tone) {
+  if (!tone) return 'friendly';
+  const clean = tone.toLowerCase().trim();
+  if (clean === 'flirty' || clean.includes('flirt')) return 'flirting';
+  if (clean.includes('sexy') || clean.includes('sensual')) return 'sexy';
+  if (clean.includes('seduct')) return 'seductive';
+  if (clean.includes('allur')) return 'alluring';
+  if (clean.includes('mean') || clean.includes('haughty')) return 'mean';
+  if (clean.includes('evil') || clean.includes('villain')) return 'evil';
+  if (clean.includes('funny') || clean.includes('humor') || clean.includes('wit')) return 'humorous';
+  if (clean.includes('playful') || clean.includes('cheeky') || clean.includes('naughty')) return 'playful';
+  if (clean.includes('savage') || clean.includes('roast') || clean.includes('burn')) return 'savage';
+  if (clean.includes('geek') || clean.includes('tech') || clean.includes('nerd')) return 'geek';
+  if (clean.includes('spicy') || clean.includes('bold')) return 'spicy';
+  if (clean.includes('hype') || clean.includes('enthusiastic')) return 'enthusiastic';
+  if (clean.includes('profession') || clean.includes('polish')) return 'professional';
+  if (clean.includes('empath') || clean.includes('caring')) return 'empathetic';
+  if (clean.includes('short') || clean.includes('concise') || clean.includes('sweet')) return 'concise';
+  if (clean.includes('friend')) return 'friendly';
+  return clean;
+}
+
+/**
+ * Determines the cluster of alternative tones to bundle into the AI response for instant switching
+ */
+function getBundledTonesFor(tone) {
+  const primary = normalizeToneName(tone);
+  if (['sexy', 'seductive', 'flirting', 'alluring'].includes(primary)) {
+    return ['flirting', 'sexy', 'seductive', 'alluring', 'playful', 'savage'].filter(t => t !== primary);
+  }
+  if (['mean', 'evil', 'savage'].includes(primary)) {
+    return ['mean', 'evil', 'savage', 'playful', 'humorous'].filter(t => t !== primary);
+  }
+  return ['friendly', 'humorous', 'playful', 'savage', 'flirting', 'concise'].filter(t => t !== primary);
+}
+
+// In-memory cache for service worker reply generations (persists across content script reloads)
+const serviceWorkerReplyCache = new Map();
+
+function getSwReplyCacheKey(payload) {
+  if (!payload) return '';
+  const cleanPostId = (payload.postId || 'post').trim();
+  const cleanPostAuthor = (payload.postAuthor || '').toLowerCase().trim();
+  const cleanAuthor = (payload.author || '').toLowerCase().trim();
+  const textSnippet = (payload.incomingText || '').trim().toLowerCase().slice(0, 80);
+  const cleanStance = (payload.stance || 'positive').toLowerCase().trim();
+  const cleanTone = normalizeToneName(payload.tone);
+  const cleanLang = (payload.replyLanguage || 'auto').toLowerCase().trim();
+  return `${cleanPostId}|${cleanPostAuthor}|${cleanAuthor}|${textSnippet}|${cleanStance}|${cleanTone}|${cleanLang}`;
+}
+
+function setSwReplyCacheEntry(key, value) {
+  if (!key) return;
+  if (serviceWorkerReplyCache.size >= 300) {
+    const oldestKey = serviceWorkerReplyCache.keys().next().value;
+    if (oldestKey) serviceWorkerReplyCache.delete(oldestKey);
+  }
+  serviceWorkerReplyCache.set(key, value);
+}
+
 // Listener for messages from content scripts and popup
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -469,8 +532,25 @@ async function handleGenerateReply(payload) {
       hintLen: userDraftHint.length
     });
 
+    const isCacheEligible = variationIndex === 0 && !userDraftHint;
+    const cacheKey = isCacheEligible ? getSwReplyCacheKey({
+      postId: payload.postId,
+      postAuthor,
+      author,
+      incomingText,
+      stance,
+      tone,
+      replyLanguage
+    }) : null;
+
+    if (isCacheEligible && cacheKey && serviceWorkerReplyCache.has(cacheKey)) {
+      console.log(`[InstaReply AI] ⚡ Service worker serving cached reply for @${author || postAuthor} (${stance} / ${tone})`);
+      return { ...serviceWorkerReplyCache.get(cacheKey), fromCache: true };
+    }
+
+    let result;
     if (provider === 'gemini') {
-      return await generateWithGemini({
+      result = await generateWithGemini({
         config,
         contextType,
         replyMode,
@@ -489,7 +569,7 @@ async function handleGenerateReply(payload) {
         replyLanguage
       });
     } else if (provider === 'groq' || provider === 'openrouter' || provider === 'custom_openai' || provider === 'local_llm') {
-      return await generateWithOpenAiCompatible({
+      result = await generateWithOpenAiCompatible({
         provider,
         config,
         contextType,
@@ -514,9 +594,39 @@ async function handleGenerateReply(payload) {
         requiresPageContext: true,
         error: 'Edge AI (Prompt API) must be executed in the page context. Switching to page runner...'
       };
+    } else {
+      return { success: false, error: `Unsupported provider: ${provider}` };
     }
 
-    return { success: false, error: `Unsupported provider: ${provider}` };
+    if (result && result.success && isCacheEligible && cacheKey) {
+      setSwReplyCacheEntry(cacheKey, result);
+
+      if (result.toneDrafts && typeof result.toneDrafts === 'object') {
+        for (const [rawAltTone, altReply] of Object.entries(result.toneDrafts)) {
+          if (!altReply || typeof altReply !== 'string' || !altReply.trim()) continue;
+          const altTone = normalizeToneName(rawAltTone);
+          const altKey = getSwReplyCacheKey({
+            postId: payload.postId,
+            postAuthor,
+            author,
+            incomingText,
+            stance,
+            tone: altTone,
+            replyLanguage
+          });
+          if (!serviceWorkerReplyCache.has(altKey)) {
+            setSwReplyCacheEntry(altKey, {
+              ...result,
+              reply: altReply.trim(),
+              toneUsed: altTone,
+              fromCache: true
+            });
+          }
+        }
+      }
+    }
+
+    return result;
   } catch (err) {
     console.error('[InstaReply AI] Generation error:', err);
     return { success: false, error: err.message || 'Failed to generate reply.' };
@@ -1080,15 +1190,8 @@ function buildStructuredPrompt({
   const isStoryReply = replyMode === 'story_reply' || contextType === 'story';
   const isPostComment = replyMode === 'post_comment' && !isCommentReply && !isStoryReply && contextType !== 'dm';
 
-  const primaryTone = (tone || 'friendly').toLowerCase();
-  let altTones;
-  if (['sexy', 'seductive', 'flirting', 'flirty', 'alluring'].includes(primaryTone)) {
-    altTones = ['flirting', 'sexy', 'seductive', 'alluring', 'playful', 'savage', 'friendly'].filter(t => t !== primaryTone && t !== 'flirty').slice(0, 4);
-  } else if (['mean', 'evil', 'savage'].includes(primaryTone)) {
-    altTones = ['savage', 'mean', 'evil', 'playful', 'humorous'].filter(t => t !== primaryTone).slice(0, 4);
-  } else {
-    altTones = ['friendly', 'flirting', 'humorous', 'playful', 'savage', 'concise'].filter(t => t !== primaryTone).slice(0, 4);
-  }
+  const primaryTone = normalizeToneName(tone);
+  const altTones = getBundledTonesFor(primaryTone);
 
   let multiToneInstruction = '';
   let multiToneSchema = '';
@@ -1335,13 +1438,20 @@ function parseAIResponse(rawText) {
       clean = clean.slice(firstBrace, lastBrace + 1);
     }
     const json = JSON.parse(clean);
+    const rawDrafts = (json.toneDrafts && typeof json.toneDrafts === 'object') ? json.toneDrafts : {};
+    const normalizedDrafts = {};
+    for (const [k, v] of Object.entries(rawDrafts)) {
+      if (typeof v === 'string' && v.trim()) {
+        normalizedDrafts[normalizeToneName(k)] = v.trim();
+      }
+    }
     return {
       sentiment: json.sentiment || 'neutral',
       sentimentLabel: json.sentimentLabel || formatSentimentLabel(json.sentiment),
       topics: Array.isArray(json.topics) ? json.topics : [],
       visualAnalysis: json.visualAnalysis || '',
       reply: json.reply || clean,
-      toneDrafts: (json.toneDrafts && typeof json.toneDrafts === 'object') ? json.toneDrafts : {}
+      toneDrafts: normalizedDrafts
     };
   } catch (err) {
     console.warn('[InstaReply AI] Could not parse strict JSON, falling back to regex extraction:', err);

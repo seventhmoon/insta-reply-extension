@@ -21,7 +21,7 @@
   let activeGenerationContext = null;
 
   function setReplyCacheEntry(key, value) {
-    if (replyCache.size > 250) {
+    if (replyCache.size >= 250) {
       const oldestKey = replyCache.keys().next().value;
       if (oldestKey) replyCache.delete(oldestKey);
     }
@@ -76,9 +76,54 @@
     return Boolean(match && match[2] && !bannedCodes.has(match[2].toLowerCase()));
   }
 
+  /**
+   * Normalizes raw or model-generated tone strings into standard canonical tone names
+   */
+  function normalizeToneName(tone) {
+    if (!tone) return 'friendly';
+    const clean = tone.toLowerCase().trim();
+    if (clean === 'flirty' || clean.includes('flirt')) return 'flirting';
+    if (clean.includes('sexy') || clean.includes('sensual')) return 'sexy';
+    if (clean.includes('seduct')) return 'seductive';
+    if (clean.includes('allur')) return 'alluring';
+    if (clean.includes('mean') || clean.includes('haughty')) return 'mean';
+    if (clean.includes('evil') || clean.includes('villain')) return 'evil';
+    if (clean.includes('funny') || clean.includes('humor') || clean.includes('wit')) return 'humorous';
+    if (clean.includes('playful') || clean.includes('cheeky') || clean.includes('naughty')) return 'playful';
+    if (clean.includes('savage') || clean.includes('roast') || clean.includes('burn')) return 'savage';
+    if (clean.includes('geek') || clean.includes('tech') || clean.includes('nerd')) return 'geek';
+    if (clean.includes('spicy') || clean.includes('bold')) return 'spicy';
+    if (clean.includes('hype') || clean.includes('enthusiastic')) return 'enthusiastic';
+    if (clean.includes('profession') || clean.includes('polish')) return 'professional';
+    if (clean.includes('empath') || clean.includes('caring')) return 'empathetic';
+    if (clean.includes('short') || clean.includes('concise') || clean.includes('sweet')) return 'concise';
+    if (clean.includes('friend')) return 'friendly';
+    return clean;
+  }
+
+  /**
+   * Determines the exact cluster of alternative tones bundled with this primary tone
+   */
+  function getBundledTonesFor(tone) {
+    const primary = normalizeToneName(tone);
+    if (['sexy', 'seductive', 'flirting', 'alluring'].includes(primary)) {
+      return ['flirting', 'sexy', 'seductive', 'alluring', 'playful', 'savage'].filter(t => t !== primary);
+    }
+    if (['mean', 'evil', 'savage'].includes(primary)) {
+      return ['mean', 'evil', 'savage', 'playful', 'humorous'].filter(t => t !== primary);
+    }
+    return ['friendly', 'humorous', 'playful', 'savage', 'flirting', 'concise'].filter(t => t !== primary);
+  }
+
   function getReplyCacheKey(postId, postAuthor, incomingAuthor, incomingText, stance, tone, language) {
     const textSnippet = (incomingText || '').trim().toLowerCase().slice(0, 80);
-    return `${postId || 'post'}|${postAuthor || ''}|${incomingAuthor || ''}|${textSnippet}|${stance || 'positive'}|${tone || 'friendly'}|${language || 'auto'}`;
+    const cleanTone = normalizeToneName(tone);
+    const cleanStance = (stance || 'positive').toLowerCase().trim();
+    const cleanLang = (language || 'auto').toLowerCase().trim();
+    const cleanPostId = (postId || 'post').trim();
+    const cleanPostAuthor = (postAuthor || '').toLowerCase().trim();
+    const cleanInAuthor = (incomingAuthor || '').toLowerCase().trim();
+    return `${cleanPostId}|${cleanPostAuthor}|${cleanInAuthor}|${textSnippet}|${cleanStance}|${cleanTone}|${cleanLang}`;
   }
 
   const SPARKLE_SVG = `
@@ -3904,6 +3949,9 @@
     let requestPromise = null;
     const thisGenId = ++currentGenerationId;
 
+    const normalizedTone = normalizeToneName(currentTone);
+    const normalizedStance = (currentStance || 'positive').toLowerCase().trim();
+
     const payload = {
       contextType: lastContextData.contextType,
       replyMode: lastContextData.replyMode || 'post_comment',
@@ -3916,9 +3964,10 @@
       author: lastContextData.author || '',
       isSpecificCommentReply: Boolean(lastContextData.isSpecificCommentReply),
       userDraftHint: lastContextData.userDraftHint || '',
-      stance: currentStance,
-      tone: currentTone,
-      variationIndex: currentVariation
+      stance: normalizedStance,
+      tone: normalizedTone,
+      variationIndex: currentVariation,
+      postId: lastContextData.postId || 'post'
     };
 
     const cacheKey = getReplyCacheKey(
@@ -3926,15 +3975,15 @@
       lastContextData.postAuthor,
       lastContextData.author,
       lastContextData.incomingText,
-      currentStance,
-      currentTone,
+      normalizedStance,
+      normalizedTone,
       currentLanguage
     );
 
     // 1. Instant Cache Hit: Return cached reply immediately without spinner flash if user hasn't asked for a new variation or custom draft
     if (currentVariation === 0 && !lastContextData.userDraftHint && replyCache.has(cacheKey)) {
       const cached = replyCache.get(cacheKey);
-      console.log(`[InstaReply AI] ⚡ Instant reply served from cache for @${lastContextData.author} (${currentStance} / ${currentTone})`);
+      console.log(`[InstaReply AI] ⚡ Instant reply served from cache for @${lastContextData.author} (${normalizedStance} / ${normalizedTone})`);
       renderAIResult(cached, true);
       schedulePrefetchForAlternativeStances();
       schedulePrefetchForVisibleComments();
@@ -3948,10 +3997,11 @@
       activeGenerationContext &&
       activeGenerationContext.postId === lastContextData.postId &&
       activeGenerationContext.author === lastContextData.author &&
-      activeGenerationContext.stance === currentStance &&
-      activeGenerationContext.bundledTones.includes(currentTone.toLowerCase())
+      activeGenerationContext.stance === normalizedStance &&
+      Array.isArray(activeGenerationContext.bundledTones) &&
+      activeGenerationContext.bundledTones.includes(normalizedTone)
     ) {
-      console.log(`[InstaReply AI] ⏳ Waiting on in-flight bundled generation for '${currentTone}'...`);
+      console.log(`[InstaReply AI] ⏳ Waiting on in-flight bundled generation for '${normalizedTone}'...`);
       showCardLoading(activeCard, true);
       await activeGenerationContext.promise.catch(() => null);
 
@@ -3978,8 +4028,7 @@
         return;
       }
 
-      const bundledCandidates = ['friendly', 'flirting', 'sexy', 'seductive', 'alluring', 'mean', 'evil', 'humorous', 'playful', 'savage', 'concise'];
-      const currentBundled = bundledCandidates.filter(t => t !== currentTone.toLowerCase());
+      const currentBundled = getBundledTonesFor(normalizedTone);
 
       requestPromise = chrome.runtime.sendMessage({
         action: 'GENERATE_REPLY',
@@ -3991,7 +4040,7 @@
           promise: requestPromise,
           postId: lastContextData.postId,
           author: lastContextData.author,
-          stance: currentStance,
+          stance: normalizedStance,
           bundledTones: currentBundled
         };
       }
@@ -4008,24 +4057,25 @@
 
           // Ingest any bundled alternative tone drafts into cache for instant switching
           if (response.toneDrafts && typeof response.toneDrafts === 'object') {
-            for (const [altTone, altReply] of Object.entries(response.toneDrafts)) {
+            for (const [rawAltTone, altReply] of Object.entries(response.toneDrafts)) {
               if (!altReply || typeof altReply !== 'string' || !altReply.trim()) continue;
+              const canonicalAltTone = normalizeToneName(rawAltTone);
               const altKey = getReplyCacheKey(
                 lastContextData.postId,
                 lastContextData.postAuthor,
                 lastContextData.author,
                 lastContextData.incomingText,
-                currentStance,
-                altTone,
+                normalizedStance,
+                canonicalAltTone,
                 payload.replyLanguage || currentLanguage
               );
               if (!replyCache.has(altKey)) {
                 setReplyCacheEntry(altKey, {
                   ...response,
                   reply: altReply.trim(),
-                  toneUsed: altTone
+                  toneUsed: canonicalAltTone
                 });
-                console.log(`[InstaReply AI] ⚡ Pre-cached bundled tone '${altTone}' for instant switching`);
+                console.log(`[InstaReply AI] ⚡ Pre-cached bundled tone '${canonicalAltTone}' for instant switching`);
               }
             }
           }
@@ -4088,22 +4138,23 @@
             setReplyCacheEntry(cacheKey, event.data);
 
             if (event.data.toneDrafts && typeof event.data.toneDrafts === 'object') {
-              for (const [altTone, altReply] of Object.entries(event.data.toneDrafts)) {
+              for (const [rawAltTone, altReply] of Object.entries(event.data.toneDrafts)) {
                 if (!altReply || typeof altReply !== 'string' || !altReply.trim()) continue;
+                const canonicalAltTone = normalizeToneName(rawAltTone);
                 const altKey = getReplyCacheKey(
                   lastContextData.postId,
                   lastContextData.postAuthor,
                   lastContextData.author,
                   lastContextData.incomingText,
-                  currentStance,
-                  altTone,
+                  payload.stance || currentStance,
+                  canonicalAltTone,
                   currentLanguage
                 );
                 if (!replyCache.has(altKey)) {
                   setReplyCacheEntry(altKey, {
                     ...event.data,
                     reply: altReply.trim(),
-                    toneUsed: altTone
+                    toneUsed: canonicalAltTone
                   });
                 }
               }
@@ -4135,8 +4186,8 @@
 
   /**
    * Proactively pre-fetches alternative reply stances (neutral, negative/firm)
-   * and their bundled tone styles for the current comment/post concurrently in the background.
-   * This enables instantaneous (0ms) stance & tone toggling without spinners.
+   * and their bundled tone styles for the current comment/post in the background.
+   * Runs conservatively after a 1.2s idle delay and executes sequentially to protect rate limits.
    */
   function schedulePrefetchForAlternativeStances() {
     clearTimeout(stancePrefetchTimer);
@@ -4144,17 +4195,19 @@
 
     // Freeze current context parameters
     const snapshot = { ...lastContextData };
-    const baseTone = currentTone;
-    const baseStance = currentStance;
+    const baseTone = normalizeToneName(currentTone);
+    const baseStance = (currentStance || 'positive').toLowerCase().trim();
     const baseLang = currentLanguage;
 
     stancePrefetchTimer = setTimeout(async () => {
       try {
+        if (activeGenerationContext) return;
         const allStances = ['positive', 'neutral', 'negative'];
         const remainingStances = allStances.filter(s => s !== baseStance);
 
-        await Promise.all(remainingStances.map(async (altStance) => {
-          // If user moved to another comment/post during warmup, abort
+        for (const altStance of remainingStances) {
+          // If user moved to another comment/post or initiated new generation, abort
+          if (activeGenerationContext) return;
           if (!lastContextData || lastContextData.postId !== snapshot.postId || lastContextData.author !== snapshot.author) {
             return;
           }
@@ -4168,7 +4221,7 @@
             baseTone,
             baseLang
           );
-          if (replyCache.has(altKey)) return;
+          if (replyCache.has(altKey)) continue;
 
           const prefetchPayload = {
             contextType: snapshot.contextType || 'comment',
@@ -4185,7 +4238,8 @@
             stance: altStance,
             tone: baseTone,
             variationIndex: 0,
-            replyLanguage: baseLang
+            replyLanguage: baseLang,
+            postId: snapshot.postId || 'post'
           };
 
           const res = await chrome.runtime.sendMessage({
@@ -4200,41 +4254,44 @@
             if (res.toneDrafts && typeof res.toneDrafts === 'object') {
               for (const [bundledTone, bundledReply] of Object.entries(res.toneDrafts)) {
                 if (!bundledReply || typeof bundledReply !== 'string' || !bundledReply.trim()) continue;
+                const canonicalBundledTone = normalizeToneName(bundledTone);
                 const bundledKey = getReplyCacheKey(
                   snapshot.postId,
                   snapshot.postAuthor,
                   snapshot.author,
                   snapshot.incomingText,
                   altStance,
-                  bundledTone,
+                  canonicalBundledTone,
                   baseLang
                 );
                 if (!replyCache.has(bundledKey)) {
                   setReplyCacheEntry(bundledKey, {
                     ...res,
                     reply: bundledReply.trim(),
-                    toneUsed: bundledTone
+                    toneUsed: canonicalBundledTone
                   });
                 }
               }
             }
             console.log(`[InstaReply AI] ⚡ Pre-cached stance '${altStance}' + tone drafts for @${snapshot.author}`);
           }
-        }));
+        }
       } catch (err) {
         console.debug('[InstaReply AI] Stance prefetch skipped:', err);
       }
-    }, 350);
+    }, 1200);
   }
 
   /**
-   * Proactively pre-fetches suggested replies for other visible comments in the thread
+   * Proactively pre-fetches suggested replies for visible comments in the thread
    * so that when the creator moves to reply to the next comment, it loads instantly.
+   * Debounced to 2000ms idle and capped at 1 item sequentially to prevent rate limiting.
    */
   function schedulePrefetchForVisibleComments() {
     clearTimeout(prefetchTimer);
     prefetchTimer = setTimeout(async () => {
       try {
+        if (activeGenerationContext) return;
         if (!lastContextData || !lastContextData.postAuthor) return;
 
         // Check if there is an active comments container (drawer or feed post)
@@ -4260,9 +4317,11 @@
         }
 
         const queue = [];
+        const canonicalTone = normalizeToneName(currentTone);
+        const canonicalStance = (currentStance || 'positive').toLowerCase().trim();
 
         for (const item of commentItems) {
-          if (queue.length >= 3) break;
+          if (queue.length >= 1) break; // Limit to 1 comment to prevent rate limit starvation
           if (
             item.closest('.instareply-card-overlay') ||
             item.closest('form') ||
@@ -4277,7 +4336,7 @@
           const commentText = extractCommentTextFromContainer(item, author);
           if (!commentText || commentText.length < 2 || isCommentMetadata(commentText, author)) continue;
 
-          const key = getReplyCacheKey(lastContextData.postId, lastContextData.postAuthor, author, commentText, currentStance, currentTone, currentLanguage);
+          const key = getReplyCacheKey(lastContextData.postId, lastContextData.postAuthor, author, commentText, canonicalStance, canonicalTone, currentLanguage);
           if (!replyCache.has(key)) {
             queue.push({ author, commentText, key });
           }
@@ -4285,9 +4344,10 @@
 
         if (queue.length === 0) return;
 
-        console.log(`[InstaReply AI] ⚡ Background predictive pre-fetching for ${queue.length} visible comments...`);
+        console.log(`[InstaReply AI] ⚡ Background predictive pre-fetching for ${queue.length} visible comment...`);
 
         for (const item of queue) {
+          if (activeGenerationContext) return;
           const prefetchPayload = {
             contextType: 'comment',
             replyMode: 'comment_reply',
@@ -4300,49 +4360,51 @@
             author: item.author,
             isSpecificCommentReply: true,
             userDraftHint: '',
-            stance: currentStance,
-            tone: currentTone,
+            stance: canonicalStance,
+            tone: canonicalTone,
             variationIndex: 0,
-            replyLanguage: currentLanguage
+            replyLanguage: currentLanguage,
+            postId: lastContextData.postId || 'post'
           };
 
-          chrome.runtime.sendMessage({
+          const res = await chrome.runtime.sendMessage({
             action: 'GENERATE_REPLY',
             payload: prefetchPayload
-          }).then(res => {
-            if (res && res.success) {
-              setReplyCacheEntry(item.key, res);
+          }).catch(() => null);
 
-              // Ingest bundled tone drafts for visible comments as well
-              if (res.toneDrafts && typeof res.toneDrafts === 'object') {
-                for (const [bundledTone, bundledReply] of Object.entries(res.toneDrafts)) {
-                  if (!bundledReply || typeof bundledReply !== 'string' || !bundledReply.trim()) continue;
-                  const bundledKey = getReplyCacheKey(
-                    lastContextData.postId,
-                    lastContextData.postAuthor,
-                    item.author,
-                    item.commentText,
-                    currentStance,
-                    bundledTone,
-                    currentLanguage
-                  );
-                  if (!replyCache.has(bundledKey)) {
-                    setReplyCacheEntry(bundledKey, {
-                      ...res,
-                      reply: bundledReply.trim(),
-                      toneUsed: bundledTone
-                    });
-                  }
+          if (res && res.success) {
+            setReplyCacheEntry(item.key, res);
+
+            // Ingest bundled tone drafts for visible comments as well
+            if (res.toneDrafts && typeof res.toneDrafts === 'object') {
+              for (const [bundledTone, bundledReply] of Object.entries(res.toneDrafts)) {
+                if (!bundledReply || typeof bundledReply !== 'string' || !bundledReply.trim()) continue;
+                const canonicalBundledTone = normalizeToneName(bundledTone);
+                const bundledKey = getReplyCacheKey(
+                  lastContextData.postId,
+                  lastContextData.postAuthor,
+                  item.author,
+                  item.commentText,
+                  canonicalStance,
+                  canonicalBundledTone,
+                  currentLanguage
+                );
+                if (!replyCache.has(bundledKey)) {
+                  setReplyCacheEntry(bundledKey, {
+                    ...res,
+                    reply: bundledReply.trim(),
+                    toneUsed: canonicalBundledTone
+                  });
                 }
               }
-              console.log(`[InstaReply AI] ⚡ Pre-cached instant reply + tone drafts for @${item.author}`);
             }
-          }).catch(() => {});
+            console.log(`[InstaReply AI] ⚡ Pre-cached instant reply + tone drafts for @${item.author}`);
+          }
         }
       } catch (err) {
         console.debug('[InstaReply AI] Background prefetch skipped:', err);
       }
-    }, 450);
+    }, 2000);
   }
 
   /**
@@ -4816,8 +4878,10 @@
    * Sets active visual state on tone chips
    */
   function setCardActiveTone(card, tone) {
+    if (!card) return;
+    const cleanTone = normalizeToneName(tone);
     card.querySelectorAll('.instareply-tone-chip').forEach(chip => {
-      chip.classList.toggle('active', chip.dataset.tone === tone);
+      chip.classList.toggle('active', chip.dataset.tone === cleanTone);
     });
   }
 
