@@ -94,21 +94,33 @@
   }
 
   /**
-   * Listens for SPA route transitions (such as flipping Story slides or entering Stories)
+   * Listens for SPA route transitions (such as flipping Story slides or switching DM conversations)
    */
   function setupNavigationListener() {
     let lastUrl = window.location.href;
     const checkUrlChange = () => {
       const currentUrl = window.location.href;
       if (currentUrl !== lastUrl) {
+        const wasInDm = lastUrl.includes('/direct');
+        const isInDm = currentUrl.includes('/direct');
         lastUrl = currentUrl;
+
+        // If the user navigates between different DM threads or enters/leaves DMs, close open card
+        if (activeCard && (wasInDm || isInDm)) {
+          closeCard();
+        }
+
         setTimeout(scanAndInjectShortcuts, 150);
         setTimeout(scanAndInjectShortcuts, 600);
       }
     };
 
     window.addEventListener('popstate', () => {
-      lastUrl = window.location.href;
+      const currentUrl = window.location.href;
+      if (activeCard && (currentUrl.includes('/direct') || lastUrl.includes('/direct'))) {
+        closeCard();
+      }
+      lastUrl = currentUrl;
       setTimeout(scanAndInjectShortcuts, 50);
       setTimeout(scanAndInjectShortcuts, 250);
     });
