@@ -679,6 +679,149 @@ async function main() {
   });
 
   // =========================================================================
+  // SUITE 2d: Instagram Direct Message (DM) Context & Thread Isolation
+  // =========================================================================
+  console.log('\n✉️ Suite 2d: Instagram Direct Message (DM) Context & Thread Isolation');
+
+  runTest('DmIdentifierIsolation', 'Extracts thread-scoped identifiers and isolates distinct messages in same thread', () => {
+    function extractDmIdentifier(pathname, partnerAuthor = '', specificText = '') {
+      const match = pathname.match(/\/direct\/t\/([A-Za-z0-9_-]+)/);
+      let baseId = '';
+      if (match && match[1]) {
+        baseId = `dm_t_${match[1]}`;
+      } else {
+        const cleanAuthor = (partnerAuthor || '').trim().toLowerCase().replace(/^@/, '');
+        baseId = cleanAuthor ? `dm_${cleanAuthor}` : 'dm_thread';
+      }
+      if (specificText) {
+        const textHash = specificText.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_');
+        return `${baseId}_${textHash}`;
+      }
+      return baseId;
+    }
+
+    const thread1 = extractDmIdentifier('/direct/t/17841400000000001/');
+    const thread2 = extractDmIdentifier('/direct/t/17841400000000002/');
+    assert.notStrictEqual(thread1, thread2, 'Different DM threads must have different thread IDs');
+    assert.strictEqual(thread1, 'dm_t_17841400000000001');
+    assert.strictEqual(thread2, 'dm_t_17841400000000002');
+
+    // Floating PIP chat with partner
+    const pipChat = extractDmIdentifier('/reels/', 'janedoe');
+    assert.strictEqual(pipChat, 'dm_janedoe', 'Floating PIP chat must be scoped by partner handle');
+
+    // Replying to two different messages in the same thread
+    const msgA = extractDmIdentifier('/direct/t/17841400000000001/', '', 'Hey do you offer discounts?');
+    const msgB = extractDmIdentifier('/direct/t/17841400000000001/', '', 'What time does the store open?');
+    assert.notStrictEqual(msgA, msgB, 'Replying to different messages in the same thread must have distinct identifiers');
+    assert.ok(msgA.includes('Hey_do_you_offer_discounts_'));
+    assert.ok(msgB.includes('What_time_does_the_store_open_'));
+  });
+
+  runTest('DmPartnerExtraction', 'Extracts chat partner and rejects generic sidebar headings or inbox handles', () => {
+    const banned = new Set(['direct', 'inbox', 'messages', 'chat', 'instagram', 'search', 'explore', 'notifications', 'settings']);
+
+    function extractPartner({ replyBannerText, placeholder, headerProfileHref, headerTitle, docTitle }) {
+      // 1. Reply banner
+      if (replyBannerText) {
+        const m = replyBannerText.match(/^Replying to\s+@?([a-zA-Z0-9._]+)/i);
+        if (m && m[1] && !banned.has(m[1].toLowerCase())) return m[1];
+      }
+      // 2. Input placeholder
+      if (placeholder) {
+        const m = placeholder.match(/(?:message|send message to|responder a)\s+@?([a-zA-Z0-9._]+)/i);
+        if (m && m[1]) {
+          const clean = m[1].replace(/\.+$/, '').trim();
+          if (clean && !banned.has(clean.toLowerCase())) return clean;
+        }
+      }
+      // 3. Header profile link
+      if (headerProfileHref) {
+        const clean = headerProfileHref.replace(/^\/+/, '').split('/')[0].split('?')[0].trim();
+        if (clean && !banned.has(clean.toLowerCase())) return clean;
+      }
+      // 4. Header title
+      if (headerTitle) {
+        const clean = headerTitle.trim().replace(/^@/, '');
+        if (clean && !banned.has(clean.toLowerCase())) return clean;
+      }
+      // 5. Document title
+      if (docTitle && docTitle.includes('Direct')) {
+        const m = docTitle.match(/^([^•]+?)(?:\s*\(@?([a-zA-Z0-9._]+)\))?\s*•\s*Direct/i);
+        if (m) {
+          const handle = (m[2] || m[1]).trim().replace(/^@/, '');
+          if (handle && !banned.has(handle.toLowerCase())) return handle;
+        }
+      }
+      return '';
+    }
+
+    // Case 1: Native reply banner active
+    assert.strictEqual(
+      extractPartner({ replyBannerText: 'Replying to @sofia_art', placeholder: 'Message...' }),
+      'sofia_art'
+    );
+
+    // Case 2: Input placeholder mentions partner
+    assert.strictEqual(
+      extractPartner({ placeholder: 'Message @tech_reviewer...' }),
+      'tech_reviewer'
+    );
+
+    // Case 3: Header profile link
+    assert.strictEqual(
+      extractPartner({ headerProfileHref: '/photographer_sam/' }),
+      'photographer_sam'
+    );
+
+    // Case 4: Document title with name and handle
+    assert.strictEqual(
+      extractPartner({ docTitle: 'Elena Rostova (@elena_r) • Direct' }),
+      'elena_r'
+    );
+
+    // Case 5: Document title with handle only
+    assert.strictEqual(
+      extractPartner({ docTitle: 'travel_lover • Direct' }),
+      'travel_lover'
+    );
+
+    // Case 6: Reject generic names
+    assert.strictEqual(
+      extractPartner({ headerTitle: 'Messages', docTitle: 'Instagram' }),
+      ''
+    );
+  });
+
+  runTest('DmIncomingTextExtraction', 'Filters outgoing sent bubbles and extracts recent incoming messages', () => {
+    function extractIncomingText(bubbles, userDraft = '') {
+      const recent = [];
+      for (let i = bubbles.length - 1; i >= 0 && recent.length < 3; i--) {
+        const b = bubbles[i];
+        if (b.isOutgoing) {
+          if (recent.length > 0) break;
+          continue;
+        }
+        const text = (b.text || '').trim();
+        if (!text || text === userDraft || text.length < 2) continue;
+        if (text.match(/^(active\s|seen|delivered|sent|typing)/i)) continue;
+        recent.unshift(text);
+      }
+      return recent.join('\n');
+    }
+
+    const conversation = [
+      { text: 'Hi, are you open today?', isOutgoing: false },
+      { text: 'Yes we are open until 8 PM!', isOutgoing: true },
+      { text: 'Great, do you carry size 10?', isOutgoing: false },
+      { text: 'Active 5m ago', isOutgoing: false } // status line
+    ];
+
+    const result = extractIncomingText(conversation);
+    assert.strictEqual(result, 'Great, do you carry size 10?');
+  });
+
+  // =========================================================================
   // SUITE 3: Comment Isolation & Anti-Stale Caching
   // =========================================================================
   console.log('\n🛡️ Suite 3: Comment Isolation & Anti-Stale Caching');

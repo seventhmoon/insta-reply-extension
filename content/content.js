@@ -2006,16 +2006,225 @@
   }
 
   /**
-   * Finds the active DM chat thread container for a given element (bubble, button, input)
+   * Generates a deterministic, unique identifier for a DM conversation or message
    */
-  function findChatContainerForElement(el) {
-    if (!el) return null;
+  function extractDmIdentifier(el, partnerAuthor = '') {
+    // 1. URL pathname on /direct/t/<threadId>
+    const path = window.location.pathname;
+    const threadMatch = path.match(/\/direct\/t\/([A-Za-z0-9_-]+)/);
+    if (threadMatch && threadMatch[1]) {
+      return `dm_t_${threadMatch[1]}`;
+    }
+
+    // 2. Active inbox item matching URL or active state
+    try {
+      const activeLink = document.querySelector('a[href*="/direct/t/"][aria-current="page"], a[href*="/direct/t/"][tabindex="0"]');
+      if (activeLink) {
+        const hrefMatch = (activeLink.getAttribute('href') || '').match(/\/direct\/t\/([A-Za-z0-9_-]+)/);
+        if (hrefMatch && hrefMatch[1]) {
+          return `dm_t_${hrefMatch[1]}`;
+        }
+      }
+    } catch (_) {}
+
+    // 3. Floating PIP chat window or thread partner fallback
+    const cleanAuthor = (partnerAuthor || '').trim().toLowerCase().replace(/^@/, '');
+    if (cleanAuthor) {
+      return `dm_${cleanAuthor}`;
+    }
+
+    return 'dm_thread';
+  }
+
+  /**
+   * Finds the active DM conversation pane, strictly isolating it from the inbox sidebar
+   */
+  function findActiveDmThreadContainer(el) {
+    if (!el) return document.querySelector('div[role="main"]') || document.body;
+
+    // 1. Floating PIP chat dialog or mini-window
     const dialog = el.closest('div[role="dialog"]');
     if (dialog && isRealDmChatContainer(dialog)) return dialog;
-    return el.closest('.ig-dm-card') ||
-           el.closest('.ig-dm-composer')?.parentElement ||
-           el.closest('div[role="main"]') ||
-           document.querySelector('div[role="main"]');
+    const pip = el.closest('.ig-dm-card, .ig-pip-window, .ig-dm-messages');
+    if (pip) return pip;
+
+    // 2. In fullscreen /direct/, find the active thread column inside div[role="main"]
+    const main = el.closest('div[role="main"]') || document.querySelector('div[role="main"]');
+    if (main) {
+      let curr = el;
+      while (curr && curr !== main && curr !== document.body) {
+        const parent = curr.parentElement;
+        if (!parent) break;
+        if (parent === main || parent.parentElement === main) {
+          // Verify that this column does not contain the multi-item inbox list
+          const hasMultipleInboxLinks = curr.querySelectorAll('a[href*="/direct/t/"]').length > 3;
+          if (!hasMultipleInboxLinks) {
+            return curr;
+          }
+        }
+        curr = parent;
+      }
+    }
+
+    return el.closest('section') || el.closest('div[role="main"]') || document.body;
+  }
+
+  function findChatContainerForElement(el) {
+    return findActiveDmThreadContainer(el);
+  }
+
+  /**
+   * Extracts the chat partner's username/handle in the active DM conversation
+   */
+  function extractDmPartner(threadContainer, inputEl) {
+    const bannedUsernames = new Set([
+      'direct', 'inbox', 'messages', 'chat', 'instagram', 'search',
+      'explore', 'notifications', 'activity', 'settings', 'legal', 'accounts',
+      'post', 'reels', 'stories', 'create'
+    ]);
+
+    // 1. Check for Instagram's native reply quote banner near inputEl: "Replying to @username"
+    if (inputEl) {
+      const nearArea = inputEl.closest('.ig-dm-composer, form') || inputEl.parentElement?.parentElement;
+      if (nearArea) {
+        const textEls = nearArea.querySelectorAll('div, span, p');
+        for (const tEl of textEls) {
+          const txt = (tEl.textContent || '').trim();
+          const match = txt.match(/^Replying to\s+@?([a-zA-Z0-9._]+)/i);
+          if (match && match[1] && !bannedUsernames.has(match[1].toLowerCase())) {
+            return match[1];
+          }
+        }
+      }
+    }
+
+    // 2. Check input placeholder / aria-label: "Message @username..." or "Message username..."
+    if (inputEl) {
+      const ariaLabel = inputEl.getAttribute('aria-label') || '';
+      const placeholder = inputEl.getAttribute('placeholder') || '';
+      const match = (ariaLabel + ' ' + placeholder).match(/(?:message|send message to|responder a|nachricht an)\s+@?([a-zA-Z0-9._]+)/i);
+      if (match && match[1]) {
+        const clean = match[1].replace(/\.+$/, '').trim();
+        if (clean && !bannedUsernames.has(clean.toLowerCase())) {
+          return clean;
+        }
+      }
+    }
+
+    // 3. Check active thread header inside threadContainer (excluding /direct/ navigation links)
+    if (threadContainer) {
+      // Look for partner profile link: e.g. <a href="/janedoe/" role="link">
+      const profileLinks = threadContainer.querySelectorAll(`
+        header a[href^="/"]:not([href*="/direct/"]):not([href*="/explore/"]):not([href*="/stories/"]):not([href*="/p/"]):not([href*="/reel/"]),
+        a[role="link"][href^="/"]:not([href*="/direct/"]):not([href*="/explore/"]):not([href*="/stories/"]):not([href*="/p/"]):not([href*="/reel/"])
+      `);
+      for (const link of profileLinks) {
+        const href = (link.getAttribute('href') || '').replace(/^\/+/, '').split('/')[0].split('?')[0].trim();
+        if (href && !bannedUsernames.has(href.toLowerCase()) && !href.includes('&')) {
+          return href;
+        }
+      }
+
+      // Look for display name / heading text in header
+      const header = threadContainer.querySelector('header, .ig-post-header, [role="heading"]');
+      if (header) {
+        const textElements = header.querySelectorAll('strong, h1, h2, h3, h4, span[dir="auto"]');
+        for (const tEl of textElements) {
+          const raw = (tEl.textContent || '').trim().replace(/^@/, '');
+          if (raw && !bannedUsernames.has(raw.toLowerCase()) && raw.length < 30 && !raw.includes('\n')) {
+            return raw;
+          }
+        }
+      }
+    }
+
+    // 4. Check active conversation link in the left sidebar
+    try {
+      const activeInboxLink = document.querySelector('a[href*="/direct/t/"][aria-current="page"], a[href*="/direct/t/"][tabindex="0"]');
+      if (activeInboxLink) {
+        const nameEl = activeInboxLink.querySelector('strong, span[dir="auto"], h2, h3');
+        const name = (nameEl?.textContent || '').trim().replace(/^@/, '');
+        if (name && !bannedUsernames.has(name.toLowerCase()) && name.length < 30) {
+          return name;
+        }
+      }
+    } catch (_) {}
+
+    // 5. Check document.title: e.g. "Jane Doe (@janedoe) • Direct" or "janedoe • Direct"
+    if (document.title && document.title.includes('Direct')) {
+      const titleMatch = document.title.match(/^([^•]+?)(?:\s*\(@?([a-zA-Z0-9._]+)\))?\s*•\s*Direct/i);
+      if (titleMatch) {
+        const handle = (titleMatch[2] || titleMatch[1]).trim().replace(/^@/, '');
+        if (handle && !bannedUsernames.has(handle.toLowerCase())) {
+          return handle;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * Extracts recent incoming message text in the active DM conversation
+   */
+  function extractDmIncomingText(threadContainer, inputEl, userDraftHint = '') {
+    // 1. Check if user clicked Instagram's native reply arrow on a message
+    if (inputEl) {
+      const nearArea = inputEl.closest('.ig-dm-composer, form') || inputEl.parentElement?.parentElement;
+      if (nearArea) {
+        const banner = nearArea.querySelector('[aria-label*="reply" i], .ig-reply-banner, div[role="button"] ~ div');
+        if (banner) {
+          const text = banner.textContent?.trim();
+          if (text && !text.toLowerCase().startsWith('replying to') && text.length > 1) {
+            return text;
+          }
+        }
+      }
+    }
+
+    // 2. Scan incoming message bubbles inside the active thread container
+    if (threadContainer) {
+      const candidateBubbles = threadContainer.querySelectorAll('div[dir="auto"]');
+      const recentMessages = [];
+
+      for (let i = candidateBubbles.length - 1; i >= 0 && recentMessages.length < 3; i--) {
+        const bubble = candidateBubbles[i];
+        if (
+          bubble.closest('header, nav, footer, .ig-dm-composer, form') ||
+          bubble.closest('.instareply-card-overlay') ||
+          bubble.closest('.instareply-shortcut-btn') ||
+          bubble.closest('.instareply-dm-reply-chip')
+        ) {
+          continue;
+        }
+
+        // Stop scanning backwards once we reach the user's previous outgoing message:
+        // we only want new incoming messages received SINCE our last response!
+        if (isOutgoingDmBubble(bubble)) {
+          if (recentMessages.length > 0) {
+            break;
+          }
+          continue;
+        }
+
+        const text = (bubble.innerText || bubble.textContent || '').trim();
+        if (
+          text &&
+          text !== userDraftHint &&
+          text.length > 1 &&
+          !isCommentMetadata(text) &&
+          !text.match(/^(active\s|seen|delivered|sent|typing)/i)
+        ) {
+          recentMessages.unshift(text);
+        }
+      }
+
+      if (recentMessages.length > 0) {
+        return recentMessages.join('\n');
+      }
+    }
+
+    return '';
   }
 
   /**
@@ -2027,7 +2236,10 @@
     const chatContainers = new Set();
     if (window.location.pathname.includes('/direct')) {
       const main = document.querySelector('div[role="main"]');
-      if (main && isRealDmChatContainer(main)) chatContainers.add(main);
+      if (main && isRealDmChatContainer(main)) {
+        const activeThread = findActiveDmThreadContainer(main);
+        chatContainers.add(activeThread || main);
+      }
     }
     document.querySelectorAll('div[role="dialog"], .ig-dm-card, .ig-dm-messages').forEach((el) => {
       if (isRealDmChatContainer(el)) {
@@ -2088,8 +2300,11 @@
           e.preventDefault();
           e.stopPropagation();
 
+          // Locate active thread pane
+          const threadContainer = findActiveDmThreadContainer(chip);
+
           // Locate DM composer input in this thread container
-          const dmInput = chatContainer.querySelector(`
+          const dmInput = threadContainer.querySelector(`
             .ig-dm-composer div[contenteditable="true"],
             .ig-dm-composer textarea,
             div[contenteditable="true"][data-lexical-editor="true"],
@@ -2099,22 +2314,11 @@
           `) || document.querySelector('div[role="main"] div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
 
           // Locate chat partner in this thread
-          const chatHeader = chatContainer.querySelector('header, .ig-post-header') ||
-                             chatContainer.querySelector('h1, h2, h3') ||
-                             chatContainer.querySelector('a[role="link"]');
-          let author = '';
-          if (chatHeader) {
-            const nameEl = chatHeader.querySelector('strong, h1, h2, h3, span[dir="auto"]');
-            if (nameEl) {
-              author = nameEl.innerText?.trim().replace(/^@/, '') || '';
-            } else {
-              author = chatHeader.innerText?.trim().split('\n')[0].replace(/^@/, '') || '';
-            }
-          }
+          const partnerAuthor = extractDmPartner(threadContainer, dmInput);
 
           openAssistantCard(dmInput, 'dm', chip, {
             incomingText: text,
-            author: author || 'Chat partner'
+            author: partnerAuthor || 'Chat partner'
           });
         });
 
@@ -3224,8 +3428,20 @@
    * Opens or toggles the AI Reply Assistant Card
    */
   async function openAssistantCard(inputEl, contextType, triggerBtn, specificComment = null) {
-    // If card is already open on this input/comment, toggle it closed
-    if (activeCard && activeInputTarget === inputEl && !specificComment) {
+    const currentPostId = contextType === 'story'
+      ? extractStoryIdentifier(inputEl || triggerBtn, specificComment?.author)
+      : (contextType === 'dm'
+          ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author)
+          : extractPostIdentifier(findPostContainer(inputEl || triggerBtn)));
+
+    // If card is already open on this input/comment for the SAME post/thread, toggle it closed
+    if (
+      activeCard &&
+      activeInputTarget === inputEl &&
+      !specificComment &&
+      lastContextData &&
+      lastContextData.postId === currentPostId
+    ) {
       closeCard();
       return;
     }
@@ -3286,6 +3502,10 @@
           activeVideo.dataset.instareplyPaused = 'true';
         }
       } catch (_) {}
+    } else if (contextType === 'dm') {
+      const threadContainer = findActiveDmThreadContainer(inputEl || triggerBtn);
+      postAuthor = extractDmPartner(threadContainer, inputEl);
+      postContainer = threadContainer;
     } else {
       postContainer = shouldIncludeCaption ? findPostContainer(inputEl || triggerBtn) : null;
       if (postContainer) {
@@ -3331,7 +3551,9 @@
 
     const postId = contextType === 'story'
       ? extractStoryIdentifier(inputEl || triggerBtn, postAuthor)
-      : extractPostIdentifier(postContainer, postAuthor, postCaption);
+      : (contextType === 'dm'
+          ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author || postAuthor)
+          : extractPostIdentifier(postContainer, postAuthor, postCaption));
 
     // Extract Context
     let context;
@@ -3347,16 +3569,22 @@
         contextType: contextType || 'comment',
         isSpecificCommentReply: contextType !== 'dm',
         author: specificComment.author,
-        postAuthor
+        postAuthor: postAuthor || specificComment.author
       });
+
+      let scopedPostId = postId;
+      if (contextType === 'dm' && specificComment.incomingText) {
+        const textHash = specificComment.incomingText.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_');
+        scopedPostId = `${postId}_${textHash}`;
+      }
 
       context = {
         contextType: contextType || 'comment',
-        postId,
+        postId: scopedPostId,
         incomingText: specificComment.incomingText,
         author: specificComment.author,
         postCaption,
-        postAuthor,
+        postAuthor: postAuthor || specificComment.author,
         postVisuals,
         ...rel,
         isSpecificCommentReply: contextType !== 'dm',
@@ -3365,9 +3593,11 @@
     } else {
       context = extractContext(inputEl, contextType, postContainer);
       context.contextType = contextType;
-      context.postId = postId || context.postId || extractPostIdentifier(postContainer, context.postAuthor, context.postCaption);
+      context.postId = (contextType === 'dm')
+        ? extractDmIdentifier(inputEl || triggerBtn, context.author)
+        : (postId || context.postId || extractPostIdentifier(postContainer, context.postAuthor, context.postCaption));
       if (!context.postCaption) context.postCaption = postCaption;
-      if (!context.postAuthor) context.postAuthor = postAuthor;
+      if (!context.postAuthor) context.postAuthor = postAuthor || context.author;
       if (!context.postVisuals) context.postVisuals = postVisuals;
 
       const rel = determineReplyRelationship({
@@ -3500,36 +3730,10 @@
         incomingText = '';
       }
     } else if (contextType === 'dm') {
-      // Find DM conversation thread container for this input (PIP floating window or fullscreen direct)
-      const chatContainer = findChatContainerForElement(inputEl) || document.body;
-      const messageBubbles = chatContainer.querySelectorAll('div[dir="auto"]');
-
-      // Grab the last few incoming messages
-      const recentMessages = [];
-      for (let i = messageBubbles.length - 1; i >= 0 && recentMessages.length < 3; i--) {
-        const bubble = messageBubbles[i];
-        if (isOutgoingDmBubble(bubble)) continue;
-        const text = bubble.innerText?.trim();
-        // Ignore the input's own content, UI metadata, or trivial text
-        if (text && text !== userDraftHint && text.length > 1 && !isCommentMetadata(text)) {
-          recentMessages.unshift(text);
-        }
-      }
-
-      incomingText = recentMessages.join('\n');
-
-      // Attempt to extract chat partner name from header of this chat container
-      const chatHeader = chatContainer.querySelector('header, .ig-post-header') ||
-                         chatContainer.querySelector('h1, h2, h3') ||
-                         chatContainer.querySelector('a[role="link"]');
-      if (chatHeader) {
-        const nameEl = chatHeader.querySelector('strong, h1, h2, h3, span[dir="auto"]');
-        if (nameEl) {
-          author = nameEl.innerText?.trim().replace(/^@/, '') || '';
-        } else {
-          author = chatHeader.innerText?.trim().split('\n')[0].replace(/^@/, '') || '';
-        }
-      }
+      const threadContainer = findActiveDmThreadContainer(inputEl);
+      author = extractDmPartner(threadContainer, inputEl);
+      incomingText = extractDmIncomingText(threadContainer, inputEl, userDraftHint);
+      postAuthor = author;
     }
 
     // Clean userDraftHint by removing leading @author mention or bare handle
