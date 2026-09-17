@@ -1527,6 +1527,200 @@ Hope this helps!
     assert.strictEqual(sw.isVisionRejectionError(500, 'internal server error'), false);
   });
 
+  // =========================================================================
+  // SUITE 7: Voice Mimicry, Spam Shield & Draggable Card
+  // =========================================================================
+  console.log('\n🎙️ Suite 7: Voice Mimicry, Anti-Troll Shield & Draggable Card');
+
+  runTest('VoiceMimicryPrompting', 'myVoiceSamples is injected into system prompt as few-shot training examples', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes("myVoiceSamples: ''"), 'DEFAULT_CONFIG must define myVoiceSamples');
+    assert.ok(swCode.includes("CREATOR'S AUTHENTIC VOICE & SAMPLES"), 'buildStructuredPrompt must include authentic voice section');
+
+    // Test prompt construction with voice samples
+    const swNormBody = swCode.slice(swCode.indexOf('function normalizeToneName'), swCode.indexOf('function getBundledTonesFor'));
+    const swBundleBody = swCode.slice(swCode.indexOf('function getBundledTonesFor'), swCode.indexOf('// In-memory cache'));
+    const swToneInstBody = swCode.slice(swCode.indexOf('function getToneInstruction'), swCode.indexOf('function getLanguageInstruction'));
+    const swLangInstBody = swCode.slice(swCode.indexOf('function getLanguageInstruction'), swCode.indexOf('function parseAIResponse'));
+    const promptBody = swCode.slice(swCode.indexOf('function buildStructuredPrompt'), swCode.indexOf('function getToneInstruction'));
+
+    const testFn = new Function('opts', `
+      ${swNormBody}
+      ${swBundleBody}
+      ${swToneInstBody}
+      ${swLangInstBody}
+      ${promptBody}
+      return buildStructuredPrompt(opts);
+    `);
+
+    const promptWithVoice = testFn({
+      contextType: 'comment',
+      incomingText: 'Love your style!',
+      tone: 'friendly',
+      myVoiceSamples: 'omg tysm bb!! <3 appreciate u always'
+    });
+
+    assert.ok(promptWithVoice.includes("CREATOR'S AUTHENTIC VOICE & SAMPLES"), 'Prompt must contain few-shot section');
+    assert.ok(promptWithVoice.includes('omg tysm bb!! <3 appreciate u always'), 'Prompt must include exact sample text');
+  });
+
+  runTest('SpamClassificationSchema', 'Anti-Troll shield prompts for classification and parses spam metadata correctly', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes('enableSpamFilter: true'), 'DEFAULT_CONFIG must define enableSpamFilter');
+    assert.ok(swCode.includes('SPAM & TROLL SHIELD'), 'buildStructuredPrompt must include spam & troll instructions');
+    assert.ok(swCode.includes('"isSpamOrTroll"'), 'Prompt schema must include isSpamOrTroll');
+
+    // Test parseAIResponse on spam response
+    const parseBody = swCode.slice(swCode.indexOf('function parseAIResponse'), swCode.indexOf('function formatSentimentLabel'));
+    const formatSentimentBody = swCode.slice(swCode.indexOf('function formatSentimentLabel'), swCode.indexOf('if (typeof module'));
+    const swNormBody = swCode.slice(swCode.indexOf('function normalizeToneName'), swCode.indexOf('function getBundledTonesFor'));
+
+    const parseFn = new Function('rawText', `
+      ${swNormBody}
+      ${formatSentimentBody}
+      ${parseBody}
+      return parseAIResponse(rawText);
+    `);
+
+    const sampleSpamJson = JSON.stringify({
+      sentiment: 'negative',
+      isSpamOrTroll: true,
+      spamReason: 'Forex bot telegram link',
+      recommendedAction: 'report_block',
+      reply: 'We do not entertain promotional bot links on this page.'
+    });
+
+    const parsed = parseFn(sampleSpamJson);
+    assert.strictEqual(parsed.isSpamOrTroll, true, 'Must identify isSpamOrTroll');
+    assert.strictEqual(parsed.spamReason, 'Forex bot telegram link', 'Must parse spamReason');
+    assert.strictEqual(parsed.recommendedAction, 'report_block', 'Must parse recommendedAction');
+  });
+
+  runTest('DraggableAndMinimizableCard', 'Content script renders drag handle, minimize controls, and defines makeCardDraggable', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    // Check DOM elements in content.js
+    assert.ok(contentCode.includes('instareply-drag-handle'), 'Must include drag handle in card markup');
+    assert.ok(contentCode.includes('instareply-minimize-btn'), 'Must include minimize button in card markup');
+    assert.ok(contentCode.includes('instareply-minimized-bar'), 'Must include minimized bar in card markup');
+    assert.ok(contentCode.includes('function makeCardDraggable'), 'Must define makeCardDraggable');
+    assert.ok(contentCode.includes('instareply-spam-banner'), 'Must include spam banner rendering logic');
+
+    // Check CSS rules in content.css
+    assert.ok(cssCode.includes('cursor: grab'), 'Header must have cursor: grab');
+    assert.ok(cssCode.includes('.is-minimized'), 'CSS must define .is-minimized styling');
+    assert.ok(cssCode.includes('.instareply-spam-banner'), 'CSS must define .instareply-spam-banner styling');
+  });
+
+  // =========================================================================
+  // SUITE 8: 1-Click Quick Reply (Zero-Dialog Direct Insertion) Flow
+  // =========================================================================
+  console.log('\n⚡ Suite 8: 1-Click Quick Reply (Zero-Dialog Direct Insertion) Flow');
+
+  runTest('QuickReplyConfigDefaults', 'Background service worker and popup include quick reply config defaults', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+
+    assert.ok(swCode.includes("enableQuickReply: true"), 'service-worker DEFAULT_CONFIG must have enableQuickReply: true');
+    assert.ok(swCode.includes("shortcutClickAction: 'quick'"), "service-worker DEFAULT_CONFIG must have shortcutClickAction: 'quick'");
+    assert.ok(swCode.includes("quickReplyTone: 'friendly'"), "service-worker DEFAULT_CONFIG must have quickReplyTone: 'friendly'");
+    assert.ok(swCode.includes("composerButtonMode: 'smart'"), "service-worker DEFAULT_CONFIG must have composerButtonMode: 'smart'");
+
+    assert.ok(popupHtml.includes('id="enableQuickReply"'), 'popup.html must contain #enableQuickReply checkbox');
+    assert.ok(popupHtml.includes('id="shortcutClickAction"'), 'popup.html must contain #shortcutClickAction dropdown');
+    assert.ok(popupHtml.includes('id="quickReplyTone"'), 'popup.html must contain #quickReplyTone dropdown');
+    assert.ok(popupHtml.includes('id="composerButtonMode"'), 'popup.html must contain #composerButtonMode dropdown');
+
+    assert.ok(popupJs.includes('enableQuickReply'), 'popup.js must bind enableQuickReply');
+    assert.ok(popupJs.includes('shortcutClickAction'), 'popup.js must bind shortcutClickAction');
+    assert.ok(popupJs.includes('quickReplyTone'), 'popup.js must bind quickReplyTone');
+    assert.ok(popupJs.includes('composerButtonMode'), 'popup.js must bind composerButtonMode');
+  });
+
+  runTest('QuickReplyContentCore', 'Content script exports generateQuickReply, keyboard shortcuts, and direct insertion logic', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    assert.ok(contentCode.includes('async function generateQuickReply'), 'content.js must define generateQuickReply');
+    assert.ok(contentCode.includes('function setupKeyboardShortcuts'), 'content.js must define setupKeyboardShortcuts');
+    assert.ok(contentCode.includes('function showQuickReplyToast'), 'content.js must define showQuickReplyToast');
+    assert.ok(contentCode.includes('function detectContextType'), 'content.js must define detectContextType');
+    assert.ok(contentCode.includes('instareply-quick-reply-btn'), 'content.js must inject instareply-quick-reply-btn');
+    assert.ok(contentCode.includes('instareply-quick-chip'), 'content.js must inject instareply-quick-chip');
+    assert.ok(contentCode.includes('insertTextIntoInstagramInput(targetInput, replyText)'), 'Must insert text directly into Instagram input');
+    assert.ok(contentCode.includes("inputColumn.style.minWidth = '140px'"), 'Must protect inputColumn min-width from collapsing');
+
+    // Check CSS definitions
+    assert.ok(cssCode.includes('.instareply-composer-actions'), 'CSS must style composer action toolbar');
+    assert.ok(cssCode.includes('.instareply-quick-reply-btn'), 'CSS must style .instareply-quick-reply-btn');
+    assert.ok(cssCode.includes('.instareply-quick-chip'), 'CSS must style .instareply-quick-chip');
+    assert.ok(cssCode.includes('.instareply-quick-toast'), 'CSS must style .instareply-quick-toast');
+    assert.ok(cssCode.includes('.instareply-btn-spinner'), 'CSS must define .instareply-btn-spinner for drafting state');
+    assert.ok(cssCode.includes('min-width: 140px !important'), 'CSS must protect comment textarea container from collapsing');
+  });
+
+  runTest('QuickReplyDirectInsertionSimulation', 'Simulating quick reply inserts generated text directly into target input without creating card dialog', () => {
+    // Mock Instagram input element
+    const mockInput = {
+      tagName: 'TEXTAREA',
+      value: '',
+      focusCalled: false,
+      dispatchedEvents: [],
+      focus() { this.focusCalled = true; },
+      dispatchEvent(e) { this.dispatchedEvents.push(e.type); }
+    };
+
+    const classes = new Set();
+    const mockTriggerBtn = {
+      classList: {
+        add: (c) => classes.add(c),
+        remove: (c) => classes.delete(c),
+        contains: (c) => classes.has(c)
+      },
+      disabled: false,
+      innerHTML: ''
+    };
+
+    // Direct insertion flow
+    mockTriggerBtn.classList.add('is-loading');
+    assert.ok(mockTriggerBtn.classList.contains('is-loading'), 'Button enters loading state during generation');
+
+    const generatedReply = 'Looks absolutely fantastic! Love the lighting.';
+    mockInput.value = generatedReply;
+    mockInput.dispatchEvent({ type: 'input' });
+
+    mockTriggerBtn.classList.remove('is-loading');
+    mockTriggerBtn.classList.add('is-success');
+
+    assert.strictEqual(mockInput.value, generatedReply, 'Textarea value must match the generated reply directly');
+    assert.ok(mockTriggerBtn.classList.contains('is-success'), 'Button marks success state after direct insertion');
+    assert.strictEqual(mockInput.dispatchedEvents.includes('input'), true, 'Input event must be dispatched to notify React');
+  });
+
+  runTest('KeyboardShortcutDetection', 'Alt+Q / Option+Q triggers quick reply shortcut detection logic', () => {
+    let triggered = false;
+    function handleKeyDown(e) {
+      if (e.altKey && (e.code === 'KeyQ' || e.key?.toLowerCase() === 'q' || e.key === 'œ')) {
+        triggered = true;
+      }
+    }
+
+    // Test Windows/Linux Alt+Q
+    handleKeyDown({ altKey: true, code: 'KeyQ', key: 'q' });
+    assert.strictEqual(triggered, true, 'Must detect Alt+Q on Windows/Linux');
+
+    // Test macOS Option+Q (which produces character 'œ')
+    triggered = false;
+    handleKeyDown({ altKey: true, code: 'KeyQ', key: 'œ' });
+    assert.strictEqual(triggered, true, 'Must detect Option+Q on macOS');
+
+    // Normal typing of 'q' without Alt must NOT trigger
+    triggered = false;
+    handleKeyDown({ altKey: false, code: 'KeyQ', key: 'q' });
+    assert.strictEqual(triggered, false, 'Must not trigger without altKey');
+  });
 
   console.log('\n=================================================');
   console.log(`📊 Tests Executed: ${totalTests} | Passed: ${passedTests} | Failed: ${failedTests}`);

@@ -277,6 +277,63 @@
         </label>
       </div>
 
+      <div class="checkbox-row">
+        <label class="custom-checkbox">
+          <input type="checkbox" id="enableSpamFilter" checked>
+          <span class="checkbox-label">🚫 Anti-Troll & Spam Shield (Detect Bot Promo & Harassment)</span>
+        </label>
+      </div>
+
+      <!-- ⚡ 1-Click Quick Reply (Direct Insert Without Dialog) -->
+      <div class="checkbox-row">
+        <label class="custom-checkbox">
+          <input type="checkbox" id="enableQuickReply" checked>
+          <span class="checkbox-label">⚡ 1-Click Quick Reply (Direct Insert, No Popup Dialog)</span>
+        </label>
+      </div>
+
+      <div class="form-group mt-8" id="quickReplyActionGroup">
+        <label for="shortcutClickAction">Shortcut Button Behavior</label>
+        <select id="shortcutClickAction" class="select-input">
+          <option value="quick" selected>⚡ Quick Reply (Instantly generate & insert into input)</option>
+          <option value="dialog">✨ Open Assistant Card (Full multi-tone review dialog)</option>
+        </select>
+        <div class="hint-text">
+          Quick Reply automatically generates and inserts the reply into Instagram's box in 1 click, exactly like ChatGPT for Instagram / MailMagic.
+        </div>
+      </div>
+
+      <div class="form-group mt-8" id="quickReplyToneGroup">
+        <label for="quickReplyTone">Quick Reply Default Tone</label>
+        <select id="quickReplyTone" class="select-input">
+          <option value="friendly" selected>😊 Friendly & Casual</option>
+          <option value="supportive">🤝 Supportive & Warm</option>
+          <option value="humorous">😄 Witty & Funny</option>
+          <option value="playful">😈 Playful & Cheeky</option>
+          <option value="flirting">😘 Flirting & Romantic</option>
+          <option value="alluring">✨ Alluring & Enchanting</option>
+          <option value="professional">💼 Professional & Polished</option>
+          <option value="concise">⚡ Short & Sweet</option>
+          <option value="savage">😏 Savage & Roast</option>
+        </select>
+      </div>
+
+      <div class="form-group mt-8" id="composerButtonModeGroup">
+        <label for="composerButtonMode">Composer Button Style</label>
+        <select id="composerButtonMode" class="select-input">
+          <option value="smart" selected>🎯 Single Smart Button (28px - Full Input Width)</option>
+          <option value="dual">⚡✨ Dual Icon Buttons (26px + 26px)</option>
+        </select>
+        <div class="hint-text">
+          Single Smart Button keeps the edittext area full-width. Click triggers 1-Click Quick Reply directly, and Shift+Click opens the assistant card.
+        </div>
+      </div>
+
+      <div class="form-group mt-8">
+        <label for="myVoiceSamples">🎙️ Learn My Voice (Few-Shot Style Mimicry)</label>
+        <textarea id="myVoiceSamples" rows="3" placeholder="Paste 2–5 examples of how you typically reply (one per line). The AI will mimic your exact slang, punctuation quirks, and rhythm!"></textarea>
+      </div>
+
       <div class="form-group mt-8">
         <label for="customInstructions">Custom Persona or Rules (Optional)</label>
         <textarea id="customInstructions" rows="2" placeholder="e.g. Always be polite, ask them to check my bio, keep under 2 sentences..."></textarea>

@@ -146,6 +146,7 @@
     setupMutationObserver();
     setupGlobalClickListener();
     setupFocusListener();
+    setupKeyboardShortcuts();
     setupNavigationListener();
 
     // Staggered retries to guarantee button injection on cold direct post loads (React client hydration)
@@ -163,14 +164,11 @@
       const currentUrl = window.location.href;
       if (currentUrl !== lastUrl) {
         const wasInDm = lastUrl.includes('/direct');
-        const isInDm = currentUrl.includes('/direct');
-        lastUrl = currentUrl;
-
-        // If the user navigates between different DM threads or enters/leaves DMs, close open card
-        if (activeCard && (wasInDm || isInDm)) {
+        const nowInDm = currentUrl.includes('/direct');
+        if (activeCard && (wasInDm || nowInDm)) {
           closeCard();
         }
-
+        lastUrl = currentUrl;
         setTimeout(scanAndInjectShortcuts, 150);
         setTimeout(scanAndInjectShortcuts, 600);
       }
@@ -201,6 +199,74 @@
         !el.closest('.instareply-card')
       ) {
         scanAndInjectShortcuts();
+      }
+    }, true);
+  }
+
+  /**
+   * Helper: Detect whether an input belongs to comment, story, or direct message
+   */
+  function detectContextType(inputEl) {
+    if (!inputEl) return 'comment';
+    if (window.location.pathname.includes('/direct') || (inputEl.closest && inputEl.closest('.ig-dm-composer, div[role="main"] form[action=""]'))) {
+      return 'dm';
+    }
+    const ariaLabel = (inputEl.getAttribute?.('aria-label') || '').toLowerCase();
+    const placeholder = (inputEl.getAttribute?.('placeholder') || '').toLowerCase();
+    const ariaPlaceholder = (inputEl.getAttribute?.('aria-placeholder') || '').toLowerCase();
+    const isStory = window.location.pathname.includes('/stories') ||
+      Boolean(inputEl.closest?.('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')) ||
+      ariaLabel.includes('reply to') ||
+      placeholder.includes('reply to') ||
+      ariaPlaceholder.includes('reply to') ||
+      ariaLabel.includes('responder a') ||
+      placeholder.includes('responder a');
+    if (isStory) return 'story';
+    return 'comment';
+  }
+
+  /**
+   * Listens for Alt+Q / Option+Q keyboard shortcut to trigger instant 1-click Quick Reply
+   */
+  function setupKeyboardShortcuts() {
+    window.addEventListener('keydown', async (e) => {
+      // Trigger on Alt + Q (or Option + Q on macOS)
+      if (e.altKey && (e.code === 'KeyQ' || e.key?.toLowerCase() === 'q' || e.key === 'œ')) {
+        const config = await getConfig();
+        if (config.enableQuickReply === false) return;
+
+        // Find active element or visible input
+        let targetInput = document.activeElement;
+        const isEligibleInput = targetInput && (
+          (typeof targetInput.matches === 'function' && targetInput.matches('textarea, div[contenteditable="true"], div[role="textbox"], input[type="text"]'))
+        ) && !targetInput.closest('.instareply-card') && !targetInput.closest('.instareply-card-overlay');
+
+        if (!isEligibleInput) {
+          targetInput = document.querySelector(`
+            form div[role="textbox"][contenteditable="true"],
+            div[role="textbox"][contenteditable="true"],
+            div[contenteditable="true"][aria-label*="comment" i],
+            div[contenteditable="true"][data-lexical-editor="true"],
+            .ig-dm-composer div[contenteditable="true"],
+            form textarea,
+            textarea
+          `);
+        }
+
+        if (!targetInput) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const contextType = detectContextType(targetInput);
+        const container = targetInput.closest('form') || targetInput.parentElement;
+        const triggerBtn = container ? container.querySelector('.instareply-quick-reply-btn') : null;
+
+        await generateQuickReply({
+          targetInput,
+          contextType,
+          triggerBtn
+        });
       }
     }, true);
   }
@@ -1002,11 +1068,72 @@
         } catch (_) {}
       });
 
-      // Create the inline AI Reply chip
+      // 1. ⚡ Quick Reply chip (1-Click Direct Insert without popup dialog)
+      const quickChip = document.createElement('button');
+      quickChip.type = 'button';
+      quickChip.className = 'instareply-comment-reply-chip instareply-quick-chip';
+      quickChip.title = `⚡ 1-Click Quick Reply: Draft & insert reply to @${rawAuthor} directly (No popup dialog)`;
+      quickChip.innerHTML = `<span class="instareply-chip-sparkle">⚡</span> Quick Reply`;
+
+      quickChip.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
+        const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
+        const postId = extractPostIdentifier(postCont);
+        lastActiveCommentContext = {
+          author: rawAuthor,
+          incomingText: commentText,
+          commentItem,
+          postId,
+          timestamp: Date.now()
+        };
+
+        // Trigger native reply button click so Instagram can initialize its reply state & focus
+        try {
+          targetReplyBtn.click();
+        } catch (_) {}
+
+        // Small pause for Instagram React state to mount/focus the reply box
+        await new Promise(r => setTimeout(r, 60));
+
+        const article = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || document.querySelector('article') || document;
+        const commentInput = article.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][aria-placeholder*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          form textarea,
+          textarea[placeholder*="comment" i]
+        `) || document.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][aria-placeholder*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          form textarea,
+          textarea[placeholder*="comment" i]
+        `);
+
+        await generateQuickReply({
+          targetInput: commentInput,
+          contextType: 'comment',
+          triggerBtn: quickChip,
+          explicitContext: {
+            incomingText: commentText,
+            author: rawAuthor,
+            postId
+          }
+        });
+      });
+
+      // 2. ✨ Customize chip (Opens Full Assistant Card)
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'instareply-comment-reply-chip';
-      chip.title = `Draft AI Reply to @${rawAuthor}`;
+      chip.title = `✨ Customize AI Reply to @${rawAuthor}: Open full assistant dialog`;
       chip.innerHTML = `<span class="instareply-chip-sparkle">✨</span> AI Reply`;
 
       chip.addEventListener('click', (e) => {
@@ -1057,8 +1184,9 @@
         });
       });
 
-      // Insert immediately after native "Reply"
+      // Insert immediately after native "Reply": [Reply] [⚡ Quick Reply] [✨ AI Reply]
       targetReplyBtn.insertAdjacentElement('afterend', chip);
+      targetReplyBtn.insertAdjacentElement('afterend', quickChip);
     });
   }
 
@@ -1186,10 +1314,19 @@
     }
 
     // Guard against duplicates
-    if (container.querySelector('.instareply-shortcut-btn')) return;
+    const existingActions = container.querySelector('.instareply-composer-actions');
+    if (existingActions) {
+      if (!container.querySelector('.instareply-shortcut-btn')) {
+        existingActions.remove();
+      } else {
+        return;
+      }
+    } else if (container.querySelector('.instareply-shortcut-btn')) {
+      return;
+    }
 
     // Reset any DM-specific absolute styles so it functions as an inline flex-row sibling
-    btn.classList.remove('instareply-dm-shortcut-btn');
+    btn.classList.remove('instareply-dm-shortcut-btn', 'instareply-dm-actions');
     btn.style.position = 'relative';
     btn.style.transform = 'none';
 
@@ -1199,9 +1336,18 @@
       inputColumn = inputColumn.parentElement;
     }
 
-    // 2. Find any action buttons or icons in the container (Post, Emoji, Lightning, etc.)
+    // 2. Ensure input column and inputEl retain healthy minimum width and flex growth so it NEVER collapses into a slit
+    if (inputColumn && inputColumn.style) {
+      inputColumn.style.minWidth = '140px';
+      inputColumn.style.flex = '1 1 auto';
+    }
+    if (inputEl && inputEl.style) {
+      inputEl.style.minWidth = '120px';
+    }
+
+    // 3. Find any action buttons or icons in the container (Post, Emoji, etc.)
     const allActions = Array.from(container.querySelectorAll('button, [role="button"], svg'))
-      .filter(b => b !== btn && !inputEl.contains(b) && !b.closest('.instareply-shortcut-btn'));
+      .filter(b => b !== btn && !inputEl.contains(b) && !b.closest('.instareply-shortcut-btn') && !b.closest('.instareply-composer-actions'));
 
     // Check if there is an existing submit/post button
     let postBtn = null;
@@ -1221,12 +1367,9 @@
       }
     }
 
-    // 3. Find the action container on the right side of the container
-    let actionTarget = postBtn || (allActions.length > 0 ? allActions[0] : null);
-
-    if (actionTarget) {
-      // Walk up from actionTarget to find its wrapper that is a sibling of inputColumn inside container
-      let actionColumn = actionTarget;
+    // 4. If postBtn is strictly positioned AFTER inputColumn, insert immediately before it
+    if (postBtn && inputColumn && inputColumn.parentElement) {
+      let actionColumn = postBtn;
       while (
         actionColumn.parentElement &&
         actionColumn.parentElement !== container &&
@@ -1236,12 +1379,15 @@
       }
 
       if (actionColumn && actionColumn !== container && actionColumn.parentElement) {
-        actionColumn.insertAdjacentElement('beforebegin', btn);
-        return;
+        // Only insert before actionColumn if it is strictly positioned AFTER inputColumn in the DOM
+        if (inputColumn.compareDocumentPosition(actionColumn) & Node.DOCUMENT_POSITION_FOLLOWING) {
+          actionColumn.insertAdjacentElement('beforebegin', btn);
+          return;
+        }
       }
     }
 
-    // 4. Fallback: place immediately after the input's column in the flex row
+    // 5. Default: place immediately AFTER the input's column on the right
     if (inputColumn && inputColumn !== container && inputColumn.parentElement) {
       inputColumn.insertAdjacentElement('afterend', btn);
     } else {
@@ -1263,9 +1409,18 @@
     }
 
     // Guard against duplicates
-    if (pill.querySelector('.instareply-shortcut-btn')) return;
+    const existingActions = pill.querySelector('.instareply-composer-actions');
+    if (existingActions) {
+      if (!pill.querySelector('.instareply-shortcut-btn')) {
+        existingActions.remove();
+      } else {
+        return;
+      }
+    } else if (pill.querySelector('.instareply-shortcut-btn')) {
+      return;
+    }
 
-    btn.classList.add('instareply-dm-shortcut-btn');
+    btn.classList.add('instareply-dm-actions');
 
     // Ensure pill has relative positioning so our absolute button anchors cleanly inside it
     if (window.getComputedStyle) {
@@ -1279,12 +1434,12 @@
 
     // Add right padding to input so typed message text doesn't collide with the button
     if (inputEl) {
-      inputEl.style.paddingRight = '38px';
+      inputEl.style.paddingRight = '72px';
     }
 
     // Check if there are other buttons/icons inside the pill (e.g. Send button or action icons)
-    const otherButtons = Array.from(pill.querySelectorAll('button:not(.instareply-shortcut-btn), [role="button"]:not(.instareply-shortcut-btn), svg'))
-      .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn'));
+    const otherButtons = Array.from(pill.querySelectorAll('button:not(.instareply-shortcut-btn):not(.instareply-quick-reply-btn), [role="button"]:not(.instareply-shortcut-btn):not(.instareply-quick-reply-btn), svg'))
+      .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn') && !el.closest('.instareply-composer-actions'));
 
     if (otherButtons.length > 0) {
       let rightOffset = 10;
@@ -1539,9 +1694,18 @@
     }
 
     // Guard against duplicates
-    if (pill.querySelector('.instareply-shortcut-btn')) return;
+    const existingActions = pill.querySelector('.instareply-composer-actions');
+    if (existingActions) {
+      if (!pill.querySelector('.instareply-shortcut-btn')) {
+        existingActions.remove();
+      } else {
+        return;
+      }
+    } else if (pill.querySelector('.instareply-shortcut-btn')) {
+      return;
+    }
 
-    btn.classList.add('instareply-story-shortcut-btn');
+    btn.classList.add('instareply-story-actions');
 
     // Ensure pill has relative positioning
     if (window.getComputedStyle) {
@@ -1555,12 +1719,12 @@
 
     // Add right padding to input so typed message doesn't collide with the button
     if (inputEl && inputEl.style) {
-      inputEl.style.paddingRight = '38px';
+      inputEl.style.paddingRight = '72px';
     }
 
     // Check for other buttons/icons inside the pill (Heart, Like, Send, Quick reactions)
-    const otherButtons = Array.from(pill.querySelectorAll('button:not(.instareply-shortcut-btn), [role="button"]:not(.instareply-shortcut-btn), svg'))
-      .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn'));
+    const otherButtons = Array.from(pill.querySelectorAll('button:not(.instareply-shortcut-btn):not(.instareply-quick-reply-btn), [role="button"]:not(.instareply-shortcut-btn):not(.instareply-quick-reply-btn), svg'))
+      .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn') && !el.closest('.instareply-composer-actions'));
 
     if (otherButtons.length > 0) {
       let rightOffset = 10;
@@ -2003,14 +2167,18 @@
     // Check if the parent comment container or form already has an InstaReply button
     const commentContainer = findCommentInputContainer(inputEl);
     if (commentContainer) {
-      const existingBtns = commentContainer.querySelectorAll('.instareply-shortcut-btn');
-      if (existingBtns.length > 0) {
-        // Prune any extra duplicates
-        for (let i = 1; i < existingBtns.length; i++) {
-          existingBtns[i].remove();
+      if (!commentContainer.querySelector('.instareply-shortcut-btn')) {
+        commentContainer.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
+      } else {
+        const existingBtns = commentContainer.querySelectorAll('.instareply-shortcut-btn');
+        if (existingBtns.length > 0) {
+          // Prune any extra duplicates
+          for (let i = 1; i < existingBtns.length; i++) {
+            existingBtns[i].remove();
+          }
+          inputEl.dataset.instareplyInjected = 'true';
+          return;
         }
-        inputEl.dataset.instareplyInjected = 'true';
-        return;
       }
     }
 
@@ -2018,13 +2186,17 @@
     if (contextType === 'dm') {
       const dmRow = findDmPillContainer(inputEl) || inputEl.closest('.ig-dm-composer') || inputEl.parentElement;
       if (dmRow) {
-        const existingBtns = dmRow.querySelectorAll('.instareply-shortcut-btn');
-        if (existingBtns.length > 0) {
-          for (let i = 1; i < existingBtns.length; i++) {
-            existingBtns[i].remove();
+        if (!dmRow.querySelector('.instareply-shortcut-btn')) {
+          dmRow.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
+        } else {
+          const existingBtns = dmRow.querySelectorAll('.instareply-shortcut-btn');
+          if (existingBtns.length > 0) {
+            for (let i = 1; i < existingBtns.length; i++) {
+              existingBtns[i].remove();
+            }
+            inputEl.dataset.instareplyInjected = 'true';
+            return;
           }
-          inputEl.dataset.instareplyInjected = 'true';
-          return;
         }
       }
     }
@@ -2033,13 +2205,17 @@
     if (contextType === 'story') {
       const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
       if (storyRow) {
-        const existingBtns = storyRow.querySelectorAll('.instareply-shortcut-btn');
-        if (existingBtns.length > 0) {
-          for (let i = 1; i < existingBtns.length; i++) {
-            existingBtns[i].remove();
+        if (!storyRow.querySelector('.instareply-shortcut-btn')) {
+          storyRow.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
+        } else {
+          const existingBtns = storyRow.querySelectorAll('.instareply-shortcut-btn');
+          if (existingBtns.length > 0) {
+            for (let i = 1; i < existingBtns.length; i++) {
+              existingBtns[i].remove();
+            }
+            inputEl.dataset.instareplyInjected = 'true';
+            return;
           }
-          inputEl.dataset.instareplyInjected = 'true';
-          return;
         }
       }
     }
@@ -2071,6 +2247,23 @@
 
     inputEl.dataset.instareplyInjected = 'true';
 
+    // 1. ⚡ Quick Reply Button (Ultra-compact 26px circular icon)
+    const quickBtn = document.createElement('button');
+    quickBtn.type = 'button';
+    quickBtn.className = 'instareply-quick-reply-btn';
+    quickBtn.dataset.contextType = contextType;
+    quickBtn.title = '⚡ 1-Click Quick Reply: Generate & insert directly into box (No dialog)';
+    quickBtn.innerHTML = '<span class="instareply-btn-icon">⚡</span>';
+
+    quickBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const activeContextType = quickBtn.dataset.contextType || contextType;
+      const activeInput = findActiveInput(quickBtn, activeContextType) || inputEl;
+      await generateQuickReply({ targetInput: activeInput, contextType: activeContextType, triggerBtn: quickBtn });
+    });
+
+    // 2. ✨ Customize / Smart AI Button (26px circular icon)
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'instareply-shortcut-btn';
@@ -2078,23 +2271,67 @@
     if (contextType === 'story') {
       btn.classList.add('instareply-story-shortcut-btn');
     }
-    btn.title = `Draft ${contextType === 'story' ? 'Story Reply' : contextType === 'dm' ? 'DM Reply' : 'Comment'} with InstaReply AI`;
+    const contextLabel = contextType === 'story' ? 'Story Reply' : contextType === 'dm' ? 'DM Reply' : 'Comment';
+    btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly into box (Shift+Click for Assistant Dialog)`;
     btn.innerHTML = SPARKLE_SVG;
 
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const activeContextType = btn.dataset.contextType || contextType;
       const activeInput = findActiveInput(btn, activeContextType) || inputEl;
-      openAssistantCard(activeInput, activeContextType, btn);
+
+      const cfg = await getConfig();
+      if (cfg.shortcutClickAction === 'quick') {
+        if (e.shiftKey) {
+          openAssistantCard(activeInput, activeContextType, btn);
+        } else {
+          await generateQuickReply({ targetInput: activeInput, contextType: activeContextType, triggerBtn: btn });
+        }
+      } else {
+        if (e.shiftKey) {
+          await generateQuickReply({ targetInput: activeInput, contextType: activeContextType, triggerBtn: btn });
+        } else {
+          openAssistantCard(activeInput, activeContextType, btn);
+        }
+      }
     });
 
+    // Wrap in actions container
+    const actionsWrapper = document.createElement('div');
+    actionsWrapper.className = 'instareply-composer-actions';
+    if (contextType === 'story') {
+      actionsWrapper.classList.add('instareply-story-actions');
+    } else if (contextType === 'dm') {
+      actionsWrapper.classList.add('instareply-dm-actions');
+    }
+
+    // Determine layout: 'smart' (single 26px button) vs 'dual' (compact 26px + 26px icon pair)
+    quickBtn.style.display = 'none'; // Default hidden in smart mode to keep edittext area maximum width
+    getConfig().then(cfg => {
+      const isDual = cfg && cfg.composerButtonMode === 'dual' && cfg.enableQuickReply !== false;
+      if (isDual) {
+        quickBtn.style.display = 'inline-flex';
+        btn.title = `✨ Customize ${contextLabel}: Open full AI Assistant dialog`;
+      } else {
+        quickBtn.style.display = 'none';
+        if (cfg && cfg.shortcutClickAction === 'dialog') {
+          btn.title = `✨ Open Assistant Dialog (${contextLabel}) (Shift+Click for 1-Click Quick Reply)`;
+        } else {
+          btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly (Shift+Click for Assistant Dialog)`;
+        }
+      }
+    }).catch(() => {});
+
+    actionsWrapper.appendChild(quickBtn);
+    actionsWrapper.appendChild(btn);
+
     if (contextType === 'comment') {
-      insertShortcutIntoComment(btn, inputEl);
+      insertShortcutIntoComment(actionsWrapper, inputEl);
     } else if (contextType === 'story') {
-      insertShortcutIntoStory(btn, inputEl);
+      insertShortcutIntoStory(actionsWrapper, inputEl);
     } else {
-      insertShortcutIntoDm(btn, inputEl);
+      insertShortcutIntoDm(actionsWrapper, inputEl);
     }
   }
 
@@ -2463,11 +2700,49 @@
 
         bubble.dataset.instareplyDmInjected = 'true';
 
-        // Create inline DM Reply chip
+        // 1. ⚡ Quick Reply chip (Direct insert without dialog)
+        const quickChip = document.createElement('button');
+        quickChip.type = 'button';
+        quickChip.className = 'instareply-dm-reply-chip instareply-quick-chip';
+        quickChip.title = '⚡ 1-Click Quick Reply: Draft & insert reply directly without dialog';
+        quickChip.innerHTML = '<span class="instareply-chip-sparkle">⚡</span> Quick Reply';
+
+        quickChip.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Locate active thread pane
+          const threadContainer = findActiveDmThreadContainer(quickChip);
+
+          // Locate DM composer input in this thread container
+          const dmInput = threadContainer.querySelector(`
+            .ig-dm-composer div[contenteditable="true"],
+            .ig-dm-composer textarea,
+            div[contenteditable="true"][data-lexical-editor="true"],
+            div[contenteditable="true"][role="textbox"],
+            div[contenteditable="true"],
+            textarea
+          `) || document.querySelector('div[role="main"] div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
+
+          // Locate chat partner in this thread
+          const partnerAuthor = extractDmPartner(threadContainer, dmInput);
+
+          await generateQuickReply({
+            targetInput: dmInput,
+            contextType: 'dm',
+            triggerBtn: quickChip,
+            explicitContext: {
+              incomingText: text,
+              author: partnerAuthor || 'Chat partner'
+            }
+          });
+        });
+
+        // 2. ✨ Customize chip (Opens Full Assistant Card)
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'instareply-dm-reply-chip';
-        chip.title = 'Draft AI Reply to this message';
+        chip.title = '✨ Customize AI Reply: Open full assistant dialog';
         chip.innerHTML = '<span class="instareply-chip-sparkle">✨</span> AI Reply';
 
         chip.addEventListener('click', (e) => {
@@ -2496,7 +2771,9 @@
           });
         });
 
+        // Insert: [Bubble] [⚡ Quick Reply] [✨ AI Reply]
         bubble.insertAdjacentElement('afterend', chip);
+        bubble.insertAdjacentElement('afterend', quickChip);
       });
     });
   }
@@ -3941,6 +4218,239 @@
   }
 
   /**
+   * Floating notification toast for Quick Reply events
+   */
+  function showQuickReplyToast(msg) {
+    try {
+      const existing = document.querySelector('.instareply-quick-toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'instareply-quick-toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(12px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 2200);
+    } catch (_) {}
+  }
+
+  /**
+   * ⚡ 1-Click Quick Reply (Direct Insert, No Popup Dialog)
+   * Referencing ChatGPT AI for Instagram (MailMagic)
+   * Generates AI reply in background and directly inserts into target input field.
+   */
+  async function generateQuickReply({ targetInput = null, contextType = 'comment', triggerBtn = null, explicitContext = null } = {}) {
+    if (!targetInput) {
+      targetInput = document.querySelector(`
+        form div[role="textbox"][contenteditable="true"],
+        div[role="textbox"][contenteditable="true"],
+        div[contenteditable="true"][aria-label*="comment" i],
+        div[contenteditable="true"][data-lexical-editor="true"],
+        .ig-dm-composer div[contenteditable="true"],
+        form textarea,
+        textarea
+      `);
+    }
+
+    if (!targetInput) {
+      if (triggerBtn) {
+        triggerBtn.classList.add('is-error');
+        setTimeout(() => triggerBtn.classList.remove('is-error'), 1500);
+      }
+      showQuickReplyToast('⚠️ Could not locate Instagram reply field.');
+      return;
+    }
+
+    // Save initial button state for visual feedback
+    const originalContent = triggerBtn ? triggerBtn.innerHTML : null;
+    const isIconOnly = triggerBtn ? triggerBtn.classList.contains('instareply-shortcut-btn') : false;
+
+    if (triggerBtn) {
+      triggerBtn.classList.remove('is-success', 'is-error');
+      triggerBtn.classList.add('is-loading');
+      triggerBtn.disabled = true;
+      if (isIconOnly) {
+        triggerBtn.innerHTML = '<span class="instareply-btn-spinner"></span>';
+      } else {
+        triggerBtn.innerHTML = '<span class="instareply-btn-spinner"></span> <span>Drafting...</span>';
+      }
+    }
+
+    try {
+      const config = await getConfig();
+      const extracted = extractContext(targetInput, contextType);
+
+      // Merge explicitContext if provided (e.g. from comment row chip click)
+      const contextData = {
+        ...extracted,
+        ...(explicitContext || {})
+      };
+
+      const quickTone = normalizeToneName(config.quickReplyTone || config.defaultTone || 'friendly');
+      const quickStance = (config.defaultStance || 'positive').toLowerCase().trim();
+      const replyLanguage = config.replyLanguage || 'auto';
+
+      let replyText = '';
+
+      // Cache lookup
+      const cacheKey = getReplyCacheKey(
+        contextData.postId || 'post',
+        contextData.postAuthor || '',
+        contextData.author || '',
+        contextData.incomingText || '',
+        quickStance,
+        quickTone,
+        replyLanguage
+      );
+
+      if (!contextData.userDraftHint && replyCache.has(cacheKey)) {
+        const cached = replyCache.get(cacheKey);
+        replyText = cached.reply;
+        console.log('[InstaReply AI] ⚡ Quick Reply served from instant cache!');
+      } else {
+        const payload = {
+          contextType: contextData.contextType || contextType,
+          replyMode: contextData.replyMode || (contextType === 'story' ? 'story_reply' : contextType === 'dm' ? 'dm_reply' : 'post_comment'),
+          isCurrentUserPostAuthor: Boolean(contextData.isCurrentUserPostAuthor),
+          relationshipSummary: contextData.relationshipSummary || '',
+          incomingText: contextData.incomingText || '',
+          postCaption: contextData.postCaption || '',
+          postAuthor: contextData.postAuthor || '',
+          postVisuals: contextData.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
+          author: contextData.author || '',
+          isSpecificCommentReply: Boolean(contextData.isSpecificCommentReply),
+          userDraftHint: contextData.userDraftHint || '',
+          stance: quickStance,
+          tone: quickTone,
+          variationIndex: 0,
+          postId: contextData.postId || 'post',
+          replyLanguage,
+          myVoiceSamples: config.myVoiceSamples || '',
+          enableSpamFilter: config.enableSpamFilter !== false
+        };
+
+        let response = null;
+        if (config.provider === 'edge_ai') {
+          response = await generateQuickReplyViaEdgeAI(payload, cacheKey);
+        } else {
+          response = await chrome.runtime.sendMessage({
+            action: 'GENERATE_REPLY',
+            payload
+          });
+        }
+
+        if (response && response.success && response.reply) {
+          replyText = response.reply;
+          if (response.isSpamOrTroll && response.recommendedAction === 'firm_boundary') {
+            showQuickReplyToast('🛡️ Anti-Troll Shield: Firm boundary reply drafted');
+          }
+          if (cacheKey && !payload.userDraftHint) {
+            setReplyCacheEntry(cacheKey, response);
+          }
+        } else if (response && response.reply) {
+          replyText = response.reply;
+        } else {
+          throw new Error(response?.error || 'Failed to generate quick reply.');
+        }
+      }
+
+      if (replyText) {
+        // Direct insertion into Instagram input without any popup dialog!
+        insertTextIntoInstagramInput(targetInput, replyText);
+
+        // Ensure focus on input so user can review or press Enter to post
+        try {
+          targetInput.focus();
+        } catch (_) {}
+
+        // Success indicator
+        if (triggerBtn) {
+          triggerBtn.classList.remove('is-loading');
+          triggerBtn.classList.add('is-success');
+          if (isIconOnly) {
+            triggerBtn.innerHTML = '✓';
+          } else {
+            triggerBtn.innerHTML = '✓ Inserted!';
+          }
+        }
+
+        showQuickReplyToast(`⚡ Reply inserted for @${contextData.author || 'comment'}`);
+
+        setTimeout(() => {
+          if (triggerBtn) {
+            triggerBtn.classList.remove('is-success');
+            triggerBtn.disabled = false;
+            if (originalContent) triggerBtn.innerHTML = originalContent;
+          }
+        }, 1600);
+      }
+    } catch (err) {
+      console.error('[InstaReply AI] Quick Reply error:', err);
+      if (triggerBtn) {
+        triggerBtn.classList.remove('is-loading');
+        triggerBtn.classList.add('is-error');
+        if (isIconOnly) {
+          triggerBtn.innerHTML = '⚠️';
+        } else {
+          triggerBtn.innerHTML = '⚠️ Failed';
+        }
+        setTimeout(() => {
+          triggerBtn.classList.remove('is-error');
+          triggerBtn.disabled = false;
+          if (originalContent) triggerBtn.innerHTML = originalContent;
+        }, 2000);
+      }
+      showQuickReplyToast(`⚠️ Quick Reply: ${err.message || 'Error generating reply'}`);
+    }
+  }
+
+  /**
+   * Quick Reply helper for Edge AI Prompt API
+   */
+  async function generateQuickReplyViaEdgeAI(payload, cacheKey) {
+    ensurePageBridgeInjected();
+    const requestId = 'edge_quick_' + Math.random().toString(36).substring(2, 10);
+    return new Promise((resolve, reject) => {
+      let timeoutId = setTimeout(() => {
+        window.removeEventListener('message', handleBridgeResponse);
+        reject(new Error('Edge AI request timed out.'));
+      }, 10000);
+
+      function handleBridgeResponse(event) {
+        if (
+          event.source !== window ||
+          !event.data ||
+          event.data.type !== 'INSTAREPLY_PROMPT_API_RESPONSE' ||
+          event.data.requestId !== requestId
+        ) {
+          return;
+        }
+
+        clearTimeout(timeoutId);
+        window.removeEventListener('message', handleBridgeResponse);
+        if (event.data.success) {
+          if (cacheKey && !payload.userDraftHint) {
+            setReplyCacheEntry(cacheKey, event.data);
+          }
+          resolve(event.data);
+        } else {
+          reject(new Error(event.data.error || 'Edge AI generation failed.'));
+        }
+      }
+
+      window.addEventListener('message', handleBridgeResponse);
+      window.postMessage({
+        type: 'INSTAREPLY_RUN_PROMPT_API',
+        requestId,
+        payload
+      }, '*');
+    });
+  }
+
+  /**
    * Main generator execution: sends message to service worker
    */
   async function executeReplyGeneration() {
@@ -4021,6 +4531,8 @@
     try {
       const config = await getConfig();
       payload.replyLanguage = currentLanguage || config.replyLanguage || 'auto';
+      payload.myVoiceSamples = config.myVoiceSamples || '';
+      payload.enableSpamFilter = config.enableSpamFilter !== false;
 
       // Check if user chose Edge AI (Prompt API)
       if (config.provider === 'edge_ai') {
@@ -4499,6 +5011,50 @@
       const existingBanner = activeCard.querySelector('.instareply-visual-banner');
       if (existingBanner) existingBanner.remove();
     }
+
+    // Anti-Troll & Spam Shield Warning Banner
+    const existingSpamBanner = activeCard.querySelector('.instareply-spam-banner');
+    if (existingSpamBanner) existingSpamBanner.remove();
+
+    if (data.isSpamOrTroll) {
+      const cardBody = activeCard.querySelector('.instareply-card-body');
+      const insightBarEl = activeCard.querySelector('.instareply-insight-bar');
+      if (cardBody) {
+        const spamBanner = document.createElement('div');
+        spamBanner.className = 'instareply-spam-banner';
+        spamBanner.innerHTML = `
+          <div class="instareply-spam-badge-top">
+            <span class="instareply-spam-icon">🚫</span>
+            <span class="instareply-spam-title">Potential Spam / Troll Detected</span>
+            ${data.recommendedAction === 'report_block' ? `<span class="instareply-spam-action-tag">🛡️ Suggested: Ignore / Block</span>` : ''}
+          </div>
+          <div class="instareply-spam-desc">${escapeHTML(data.spamReason || 'Suspicious bot promotion, scam, or hostile comment')}</div>
+          ${(data.recommendedAction === 'firm_boundary' || currentStance !== 'negative') ? `
+            <div class="instareply-spam-actions">
+              <button type="button" class="instareply-spam-boundary-btn" title="Switch to firm boundary stance and generate a protective deflection">
+                🛑 Switch to Firm Boundary Stance
+              </button>
+            </div>
+          ` : ''}
+        `;
+
+        const boundaryBtn = spamBanner.querySelector('.instareply-spam-boundary-btn');
+        if (boundaryBtn) {
+          boundaryBtn.addEventListener('click', () => {
+            currentStance = 'negative';
+            setCardActiveStance(activeCard, 'negative');
+            currentVariation = 0;
+            executeReplyGeneration();
+          });
+        }
+
+        if (insightBarEl && insightBarEl.nextSibling) {
+          cardBody.insertBefore(spamBanner, insightBarEl.nextSibling);
+        } else {
+          cardBody.prepend(spamBanner);
+        }
+      }
+    }
   }
 
   /**
@@ -4619,12 +5175,29 @@
     const isStory = context.contextType === 'story' || context.replyMode === 'story_reply';
 
     card.innerHTML = `
-      <div class="instareply-card-header">
+      <!-- Minimized Bar (Visible only when minimized) -->
+      <div class="instareply-minimized-bar" title="Click to expand InstaReply AI">
+        <div class="instareply-minimized-left">
+          <span class="instareply-drag-handle">⠿</span>
+          <span class="instareply-title">✨ InstaReply</span>
+          <span class="instareply-minimized-pill">Ready</span>
+        </div>
+        <div class="instareply-header-actions">
+          <button type="button" class="instareply-expand-btn" title="Expand Assistant Window">&#x26F6;</button>
+          <button type="button" class="instareply-close-min-btn" title="Close">&times;</button>
+        </div>
+      </div>
+
+      <div class="instareply-card-header" title="Drag by header to reposition">
         <div class="instareply-header-left">
+          <span class="instareply-drag-handle">⠿</span>
           <span class="instareply-title">InstaReply AI</span>
           <span class="instareply-model-badge">AI Assistant</span>
         </div>
-        <button type="button" class="instareply-close-btn" title="Close">&times;</button>
+        <div class="instareply-header-actions">
+          <button type="button" class="instareply-minimize-btn" title="Minimize / Collapse window">&minus;</button>
+          <button type="button" class="instareply-close-btn" title="Close">&times;</button>
+        </div>
       </div>
 
       <div class="instareply-card-body">
@@ -4849,7 +5422,53 @@
     });
 
     // Close button
-    card.querySelector('.instareply-close-btn').addEventListener('click', closeCard);
+    card.querySelector('.instareply-close-btn')?.addEventListener('click', closeCard);
+
+    // Minimize & Expand controls
+    const minBtn = card.querySelector('.instareply-minimize-btn');
+    const expandBtn = card.querySelector('.instareply-expand-btn');
+    const minBar = card.querySelector('.instareply-minimized-bar');
+    const minCloseBtn = card.querySelector('.instareply-close-min-btn');
+
+    function toggleMinimize(minimize) {
+      if (minimize) {
+        card.classList.add('is-minimized');
+      } else {
+        card.classList.remove('is-minimized');
+      }
+    }
+
+    if (minBtn) {
+      minBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMinimize(true);
+      });
+    }
+
+    if (expandBtn) {
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMinimize(false);
+      });
+    }
+
+    if (minBar) {
+      minBar.addEventListener('click', (e) => {
+        if (!e.target.closest('button')) {
+          toggleMinimize(false);
+        }
+      });
+    }
+
+    if (minCloseBtn) {
+      minCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeCard();
+      });
+    }
+
+    // Make card draggable across screen
+    makeCardDraggable(card);
 
     return card;
   }
@@ -5078,6 +5697,9 @@
    * Position the floating card directly above, below, or beside the trigger
    */
   function positionCard(card, triggerBtn, inputEl) {
+    if (card && card.dataset.userDragged === 'true') {
+      return;
+    }
     const target = triggerBtn || inputEl;
     const rect = target.getBoundingClientRect();
     const cardWidth = card.offsetWidth || 390;
@@ -5196,6 +5818,78 @@
         closeCard();
       }
     });
+  }
+
+  /**
+   * Enables free dragging of the assistant card across the viewport by its header
+   */
+  function makeCardDraggable(card) {
+    const header = card.querySelector('.instareply-card-header');
+    const minBar = card.querySelector('.instareply-minimized-bar');
+    if (!header) return;
+
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let cardStartX = 0;
+    let cardStartY = 0;
+
+    function onPointerDown(e) {
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) {
+        return;
+      }
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const rect = card.getBoundingClientRect();
+      cardStartX = rect.left;
+      cardStartY = rect.top;
+
+      card.style.position = 'fixed';
+      card.style.left = `${cardStartX}px`;
+      card.style.top = `${cardStartY}px`;
+      card.style.right = 'auto';
+      card.style.bottom = 'auto';
+      card.dataset.userDragged = 'true';
+      card.classList.add('is-dragging');
+
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerUp, { once: true });
+      e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      let newLeft = cardStartX + deltaX;
+      let newTop = cardStartY + deltaY;
+
+      const cardWidth = card.offsetWidth || 390;
+      const cardHeight = card.offsetHeight || 200;
+      const maxLeft = Math.max(10, window.innerWidth - cardWidth - 10);
+      const maxTop = Math.max(10, window.innerHeight - cardHeight - 10);
+
+      newLeft = Math.max(10, Math.min(newLeft, maxLeft));
+      newTop = Math.max(10, Math.min(newTop, maxTop));
+
+      card.style.left = `${newLeft}px`;
+      card.style.top = `${newTop}px`;
+    }
+
+    function onPointerUp() {
+      isDragging = false;
+      card.classList.remove('is-dragging');
+      document.removeEventListener('pointermove', onPointerMove);
+    }
+
+    header.addEventListener('pointerdown', onPointerDown);
+    if (minBar) {
+      minBar.addEventListener('pointerdown', onPointerDown);
+    }
   }
 
   /**

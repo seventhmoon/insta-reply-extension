@@ -148,6 +148,7 @@ ${payload.postCaption ? `- Original Post Caption: "${payload.postCaption}"` : ''
 ${isCommentReply ? `- Comment Being Replied To: "${payload.incomingText}" (by @${payload.author})` : `- Incoming / Post Context: "${payload.incomingText || 'Instagram post'}"`}
 ${payload.author && !isCommentReply ? `- Author: @${payload.author}` : ''}
 ${payload.userDraftHint ? `- User Draft Hint: "${payload.userDraftHint}" (incorporate this hint!)` : ''}
+${payload.myVoiceSamples ? `- Creator Voice Samples to Mimic: "${payload.myVoiceSamples}" (closely mimic this personal rhythm, vocabulary, and punctuation)` : ''}
 - Tone: ${payload.tone}
 
 CRITICAL RULES:
@@ -157,6 +158,7 @@ ${payload.postVisuals?.description ? '3. Visual Grounding: Reference what is dep
 4. Be authentic, concise (1-2 sentences), and tailored to Instagram. Avoid robotic marketing language.
 ${langRule}
 ${(!payload.userDraftHint && (!payload.variationIndex || payload.variationIndex === 0)) ? '6. Also provide alternative reply drafts for contrasting tone styles inside "toneDrafts".' : ''}
+${payload.enableSpamFilter !== false ? '7. If comment is spam or toxic trolling, set "isSpamOrTroll": true, "spamReason": "reason", "recommendedAction": "ignore" | "report_block" | "firm_boundary"; otherwise set "isSpamOrTroll": false.' : ''}
 
 Respond with valid JSON:
 {
@@ -164,6 +166,9 @@ Respond with valid JSON:
   "sentimentLabel": "🟢 Positive",
   "topics": ["photography", "presets"],
   "visualAnalysis": "Brief 1-sentence description of what you see in the post visuals",
+  "isSpamOrTroll": false,
+  "spamReason": "",
+  "recommendedAction": "none",
   "reply": "Draft reply here in requested tone"${(!payload.userDraftHint && (!payload.variationIndex || payload.variationIndex === 0)) ? ',\n  "toneDrafts": {\n    "humorous": "Funny draft",\n    "playful": "Playful draft",\n    "savage": "Savage draft",\n    "concise": "Short draft"\n  }' : ''}
 }`;
 

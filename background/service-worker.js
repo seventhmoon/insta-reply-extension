@@ -19,6 +19,12 @@ const DEFAULT_CONFIG = {
   includeEmojis: true,
   includePostCaption: true,
   enableMultimodalVision: true,
+  enableSpamFilter: true,
+  enableQuickReply: true,
+  shortcutClickAction: 'quick',
+  quickReplyTone: 'friendly',
+  composerButtonMode: 'smart',
+  myVoiceSamples: '',
   replyLanguage: 'auto',
   customInstructions: ''
 };
@@ -850,7 +856,9 @@ async function generateWithGemini({
     replyLanguage: replyLanguage || config.replyLanguage || 'auto',
     enableAnalysis: config.enableAnalysis,
     includeEmojis: config.includeEmojis,
-    customInstructions: config.customInstructions
+    customInstructions: config.customInstructions,
+    myVoiceSamples: config.myVoiceSamples || '',
+    enableSpamFilter: config.enableSpamFilter !== false
   });
 
   const parts = [];
@@ -1024,6 +1032,8 @@ async function generateWithOpenAiCompatible({
       enableAnalysis: config.enableAnalysis,
       includeEmojis: config.includeEmojis,
       customInstructions: config.customInstructions,
+      myVoiceSamples: config.myVoiceSamples || '',
+      enableSpamFilter: config.enableSpamFilter !== false,
       hasMultimodalImage: withVision
     });
   }
@@ -1184,7 +1194,9 @@ function buildStructuredPrompt({
   replyLanguage = 'auto',
   enableAnalysis,
   includeEmojis,
-  customInstructions
+  customInstructions,
+  myVoiceSamples = '',
+  enableSpamFilter = true
 }) {
   const isCommentReply = replyMode === 'comment_reply' || Boolean(isSpecificCommentReply);
   const isStoryReply = replyMode === 'story_reply' || contextType === 'story';
@@ -1202,6 +1214,32 @@ ${altTones.map(t => `     * ${t}: ${getToneInstruction(t)}`).join('\n')}
 
     const sampleDrafts = altTones.map(t => `    "${t}": "Distinct alternative reply in ${t} style"`).join(',\n');
     multiToneSchema = `,\n  "toneDrafts": {\n${sampleDrafts}\n  }`;
+  }
+
+  let voiceMimicryBlock = '';
+  if (myVoiceSamples && myVoiceSamples.trim()) {
+    voiceMimicryBlock = `### CREATOR'S AUTHENTIC VOICE & SAMPLES (FEW-SHOT LEARNING):
+The creator provided these real sample replies they have written. Closely mirror their authentic voice, vocabulary, slang, capitalization style, sentence length, rhythm, and punctuation habits:
+"""
+${myVoiceSamples.trim()}
+"""
+Adopt this exact personal voice and style while drafting your response!\n`;
+  }
+
+  let spamShieldInstruction = '';
+  let spamShieldSchema = '';
+  if (enableSpamFilter) {
+    spamShieldInstruction = `\n8. SPAM & TROLL SHIELD:
+   - Carefully analyze the incoming comment/message for spam (crypto/forex schemes, bot promotion, telegram/whatsapp links, impersonation) or aggressive trolling / harassment.
+   - If spam or hostile trolling is detected:
+     * Set "isSpamOrTroll": true
+     * Set "spamReason": concise description (e.g., "Telegram crypto scam", "Bot link spam", "Hostile personal attack")
+     * Set "recommendedAction": "ignore", "report_block", or "firm_boundary"
+     * If you draft a reply, make it an unflinching, firm, polite boundary that shuts down deflection without engaging in an emotional argument.
+   - If the comment is clean and genuine:
+     * Set "isSpamOrTroll": false, "spamReason": "", "recommendedAction": "none"`;
+
+    spamShieldSchema = `,\n  "isSpamOrTroll": false,\n  "spamReason": "",\n  "recommendedAction": "none" | "ignore" | "report_block" | "firm_boundary"`;
   }
 
   let roleHeader = '';
@@ -1317,7 +1355,7 @@ ${userDraftHint}
 """
 You MUST prioritize and incorporate the user's draft intent or hint directly into your reply! Treat this draft as direction/inspiration for the response.
 ` : ''}
-
+${voiceMimicryBlock}
 ### CRITICAL CONTEXT & STYLE REQUIREMENTS:
 ${engagementRequirement}
 ${stanceGuidance}
@@ -1334,14 +1372,14 @@ ${customInstructions ? `   - Custom Rule: ${customInstructions}\n` : ''}${variat
 ${getLanguageInstruction(replyLanguage)}
 
 7. MULTI-TONE BUNDLING FOR INSTANT SWITCHING:
-${multiToneInstruction || '   - None required for this variation.'}
+${multiToneInstruction || '   - None required for this variation.'}${spamShieldInstruction}
 ### OUTPUT FORMAT:
 You MUST respond with valid JSON matching this exact structure:
 {
   "sentiment": "positive" | "neutral" | "negative" | "question" | "praise" | "complaint",
   "sentimentLabel": "Friendly & Positive" (short 2-4 word summary with sentiment emoji),
   "topics": ["Key Topic 1", "Key Topic 2"],
-  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining.",
+  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining."${spamShieldSchema},
   "reply": "Your drafted reply text here in ${primaryTone} style"${multiToneSchema}
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
@@ -1445,11 +1483,18 @@ function parseAIResponse(rawText) {
         normalizedDrafts[normalizeToneName(k)] = v.trim();
       }
     }
+    const isSpam = Boolean(json.isSpamOrTroll);
+    const spamReason = typeof json.spamReason === 'string' ? json.spamReason.trim() : '';
+    const recommendedAction = typeof json.recommendedAction === 'string' ? json.recommendedAction.trim() : 'none';
+
     return {
       sentiment: json.sentiment || 'neutral',
-      sentimentLabel: json.sentimentLabel || formatSentimentLabel(json.sentiment),
+      sentimentLabel: isSpam ? `🚨 Flagged (${spamReason ? spamReason.slice(0, 20) : 'Spam'})` : (json.sentimentLabel || formatSentimentLabel(json.sentiment)),
       topics: Array.isArray(json.topics) ? json.topics : [],
       visualAnalysis: json.visualAnalysis || '',
+      isSpamOrTroll: isSpam,
+      spamReason,
+      recommendedAction,
       reply: json.reply || clean,
       toneDrafts: normalizedDrafts
     };
@@ -1461,6 +1506,9 @@ function parseAIResponse(rawText) {
       sentimentLabel: '✨ Analyzed',
       topics: [],
       visualAnalysis: '',
+      isSpamOrTroll: false,
+      spamReason: '',
+      recommendedAction: 'none',
       reply: rawText.replace(/\{[\s\S]*"reply"\s*:\s*"([^"]+)"[\s\S]*\}/, '$1').trim(),
       toneDrafts: {}
     };

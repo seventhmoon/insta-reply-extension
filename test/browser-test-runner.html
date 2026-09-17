@@ -199,11 +199,13 @@
         const article = document.querySelector("article");
         const inputEl = document.getElementById("comment-input");
         const bobReplyBtn = document.querySelector(".bob-comment .reply-button");
-        const bobChip = document.querySelector(".bob-comment .instareply-comment-reply-chip");
+        const bobChip = document.querySelector(".bob-comment .instareply-comment-reply-chip:not(.instareply-quick-chip)");
+        const bobQuickChip = document.querySelector(".bob-comment .instareply-quick-chip");
 
         // Test 1: Content script injection & chip creation
         const chips = document.querySelectorAll(".instareply-comment-reply-chip");
         assert("AI Reply chip injected into comment items", chips.length >= 3, "Found " + chips.length);
+        assert("Quick Reply chip injected into Bob comment row", Boolean(bobQuickChip));
 
         const charlieChip = document.querySelector(".charlie-comment .instareply-comment-reply-chip");
         assert("AI Reply chip injected into modern non-li/non-ul comment row", Boolean(charlieChip));

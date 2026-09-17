@@ -63,6 +63,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const includeEmojis = document.getElementById('includeEmojis');
   const includePostCaption = document.getElementById('includePostCaption');
   const enableMultimodalVision = document.getElementById('enableMultimodalVision');
+  const enableSpamFilter = document.getElementById('enableSpamFilter');
+  const enableQuickReply = document.getElementById('enableQuickReply');
+  const shortcutClickAction = document.getElementById('shortcutClickAction');
+  const quickReplyTone = document.getElementById('quickReplyTone');
+  const composerButtonMode = document.getElementById('composerButtonMode');
+  const myVoiceSamples = document.getElementById('myVoiceSamples');
   const customInstructions = document.getElementById('customInstructions');
 
   const testConnectionBtn = document.getElementById('testConnectionBtn');
@@ -411,6 +417,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     includeEmojis.checked = cfg.includeEmojis !== false;
     includePostCaption.checked = cfg.includePostCaption !== false;
     if (enableMultimodalVision) enableMultimodalVision.checked = cfg.enableMultimodalVision !== false;
+    if (enableSpamFilter) enableSpamFilter.checked = cfg.enableSpamFilter !== false;
+    if (enableQuickReply) enableQuickReply.checked = cfg.enableQuickReply !== false;
+    if (shortcutClickAction) shortcutClickAction.value = cfg.shortcutClickAction || 'quick';
+    if (quickReplyTone) quickReplyTone.value = cfg.quickReplyTone || cfg.defaultTone || 'friendly';
+    if (composerButtonMode) composerButtonMode.value = cfg.composerButtonMode || 'smart';
+    if (myVoiceSamples) myVoiceSamples.value = cfg.myVoiceSamples || '';
     customInstructions.value = cfg.customInstructions || '';
   }
 
@@ -456,6 +468,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       includeEmojis: includeEmojis.checked,
       includePostCaption: includePostCaption.checked,
       enableMultimodalVision: enableMultimodalVision ? enableMultimodalVision.checked : true,
+      enableSpamFilter: enableSpamFilter ? enableSpamFilter.checked : true,
+      enableQuickReply: enableQuickReply ? enableQuickReply.checked : true,
+      shortcutClickAction: shortcutClickAction ? shortcutClickAction.value : 'quick',
+      quickReplyTone: quickReplyTone ? quickReplyTone.value : 'friendly',
+      composerButtonMode: composerButtonMode ? composerButtonMode.value : 'smart',
+      myVoiceSamples: myVoiceSamples ? myVoiceSamples.value.trim() : '',
       customInstructions: customInstructions.value.trim()
     };
   }
