@@ -57,7 +57,7 @@ Questions, feedback, or bug reports?
 • Email: fung@androidfung.com
 • GitHub: https://github.com/seventhmoon/insta-reply-extension/issues
 
-Version 1.1.0 — Added 1-Click Quick Reply (zero-dialog direct insertion), Few-Shot Style Mimicry ("Learn My Voice"), Anti-Troll & Spam Filter Shield, and Draggable/Minimizable Assistant Card. Ultra-compact composer layout.
+Version 1.2.0 — Resizable Toolbar Settings Popup with dimension persistence; fully resizable in-page Assistant Card with automatic vertical textarea expansion; desktop tone navigation with chevrons, mouse-wheel scroll, and 16-tone grid view toggle; GitHub Sponsors support buttons; Story composer capsule alignment fix.
 
 **Category** [REQUIRED]
 Social & Communication
@@ -159,4 +159,5 @@ https://github.com/seventhmoon/insta-reply-extension/blob/main/PRIVACY.md
 | Version | Date | Changes | Status |
 | :--- | :--- | :--- | :--- |
 | 1.0.0 | 2026-09-14 | Initial public release with full support for Instagram Comments, Reels, Direct Messages, and Stories. Integrated Google Gemini, Groq, OpenRouter, Custom OpenAI, and Local LLM endpoints. | Complete |
-| 1.1.0 | 2026-09-17 | 1-Click Quick Reply (zero-dialog direct insertion into input field), Few-Shot Style Mimicry ("Learn My Voice"), Anti-Troll & Spam Shield, Draggable & Minimizable Card, and ultra-compact composer layout preserving maximum typing space. | Ready for Submission |
+| 1.1.0 | 2026-09-17 | 1-Click Quick Reply (zero-dialog direct insertion into input field), Few-Shot Style Mimicry ("Learn My Voice"), Anti-Troll & Spam Shield, Draggable & Minimizable Card, and ultra-compact composer layout preserving maximum typing space. | Complete |
+| 1.2.0 | 2026-09-19 | Resizable Settings Popup with storage persistence; fully resizable in-page Assistant Card with vertical textarea auto-expansion; desktop tone navigation with chevrons, mouse-wheel scroll, and 16-tone grid view toggle; GitHub Sponsors integration; Story composer capsule alignment fix. | Ready for Submission |
