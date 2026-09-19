@@ -497,6 +497,32 @@ async function main() {
     assert.strictEqual(shouldInjectShortcut(true, false), true, 'Unmounted button must be re-injected on React reconciliation');
   });
 
+  runTest('StoryButtonAlignmentInsidePill', 'Story shortcut button sits cleanly inside rounded pill without border clipping', () => {
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+
+    // CSS checks
+    assert.ok(
+      cssCode.includes('.instareply-composer-actions.instareply-story-actions'),
+      'content.css must define .instareply-composer-actions.instareply-story-actions'
+    );
+    assert.ok(
+      cssCode.includes('.instareply-composer-actions .instareply-shortcut-btn') &&
+      cssCode.includes('position: relative !important;'),
+      'Buttons inside actions wrapper must have position: relative to prevent clipping overflow'
+    );
+    assert.ok(
+      cssCode.includes('right: 14px'),
+      'Story actions wrapper must position with 14px offset from right pill edge'
+    );
+
+    // JS checks
+    assert.ok(
+      contentJs.includes("btn.style.setProperty('right', '14px', 'important')"),
+      'insertShortcutIntoStory must enforce 14px right offset inside pill'
+    );
+  });
+
   runTest('StoryRelationship', 'Correctly sets story_reply mode, target, and relationshipSummary', () => {
     function determineReplyRelationship({ contextType, postAuthor, currentUsername }) {
       const isCurrentUserPostAuthor = Boolean(currentUsername && postAuthor && currentUsername.toLowerCase() === postAuthor.toLowerCase());
@@ -1699,6 +1725,49 @@ Hope this helps!
     assert.strictEqual(mockInput.dispatchedEvents.includes('input'), true, 'Input event must be dispatched to notify React');
   });
 
+  // =========================================================================
+  // SUITE 9: Desktop Tone Navigation & Spacious Context Inspector Layout
+  // =========================================================================
+  console.log('\n🎛️ Suite 9: Desktop Tone Navigation & Spacious Context Inspector Layout');
+
+  runTest('SpaciousInspectorLayout', 'Context inspector separates target header and metadata into spacious 2-row layout', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    assert.ok(contentCode.includes('class="instareply-inspector-header"'), 'content.js must define .instareply-inspector-header');
+    assert.ok(contentCode.includes('class="instareply-inspector-target"'), 'content.js must define .instareply-inspector-target');
+    assert.ok(contentCode.includes('class="instareply-insight-bar"'), 'content.js must define .instareply-insight-bar in createCardDOM');
+
+    assert.ok(cssCode.includes('.instareply-inspector-header'), 'CSS must style .instareply-inspector-header');
+    assert.ok(cssCode.includes('.instareply-inspector-target'), 'CSS must style .instareply-inspector-target');
+    assert.ok(cssCode.includes('max-width: 100%'), 'Role pill must not prematurely truncate to 140px');
+    assert.ok(cssCode.includes('white-space: nowrap'), 'Sentiment pill must keep white-space nowrap');
+  });
+
+  runTest('DesktopToneControls', 'Tone ribbon supports desktop chevrons, mouse wheel scroll, grab drag, and grid view toggle', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    // Controls in DOM
+    assert.ok(contentCode.includes('id="instareply-tone-prev"'), 'Must have left chevron for tone navigation');
+    assert.ok(contentCode.includes('id="instareply-tone-next"'), 'Must have right chevron for tone navigation');
+    assert.ok(contentCode.includes('id="instareply-tone-toggle-view"'), 'Must have grid/ribbon view toggle button');
+    assert.ok(contentCode.includes('id="instareply-active-tone-name"'), 'Must display active tone name in header');
+
+    // Desktop interactions
+    assert.ok(contentCode.includes("tonesRibbon.addEventListener('wheel'"), 'Must support mouse wheel scrolling');
+    assert.ok(contentCode.includes("tonesRibbon.addEventListener('mousedown'"), 'Must support click-and-drag scrolling');
+    assert.ok(contentCode.includes("tonesRibbon.scrollBy({ left: -160"), 'Must scroll smoothly on chevron click');
+    assert.ok(contentCode.includes("tonesWrapper.classList.toggle('is-grid')"), 'Must toggle grid view');
+    assert.ok(contentCode.includes('scrollIntoView({ behavior: \'smooth\''), 'Must auto-scroll active tone into view');
+
+    // CSS rules
+    assert.ok(cssCode.includes('.instareply-tone-nav-btn'), 'CSS must style .instareply-tone-nav-btn');
+    assert.ok(cssCode.includes('.instareply-tone-view-btn'), 'CSS must style .instareply-tone-view-btn');
+    assert.ok(cssCode.includes('.instareply-tones-wrapper.is-grid'), 'CSS must style .instareply-tones-wrapper.is-grid');
+    assert.ok(cssCode.includes('cursor: grab'), 'Ribbon must have grab cursor for desktop users');
+  });
+
   runTest('KeyboardShortcutDetection', 'Alt+Q / Option+Q triggers quick reply shortcut detection logic', () => {
     let triggered = false;
     function handleKeyDown(e) {
@@ -1722,7 +1791,137 @@ Hope this helps!
     assert.strictEqual(triggered, false, 'Must not trigger without altKey');
   });
 
-  console.log('\n=================================================');
+  // =========================================================================
+  // SUITE 10: Resizable Toolbar Popup & In-Page Assistant Card
+  // =========================================================================
+  console.log('\n📐 Suite 10: Resizable Toolbar Popup & In-Page Assistant Card');
+
+  runTest('PopupResizabilityStructure', 'Toolbar popup provides resize handle, boundary constraints, and local storage persistence', () => {
+    const htmlCode = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.css'), 'utf8');
+    const jsCode = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+
+    // DOM & CSS
+    assert.ok(htmlCode.includes('id="popupResizeHandle"'), 'popup.html must contain popupResizeHandle element');
+    assert.ok(cssCode.includes('.popup-resize-handle'), 'popup.css must define .popup-resize-handle styling');
+    assert.ok(cssCode.includes('cursor: nwse-resize'), 'popup.css must have nwse-resize cursor for grip');
+    assert.ok(cssCode.includes('min-width: 360px'), 'body must define min-width constraint');
+    assert.ok(cssCode.includes('max-width: 780px'), 'body must define max-width constraint for Chrome popup limits');
+    assert.ok(cssCode.includes('max-height: 600px'), 'body must define max-height constraint for Chrome popup limits');
+
+    // Controller logic
+    assert.ok(jsCode.includes('function setupPopupResize()'), 'popup.js must implement setupPopupResize function');
+    assert.ok(jsCode.includes("addEventListener('pointerdown'"), 'setupPopupResize must listen to pointerdown');
+    assert.ok(jsCode.includes("addEventListener('pointermove'"), 'setupPopupResize must track pointermove');
+    assert.ok(jsCode.includes("chrome.storage?.local?.set"), 'setupPopupResize must persist dimensions to chrome.storage.local');
+    assert.ok(jsCode.includes("chrome.storage?.local?.get"), 'setupPopupResize must restore saved dimensions on load');
+  });
+
+  runTest('CardResizabilityStructure', 'Assistant card provides bottom-right corner grip and persistence', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const contentCss = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    // DOM creation & hookup
+    assert.ok(contentCode.includes('class="instareply-resize-grip"'), 'createCardDOM must create .instareply-resize-grip');
+    assert.ok(contentCode.includes('makeCardResizable(card)'), 'createCardDOM must call makeCardResizable');
+    assert.ok(contentCode.includes('function makeCardResizable(card)'), 'content.js must define makeCardResizable function');
+
+    // Bounds & storage
+    assert.ok(contentCode.includes('localStorage.setItem(\'instareply_card_width\''), 'Must save card width to localStorage');
+    assert.ok(contentCode.includes('localStorage.setItem(\'instareply_card_height\''), 'Must save card height to localStorage');
+    assert.ok(contentCode.includes('localStorage.getItem(\'instareply_card_width\''), 'Must restore card width from localStorage');
+
+    // CSS grip & minimized behavior
+    assert.ok(contentCss.includes('.instareply-resize-grip'), 'content.css must style .instareply-resize-grip');
+    assert.ok(contentCss.includes('cursor: nwse-resize'), 'content.css must define nwse-resize cursor on grip');
+    assert.ok(contentCss.includes('.instareply-card-overlay.is-minimized .instareply-resize-grip'), 'Grip must be hidden when card is minimized');
+  });
+
+  runTest('ResizeMathClamping', 'Resize boundary math reliably clamps width and height within permissible viewport range', () => {
+    function clampPopupDimensions(startW, startH, deltaX, deltaY) {
+      const newW = Math.min(Math.max(startW + deltaX, 360), 780);
+      const newH = Math.min(Math.max(startH + deltaY, 480), 600);
+      return { width: newW, height: newH };
+    }
+
+    // Shrink past minimum
+    const shrinkResult = clampPopupDimensions(380, 500, -200, -200);
+    assert.strictEqual(shrinkResult.width, 360, 'Width must clamp to min 360px');
+    assert.strictEqual(shrinkResult.height, 480, 'Height must clamp to min 480px');
+
+    // Expand past maximum
+    const expandResult = clampPopupDimensions(380, 500, 1000, 1000);
+    assert.strictEqual(expandResult.width, 780, 'Width must clamp to max 780px');
+    assert.strictEqual(expandResult.height, 600, 'Height must clamp to max 600px');
+
+    // Within bounds
+    const normalResult = clampPopupDimensions(380, 500, 120, 50);
+    assert.strictEqual(normalResult.width, 500, 'Width must scale smoothly within bounds');
+    assert.strictEqual(normalResult.height, 550, 'Height must scale smoothly within bounds');
+  });
+
+  runTest('TextareaFillsExpandedSpace', 'Textarea and card body flex to fill expanded vertical height without leaving dead bottom space', () => {
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    // Overlay flex column container
+    assert.ok(
+      cssCode.includes('display: flex !important;') && cssCode.includes('flex-direction: column !important;'),
+      'instareply-card-overlay must use flex column layout to stretch children'
+    );
+
+    // Card body takes remaining height
+    assert.ok(
+      cssCode.includes('.instareply-card-body') && cssCode.includes('flex: 1 1 auto;'),
+      'instareply-card-body must expand with flex: 1 1 auto'
+    );
+
+    // Output wrapper and textarea stretch to 100% height
+    assert.ok(
+      cssCode.includes('.instareply-output-wrapper') && cssCode.includes('flex: 1 1 auto;'),
+      'instareply-output-wrapper must expand with flex: 1 1 auto'
+    );
+    assert.ok(
+      cssCode.includes('.instareply-output-textarea') && cssCode.includes('flex: 1 1 auto;') && cssCode.includes('height: 100%;'),
+      'instareply-output-textarea must expand with flex: 1 1 auto and height: 100%'
+    );
+
+    // Footer anchored at bottom
+    assert.ok(
+      cssCode.includes('.instareply-card-footer') && cssCode.includes('margin-top: auto;'),
+      'instareply-card-footer must be anchored at bottom with margin-top: auto'
+    );
+  });
+
+  // =========================================================================
+  // SUITE 11: GitHub Sponsors & Community Funding Integration
+  // =========================================================================
+  console.log('\n💖 Suite 11: GitHub Sponsors & Community Funding Integration');
+
+  runTest('GitHubSponsorsIntegration', 'Extension provides GitHub Sponsors links in popup, in-page assistant, funding config, and documentation', () => {
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    const popupCss = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.css'), 'utf8');
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const contentCss = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+    const fundingYml = fs.readFileSync(path.join(ROOT_DIR, '.github/FUNDING.yml'), 'utf8');
+    const readmeMd = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
+
+    // Popup checks
+    assert.ok(popupHtml.includes('https://github.com/sponsors/seventhmoon'), 'popup.html must link to GitHub Sponsors');
+    assert.ok(popupHtml.includes('id="sponsorHeaderBtn"'), 'popup.html must include sponsorHeaderBtn in header');
+    assert.ok(popupHtml.includes('class="card sponsor-card"'), 'popup.html must include sponsor-card in preferences');
+    assert.ok(popupCss.includes('.sponsor-badge-btn'), 'popup.css must style .sponsor-badge-btn');
+    assert.ok(popupCss.includes('.btn-sponsor'), 'popup.css must style .btn-sponsor');
+
+    // Content script checks
+    assert.ok(contentJs.includes('instareply-header-sponsor-btn'), 'content.js must include instareply-header-sponsor-btn');
+    assert.ok(contentJs.includes('https://github.com/sponsors/seventhmoon'), 'content.js must link to GitHub Sponsors');
+    assert.ok(contentJs.includes("e.target.closest('a')"), 'makeCardDraggable must allow clicking sponsor anchor without dragging');
+    assert.ok(contentCss.includes('.instareply-header-sponsor-btn'), 'content.css must style .instareply-header-sponsor-btn');
+
+    // GitHub repository checks
+    assert.ok(fundingYml.includes('github: seventhmoon'), '.github/FUNDING.yml must declare seventhmoon as funding recipient');
+    assert.ok(readmeMd.includes('https://github.com/sponsors/seventhmoon'), 'README.md must include GitHub Sponsors badge and link');
+  });
   console.log(`📊 Tests Executed: ${totalTests} | Passed: ${passedTests} | Failed: ${failedTests}`);
   console.log('=================================================');
 

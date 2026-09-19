@@ -1,5 +1,8 @@
 # InstaReply AI - Smart Instagram Comment, DM, Reel & Story Assistant
 
+[![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa?style=flat&logo=github&logoColor=white)](https://github.com/sponsors/seventhmoon)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram Comments**, **Reels**, **Direct Messages (DMs)**, and **Stories**.
 
 ---
@@ -144,6 +147,14 @@ insta-reply-extension/
 - **Direct Client-to-API**: All AI calls are made directly from your browser's service worker to your selected AI provider. No intermediate backend server is used.
 - **Local Storage**: API keys, preferences, and cached responses are stored securely in Chrome's local extension storage.
 - **Domain Scoped**: Active only on `instagram.com` domains.
+
+---
+
+## 💖 Support & Sponsorship
+
+If InstaReply AI saves you time and enhances your Instagram workflow, consider supporting ongoing development, new models, and maintenance:
+
+[![Sponsor seventhmoon](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/seventhmoon)
 
 ---
 

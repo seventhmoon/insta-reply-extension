@@ -43,9 +43,9 @@
 /* DM & Story Input Composer Shortcut Button (Anchored inside Pill on the Right) */
 .instareply-shortcut-btn.instareply-dm-shortcut-btn,
 .instareply-shortcut-btn.instareply-story-shortcut-btn {
-  position: absolute !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
+  position: relative !important;
+  top: auto !important;
+  transform: none !important;
   margin: 0 !important;
   z-index: 100 !important;
   width: 26px !important;
@@ -56,13 +56,22 @@
 
 .instareply-shortcut-btn.instareply-dm-shortcut-btn:hover,
 .instareply-shortcut-btn.instareply-story-shortcut-btn:hover {
-  transform: translateY(-50%) scale(1.1) !important;
+  transform: scale(1.1) !important;
   box-shadow: 0 4px 12px rgba(225, 48, 108, 0.6) !important;
 }
 
 .instareply-shortcut-btn.instareply-dm-shortcut-btn:active,
 .instareply-shortcut-btn.instareply-story-shortcut-btn:active {
-  transform: translateY(-50%) scale(0.95) !important;
+  transform: scale(0.95) !important;
+}
+
+/* Fallback if shortcut button is ever placed without actions wrapper */
+:not(.instareply-composer-actions) > .instareply-story-shortcut-btn,
+:not(.instareply-composer-actions) > .instareply-dm-shortcut-btn {
+  position: absolute !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  right: 14px !important;
 }
 
 /* Composer Actions Toolbar (Groups Quick Reply & Customize Buttons) */
@@ -82,13 +91,33 @@
   position: absolute !important;
   top: 50% !important;
   transform: translateY(-50%) !important;
-  right: 12px !important;
+  right: 14px;
   margin: 0 !important;
+}
+
+/* Ensure flex children inside composer actions are relative, never overlapping or drifting */
+.instareply-composer-actions .instareply-shortcut-btn,
+.instareply-composer-actions .instareply-quick-reply-btn {
+  position: relative !important;
+  top: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+.instareply-composer-actions .instareply-shortcut-btn:hover,
+.instareply-composer-actions .instareply-quick-reply-btn:hover {
+  transform: scale(1.1) !important;
+}
+
+.instareply-composer-actions .instareply-shortcut-btn:active,
+.instareply-composer-actions .instareply-quick-reply-btn:active {
+  transform: scale(0.95) !important;
 }
 
 /* ⚡ 1-Click Quick Reply Button (Ultra-Compact Circular Icon) */
 .instareply-quick-reply-btn {
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center !important;
   justify-content: center !important;
   width: 26px !important;
@@ -119,6 +148,11 @@
 
 .instareply-quick-reply-btn:active {
   transform: scale(0.95) !important;
+}
+
+.instareply-quick-reply-btn.instareply-hidden,
+.instareply-composer-actions .instareply-hidden {
+  display: none !important;
 }
 
 /* Ensure Instagram comment input container never collapses into a slit */
@@ -177,73 +211,200 @@ form:has(.instareply-shortcut-btn) > div {
   100% { filter: brightness(1.2); box-shadow: 0 0 16px rgba(236, 72, 153, 0.8); }
 }
 
-/* Inline Comment & DM AI Reply Chip */
-.instareply-comment-reply-chip,
-.instareply-dm-reply-chip {
+/* Inline Comment & DM Split-Chip Container */
+.instareply-chip-group {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  vertical-align: middle;
+  margin-left: 8px;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.instareply-chip-group.instareply-dm-chip-group {
+  margin-left: 6px;
+  margin-top: 4px;
+}
+
+.instareply-chip-group:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(225, 48, 108, 0.3);
+}
+
+/* Main Action Chip */
+.instareply-comment-reply-chip,
+.instareply-dm-reply-chip,
+.instareply-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: rgba(225, 48, 108, 0.12);
   border: 1px solid rgba(225, 48, 108, 0.3);
-  border-radius: 12px;
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
   color: #f43f5e;
   font-size: 11px;
   font-weight: 600;
-  padding: 1px 7px;
-  margin-left: 8px;
+  padding: 2px 8px;
+  margin: 0;
   cursor: pointer;
   transition: all 0.15s ease;
-  vertical-align: middle;
   line-height: 1.4;
   outline: none;
   font-family: inherit;
+  user-select: none;
 }
 
 .instareply-dm-reply-chip {
   background: rgba(139, 92, 246, 0.14);
   border-color: rgba(139, 92, 246, 0.35);
   color: #a78bfa;
-  margin-left: 6px;
-  margin-top: 4px;
 }
 
-.instareply-comment-reply-chip:hover,
-.instareply-dm-reply-chip:hover {
-  background: linear-gradient(45deg, #f09433, #dc2743, #bc1888);
+.instareply-chip-group:hover .instareply-comment-reply-chip {
+  background: linear-gradient(135deg, #f09433, #dc2743);
   color: #ffffff;
   border-color: transparent;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(225, 48, 108, 0.35);
 }
 
-.instareply-comment-reply-chip .instareply-chip-sparkle,
-.instareply-dm-reply-chip .instareply-chip-sparkle {
+.instareply-chip-group:hover .instareply-dm-reply-chip {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.instareply-chip-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(225, 48, 108, 0.12);
+  border: 1px solid rgba(225, 48, 108, 0.3);
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: #f43f5e;
   font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px 2px 3px;
+  margin: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+  line-height: 1.4;
 }
 
-.instareply-comment-reply-chip.instareply-quick-chip,
-.instareply-dm-reply-chip.instareply-quick-chip {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(168, 85, 247, 0.18) 100%);
-  border-color: rgba(168, 85, 247, 0.45);
-  color: #c084fc;
+.instareply-dm-chip-group .instareply-chip-caret {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #a78bfa;
 }
 
-.instareply-comment-reply-chip.instareply-quick-chip:hover,
-.instareply-dm-reply-chip.instareply-quick-chip:hover {
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+.instareply-chip-group:hover .instareply-chip-caret {
+  background: #bc1888;
   color: #ffffff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4);
+}
+
+.instareply-dm-chip-group:hover .instareply-chip-caret {
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.instareply-chip-caret:hover {
+  filter: brightness(1.2);
+}
+
+/* Micro-Menu Dropdown */
+.instareply-chip-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 999999;
+  min-width: 148px;
+  background: rgba(22, 26, 35, 0.96);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: instareplyMenuIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes instareplyMenuIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.instareply-menu-header {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #9ca3af;
+  padding: 4px 8px 3px;
+}
+
+.instareply-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: #f3f4f6;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.instareply-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.instareply-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 3px 0;
+}
+
+.instareply-menu-item.instareply-menu-dialog {
+  color: #c084fc;
+  font-weight: 600;
+}
+
+.instareply-menu-item.instareply-menu-dialog:hover {
+  background: rgba(168, 85, 247, 0.18);
+  color: #e9d5ff;
 }
 
 .instareply-comment-reply-chip.is-loading,
-.instareply-dm-reply-chip.is-loading {
+.instareply-dm-reply-chip.is-loading,
+.instareply-quick-chip.is-loading {
   pointer-events: none !important;
   opacity: 0.85 !important;
 }
 
 .instareply-comment-reply-chip.is-success,
-.instareply-dm-reply-chip.is-success {
+.instareply-dm-reply-chip.is-success,
+.instareply-quick-chip.is-success {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
   color: #ffffff !important;
   border-color: transparent !important;
@@ -280,19 +441,26 @@ form:has(.instareply-shortcut-btn) > div {
 .instareply-card-overlay {
   position: absolute;
   z-index: 99999;
+  display: flex !important;
+  flex-direction: column !important;
   width: 390px;
-  max-width: calc(100vw - 24px);
-  background: #181c24;
+  min-width: 340px;
+  max-width: min(850px, calc(100vw - 20px));
+  min-height: 320px;
+  max-height: min(900px, calc(100vh - 20px));
+  box-sizing: border-box !important;
+  background: rgba(22, 26, 35, 0.92) !important;
   color: #f3f4f6;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.6), 0 0 24px rgba(225, 48, 108, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 13px;
   line-height: 1.4;
   overflow: hidden;
-  backdrop-filter: blur(16px);
-  animation: instareplyFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  animation: instareplyFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes instareplyFadeIn {
@@ -316,6 +484,7 @@ form:has(.instareply-shortcut-btn) > div {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   cursor: grab;
   user-select: none;
+  flex-shrink: 0 !important;
 }
 
 .instareply-card-overlay.is-dragging {
@@ -364,6 +533,28 @@ form:has(.instareply-shortcut-btn) > div {
   gap: 4px;
 }
 
+.instareply-header-sponsor-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  opacity: 0.75;
+}
+
+.instareply-header-sponsor-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+  background: rgba(234, 74, 170, 0.15);
+}
+
 .instareply-minimize-btn,
 .instareply-expand-btn,
 .instareply-close-min-btn,
@@ -388,6 +579,34 @@ form:has(.instareply-shortcut-btn) > div {
 .instareply-close-btn:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* Corner Resize Grip Handle */
+.instareply-resize-grip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  z-index: 99;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+  background: linear-gradient(135deg, transparent 0%, transparent 45%, #9ca3af 45%, #9ca3af 55%, transparent 55%, transparent 70%, #9ca3af 70%, #9ca3af 80%, transparent 80%);
+  user-select: none;
+}
+
+.instareply-resize-grip:hover,
+.instareply-card-overlay.is-resizing .instareply-resize-grip {
+  opacity: 1;
+}
+
+.instareply-card-overlay.is-resizing {
+  user-select: none !important;
+}
+
+.instareply-card-overlay.is-minimized .instareply-resize-grip {
+  display: none !important;
 }
 
 /* Minimized Card State */
@@ -499,6 +718,173 @@ form:has(.instareply-shortcut-btn) > div {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.instareply-card-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.instareply-card-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.instareply-card-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.instareply-card-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.instareply-context-inspector,
+.instareply-stance-wrapper,
+.instareply-tones-wrapper,
+.instareply-lang-wrapper {
+  flex-shrink: 0;
+}
+
+/* Context Inspector Container (2-Row Spacious Layout) */
+.instareply-context-inspector {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 7px 10px;
+  gap: 6px;
+  box-sizing: border-box;
+}
+
+.instareply-inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.instareply-inspector-target {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.instareply-inspector-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.instareply-inspector-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  line-height: 1.35;
+}
+
+.instareply-inspector-pill .pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instareply-inspector-pill.role-pill {
+  background: rgba(225, 48, 108, 0.14);
+  border-color: rgba(225, 48, 108, 0.3);
+  color: #f43f5e;
+}
+
+.instareply-inspector-pill.visual-pill {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+}
+
+.instareply-inspector-pill.hint-pill {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.instareply-mini-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: cover;
+  vertical-align: middle;
+}
+
+.instareply-inspector-toggle {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.instareply-inspector-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.instareply-inspector-toggle .toggle-caret {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 9px;
+}
+
+.instareply-inspector-toggle.is-open .toggle-caret {
+  transform: rotate(180deg);
+}
+
+/* Collapsible Context Drawer */
+.instareply-context-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px;
+  animation: instareplyDrawerIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes instareplyDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Context Insight Banner (Sentiment & Topics) */
@@ -518,6 +904,8 @@ form:has(.instareply-shortcut-btn) > div {
   padding: 3px 8px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  line-height: 1.35;
 }
 
 .instareply-sentiment-pill.positive {
@@ -747,10 +1135,120 @@ form:has(.instareply-shortcut-btn) > div {
   box-shadow: 0 1px 6px rgba(239, 68, 68, 0.25);
 }
 
-/* Tone Selector Chips */
+/* Tone Selector Chips & Ribbon (1-Row Horizontal Scrollable + Desktop Controls) */
 .instareply-tones-wrapper {
   display: flex;
   flex-direction: column;
+}
+
+.instareply-control-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.instareply-tones-hint {
+  font-size: 10px;
+  color: #9ca3af;
+  opacity: 0.85;
+}
+
+.instareply-tones-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.instareply-tone-nav-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: #d1d5db;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  user-select: none;
+}
+
+.instareply-tone-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.instareply-tone-view-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: #d1d5db;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  font-family: inherit;
+}
+
+.instareply-tone-view-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.instareply-tones-ribbon {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 3px 0 5px 0;
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+}
+
+.instareply-tones-ribbon.is-dragging {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.instareply-tones-ribbon::-webkit-scrollbar {
+  display: none;
+}
+
+.instareply-tones-ribbon .instareply-tones-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 1px;
+  width: max-content;
+  max-height: none;
+  overflow: visible;
+}
+
+/* Expanded Grid Mode when toggled */
+.instareply-tones-wrapper.is-grid .instareply-tones-ribbon {
+  overflow-x: visible;
+  cursor: default;
+}
+
+.instareply-tones-wrapper.is-grid .instareply-tones-nav .instareply-tone-nav-btn {
+  display: none;
+}
+
+.instareply-tones-wrapper.is-grid .instareply-tones-row {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  gap: 5px;
 }
 
 .instareply-tones-row {
@@ -759,23 +1257,6 @@ form:has(.instareply-shortcut-btn) > div {
   align-items: center;
   gap: 5px;
   padding: 2px 0;
-  max-height: 96px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
-
-.instareply-tones-row::-webkit-scrollbar {
-  width: 4px;
-}
-
-.instareply-tones-row::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.instareply-tones-row::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
 }
 
 .instareply-tone-chip {
@@ -958,13 +1439,18 @@ form:has(.instareply-shortcut-btn) > div {
 /* Textarea Output */
 .instareply-output-wrapper {
   position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 75px;
 }
 
 .instareply-output-textarea {
   width: 100%;
+  height: 100%;
   box-sizing: border-box;
-  min-height: 70px;
-  max-height: 180px;
+  flex: 1 1 auto;
+  min-height: 75px;
   padding: 8px 10px;
   border-radius: 8px;
   background: #0f1218;
@@ -973,7 +1459,7 @@ form:has(.instareply-shortcut-btn) > div {
   font-size: 12px;
   font-family: inherit;
   line-height: 1.45;
-  resize: vertical;
+  resize: none;
   outline: none;
   transition: border-color 0.2s;
 }
@@ -990,6 +1476,8 @@ form:has(.instareply-shortcut-btn) > div {
   justify-content: center;
   padding: 24px 10px;
   gap: 10px;
+  flex: 1 1 auto;
+  min-height: 75px;
 }
 
 .instareply-pulse-ring {
@@ -1028,6 +1516,8 @@ form:has(.instareply-shortcut-btn) > div {
   padding: 8px 14px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   gap: 8px;
+  flex-shrink: 0 !important;
+  margin-top: auto;
 }
 
 .instareply-footer-left {
@@ -1077,6 +1567,175 @@ form:has(.instareply-shortcut-btn) > div {
 .instareply-btn-insert:hover {
   opacity: 0.92;
   transform: translateY(-1px);
+}
+
+/* Shimmer Skeleton Loading */
+.instareply-shimmer-box {
+  width: 82%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 6px 0 2px;
+}
+
+.instareply-shimmer-line {
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 200% 100%;
+  animation: instareplyShimmer 1.4s infinite ease-in-out;
+}
+
+@keyframes instareplyShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Variation Dots */
+.instareply-var-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-left: 2px;
+}
+
+.instareply-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.instareply-dot.active {
+  width: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f09433, #dc2743);
+  box-shadow: 0 0 6px rgba(220, 39, 67, 0.5);
+}
+
+/* Adaptive Light Theme Overrides (Auto-detected from Instagram or OS) */
+.instareply-card-overlay.instareply-theme-light {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #1f2937 !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.15), 0 0 20px rgba(225, 48, 108, 0.08) !important;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-card-header {
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom-color: rgba(0, 0, 0, 0.07);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-title {
+  background: linear-gradient(45deg, #e1306c, #833ab4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-model-badge {
+  background: rgba(0, 0, 0, 0.06);
+  color: #6b7280;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-context-inspector {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-inspector-pill {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #374151;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-inspector-toggle {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #6b7280;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-context-drawer {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-stance-row {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-stance-btn {
+  color: #6b7280;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-tone-chip {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #4b5563;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-tone-chip:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #111827;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-tone-nav-btn,
+.instareply-card-overlay.instareply-theme-light .instareply-tone-view-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #374151;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-tone-nav-btn:hover,
+.instareply-card-overlay.instareply-theme-light .instareply-tone-view-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #111827;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-lang-select {
+  background-color: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #111827;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-output-textarea {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  color: #111827 !important;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-btn-regen,
+.instareply-card-overlay.instareply-theme-light .instareply-btn-copy {
+  background: rgba(0, 0, 0, 0.05);
+  color: #374151;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-btn-regen:hover,
+.instareply-card-overlay.instareply-theme-light .instareply-btn-copy:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #111827;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-var-dots {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-dot {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-shimmer-line {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.04) 25%, rgba(0, 0, 0, 0.12) 50%, rgba(0, 0, 0, 0.04) 75%);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-resize-grip {
+  background: linear-gradient(135deg, transparent 0%, transparent 45%, #4b5563 45%, #4b5563 55%, transparent 55%, transparent 70%, #4b5563 70%, #4b5563 80%, transparent 80%);
 }
 
 .hidden {

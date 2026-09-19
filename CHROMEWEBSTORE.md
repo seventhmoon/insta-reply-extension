@@ -57,7 +57,7 @@ Questions, feedback, or bug reports?
 • Email: fung@androidfung.com
 • GitHub: https://github.com/seventhmoon/insta-reply-extension/issues
 
-Version 1.0.0 — Initial public release with full support for Comments, Reels, Direct Messages, Stories, and multi-provider AI.
+Version 1.1.0 — Added 1-Click Quick Reply (zero-dialog direct insertion), Few-Shot Style Mimicry ("Learn My Voice"), Anti-Troll & Spam Filter Shield, and Draggable/Minimizable Assistant Card. Ultra-compact composer layout.
 
 **Category** [REQUIRED]
 Social & Communication
@@ -158,4 +158,5 @@ https://github.com/seventhmoon/insta-reply-extension/blob/main/PRIVACY.md
 
 | Version | Date | Changes | Status |
 | :--- | :--- | :--- | :--- |
-| 1.0.0 | 2026-09-14 | Initial public release with full support for Instagram Comments, Reels, Direct Messages, and Stories. Integrated Google Gemini, Groq, OpenRouter, Custom OpenAI, and Local LLM endpoints. | Draft / Ready for Submission |
+| 1.0.0 | 2026-09-14 | Initial public release with full support for Instagram Comments, Reels, Direct Messages, and Stories. Integrated Google Gemini, Groq, OpenRouter, Custom OpenAI, and Local LLM endpoints. | Complete |
+| 1.1.0 | 2026-09-17 | 1-Click Quick Reply (zero-dialog direct insertion into input field), Few-Shot Style Mimicry ("Learn My Voice"), Anti-Troll & Spam Shield, Draggable & Minimizable Card, and ultra-compact composer layout preserving maximum typing space. | Ready for Submission |

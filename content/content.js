@@ -201,6 +201,13 @@
         scanAndInjectShortcuts();
       }
     }, true);
+
+    // Close any open split-chip micro menus when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.instareply-chip-group')) {
+        document.querySelectorAll('.instareply-chip-menu:not(.hidden)').forEach(m => m.classList.add('hidden'));
+      }
+    });
   }
 
   /**
@@ -1068,17 +1075,7 @@
         } catch (_) {}
       });
 
-      // 1. ⚡ Quick Reply chip (1-Click Direct Insert without popup dialog)
-      const quickChip = document.createElement('button');
-      quickChip.type = 'button';
-      quickChip.className = 'instareply-comment-reply-chip instareply-quick-chip';
-      quickChip.title = `⚡ 1-Click Quick Reply: Draft & insert reply to @${rawAuthor} directly (No popup dialog)`;
-      quickChip.innerHTML = `<span class="instareply-chip-sparkle">⚡</span> Quick Reply`;
-
-      quickChip.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
+      function resolveCommentContext() {
         const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
         const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
         const postId = extractPostIdentifier(postCont);
@@ -1090,103 +1087,152 @@
           timestamp: Date.now()
         };
 
-        // Trigger native reply button click so Instagram can initialize its reply state & focus
         try {
           targetReplyBtn.click();
         } catch (_) {}
 
-        // Small pause for Instagram React state to mount/focus the reply box
+        const article = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || document.querySelector('article') || document;
+        const commentInput = article.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][aria-placeholder*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          form textarea,
+          textarea[placeholder*="comment" i]
+        `) || document.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][aria-placeholder*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          form textarea,
+          textarea[placeholder*="comment" i]
+        `);
+
+        return { commentText, postId, commentInput };
+      }
+
+      // Unified Split-Chip Group: [✨ AI Reply | ▾]
+      const chipGroup = document.createElement('div');
+      chipGroup.className = 'instareply-chip-group';
+
+      const mainChip = document.createElement('button');
+      mainChip.type = 'button';
+      mainChip.className = 'instareply-comment-reply-chip instareply-main-chip instareply-quick-chip';
+      mainChip.title = `✨ AI Reply to @${rawAuthor}: Click to draft reply (Shift+Click for Assistant Dialog)`;
+      mainChip.innerHTML = `<span class="instareply-chip-sparkle">✨</span> AI Reply`;
+
+      const caretBtn = document.createElement('button');
+      caretBtn.type = 'button';
+      caretBtn.className = 'instareply-chip-caret';
+      caretBtn.title = 'Select quick reply tone';
+      caretBtn.innerHTML = '▾';
+
+      const menu = document.createElement('div');
+      menu.className = 'instareply-chip-menu hidden';
+      menu.innerHTML = `
+        <div class="instareply-menu-header">Quick Tones</div>
+        <button type="button" class="instareply-menu-item" data-tone="friendly">😊 Friendly</button>
+        <button type="button" class="instareply-menu-item" data-tone="humorous">😄 Witty & Funny</button>
+        <button type="button" class="instareply-menu-item" data-tone="savage">😏 Savage Roast</button>
+        <button type="button" class="instareply-menu-item" data-tone="concise">⚡ Short & Sweet</button>
+        <div class="instareply-menu-divider"></div>
+        <button type="button" class="instareply-menu-item instareply-menu-dialog" data-action="dialog">🪟 Full Assistant Card...</button>
+      `;
+
+      caretBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        document.querySelectorAll('.instareply-chip-menu:not(.hidden)').forEach(m => {
+          if (m !== menu) m.classList.add('hidden');
+        });
+        menu.classList.toggle('hidden');
+      });
+
+      menu.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = e.target.closest('.instareply-menu-item');
+        if (!item) return;
+        menu.classList.add('hidden');
+
+        const { commentText, postId, commentInput } = resolveCommentContext();
         await new Promise(r => setTimeout(r, 60));
 
-        const article = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || document.querySelector('article') || document;
-        const commentInput = article.querySelector(`
-          form div[role="textbox"][contenteditable="true"],
-          div[role="textbox"][contenteditable="true"],
-          div[contenteditable="true"][aria-label*="comment" i],
-          div[contenteditable="true"][aria-placeholder*="comment" i],
-          div[contenteditable="true"][data-lexical-editor="true"],
-          form textarea,
-          textarea[placeholder*="comment" i]
-        `) || document.querySelector(`
-          form div[role="textbox"][contenteditable="true"],
-          div[role="textbox"][contenteditable="true"],
-          div[contenteditable="true"][aria-label*="comment" i],
-          div[contenteditable="true"][aria-placeholder*="comment" i],
-          div[contenteditable="true"][data-lexical-editor="true"],
-          form textarea,
-          textarea[placeholder*="comment" i]
-        `);
-
-        await generateQuickReply({
-          targetInput: commentInput,
-          contextType: 'comment',
-          triggerBtn: quickChip,
-          explicitContext: {
+        if (item.dataset.action === 'dialog') {
+          openAssistantCard(commentInput, 'comment', mainChip, {
             incomingText: commentText,
-            author: rawAuthor,
-            postId
-          }
-        });
+            author: rawAuthor
+          });
+        } else if (item.dataset.tone) {
+          await generateQuickReply({
+            targetInput: commentInput,
+            contextType: 'comment',
+            triggerBtn: mainChip,
+            explicitTone: item.dataset.tone,
+            explicitContext: {
+              incomingText: commentText,
+              author: rawAuthor,
+              postId
+            }
+          });
+        }
       });
 
-      // 2. ✨ Customize chip (Opens Full Assistant Card)
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'instareply-comment-reply-chip';
-      chip.title = `✨ Customize AI Reply to @${rawAuthor}: Open full assistant dialog`;
-      chip.innerHTML = `<span class="instareply-chip-sparkle">✨</span> AI Reply`;
-
-      chip.addEventListener('click', (e) => {
+      mainChip.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        menu.classList.add('hidden');
 
-        // Extract the specific comment's body text using the robust extractor
-        const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
-        const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
-        const postId = extractPostIdentifier(postCont);
-        lastActiveCommentContext = {
-          author: rawAuthor,
-          incomingText: commentText,
-          commentItem,
-          postId,
-          timestamp: Date.now()
-        };
+        const { commentText, postId, commentInput } = resolveCommentContext();
+        await new Promise(r => setTimeout(r, 60));
 
-        // Trigger native reply button click so Instagram can initialize its reply state
-        try {
-          targetReplyBtn.click();
-        } catch (_) {}
-
-        // Locate the comment input for this post
-        const article = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || document.querySelector('article') || document;
-        const commentInput = article.querySelector(`
-          form div[role="textbox"][contenteditable="true"],
-          div[role="textbox"][contenteditable="true"],
-          div[contenteditable="true"][aria-label*="comment" i],
-          div[contenteditable="true"][aria-placeholder*="comment" i],
-          div[contenteditable="true"][data-lexical-editor="true"],
-          form textarea,
-          textarea[placeholder*="comment" i]
-        `) || document.querySelector(`
-          form div[role="textbox"][contenteditable="true"],
-          div[role="textbox"][contenteditable="true"],
-          div[contenteditable="true"][aria-label*="comment" i],
-          div[contenteditable="true"][aria-placeholder*="comment" i],
-          div[contenteditable="true"][data-lexical-editor="true"],
-          form textarea,
-          textarea[placeholder*="comment" i]
-        `);
-
-        // Open AI assistant card anchored directly to this comment!
-        openAssistantCard(commentInput, 'comment', chip, {
-          incomingText: commentText,
-          author: rawAuthor
-        });
+        const cfg = await getConfig();
+        if (cfg.shortcutClickAction === 'quick') {
+          if (e.shiftKey) {
+            openAssistantCard(commentInput, 'comment', mainChip, {
+              incomingText: commentText,
+              author: rawAuthor
+            });
+          } else {
+            await generateQuickReply({
+              targetInput: commentInput,
+              contextType: 'comment',
+              triggerBtn: mainChip,
+              explicitContext: {
+                incomingText: commentText,
+                author: rawAuthor,
+                postId
+              }
+            });
+          }
+        } else {
+          if (e.shiftKey) {
+            await generateQuickReply({
+              targetInput: commentInput,
+              contextType: 'comment',
+              triggerBtn: mainChip,
+              explicitContext: {
+                incomingText: commentText,
+                author: rawAuthor,
+                postId
+              }
+            });
+          } else {
+            openAssistantCard(commentInput, 'comment', mainChip, {
+              incomingText: commentText,
+              author: rawAuthor
+            });
+          }
+        }
       });
 
-      // Insert immediately after native "Reply": [Reply] [⚡ Quick Reply] [✨ AI Reply]
-      targetReplyBtn.insertAdjacentElement('afterend', chip);
-      targetReplyBtn.insertAdjacentElement('afterend', quickChip);
+      chipGroup.appendChild(mainChip);
+      chipGroup.appendChild(caretBtn);
+      chipGroup.appendChild(menu);
+
+      targetReplyBtn.insertAdjacentElement('afterend', chipGroup);
     });
   }
 
@@ -1442,22 +1488,22 @@
       .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn') && !el.closest('.instareply-composer-actions'));
 
     if (otherButtons.length > 0) {
-      let rightOffset = 10;
+      let rightOffset = 14;
       const pRect = pill.getBoundingClientRect();
       if (pRect.width > 0) {
         otherButtons.forEach(b => {
           const bRect = b.getBoundingClientRect();
           if (bRect.width > 0 && bRect.height > 0) {
-            const fromRight = pRect.right - bRect.left + 6;
+            const fromRight = pRect.right - bRect.left + 8;
             if (fromRight > rightOffset && fromRight < pRect.width - 40) {
               rightOffset = Math.round(fromRight);
             }
           }
         });
       }
-      btn.style.right = `${rightOffset}px`;
+      btn.style.setProperty('right', `${rightOffset}px`, 'important');
     } else {
-      btn.style.right = '10px';
+      btn.style.setProperty('right', '14px', 'important');
     }
 
     pill.appendChild(btn);
@@ -1727,22 +1773,22 @@
       .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn') && !el.closest('.instareply-composer-actions'));
 
     if (otherButtons.length > 0) {
-      let rightOffset = 10;
+      let rightOffset = 14;
       const pRect = pill.getBoundingClientRect();
       if (pRect.width > 0) {
         otherButtons.forEach(b => {
           const bRect = b.getBoundingClientRect();
           if (bRect.width > 0 && bRect.height > 0 && bRect.left >= pRect.left + pRect.width * 0.4) {
-            const fromRight = pRect.right - bRect.left + 6;
+            const fromRight = pRect.right - bRect.left + 8;
             if (fromRight > rightOffset && fromRight < Math.min(120, pRect.width - 40)) {
               rightOffset = Math.round(fromRight);
             }
           }
         });
       }
-      btn.style.right = `${rightOffset}px`;
+      btn.style.setProperty('right', `${rightOffset}px`, 'important');
     } else {
-      btn.style.right = '10px';
+      btn.style.setProperty('right', '14px', 'important');
     }
 
     pill.appendChild(btn);
@@ -2282,6 +2328,13 @@
       const activeInput = findActiveInput(btn, activeContextType) || inputEl;
 
       const cfg = await getConfig();
+      const isDual = cfg && cfg.composerButtonMode === 'dual' && cfg.enableQuickReply !== false;
+      if (isDual) {
+        // In dual-button mode, quickBtn (⚡) handles Quick Reply, so btn (✨) ALWAYS opens the Assistant Dialog
+        openAssistantCard(activeInput, activeContextType, btn);
+        return;
+      }
+
       if (cfg.shortcutClickAction === 'quick') {
         if (e.shiftKey) {
           openAssistantCard(activeInput, activeContextType, btn);
@@ -2307,13 +2360,16 @@
     }
 
     // Determine layout: 'smart' (single 26px button) vs 'dual' (compact 26px + 26px icon pair)
+    quickBtn.classList.add('instareply-hidden');
     quickBtn.style.display = 'none'; // Default hidden in smart mode to keep edittext area maximum width
     getConfig().then(cfg => {
       const isDual = cfg && cfg.composerButtonMode === 'dual' && cfg.enableQuickReply !== false;
       if (isDual) {
+        quickBtn.classList.remove('instareply-hidden');
         quickBtn.style.display = 'inline-flex';
         btn.title = `✨ Customize ${contextLabel}: Open full AI Assistant dialog`;
       } else {
+        quickBtn.classList.add('instareply-hidden');
         quickBtn.style.display = 'none';
         if (cfg && cfg.shortcutClickAction === 'dialog') {
           btn.title = `✨ Open Assistant Dialog (${contextLabel}) (Shift+Click for 1-Click Quick Reply)`;
@@ -2700,21 +2756,36 @@
 
         bubble.dataset.instareplyDmInjected = 'true';
 
-        // 1. ⚡ Quick Reply chip (Direct insert without dialog)
-        const quickChip = document.createElement('button');
-        quickChip.type = 'button';
-        quickChip.className = 'instareply-dm-reply-chip instareply-quick-chip';
-        quickChip.title = '⚡ 1-Click Quick Reply: Draft & insert reply directly without dialog';
-        quickChip.innerHTML = '<span class="instareply-chip-sparkle">⚡</span> Quick Reply';
+        // Unified DM Split-Chip Group: [✨ AI Reply | ▾]
+        const chipGroup = document.createElement('div');
+        chipGroup.className = 'instareply-chip-group instareply-dm-chip-group';
 
-        quickChip.addEventListener('click', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
+        const mainChip = document.createElement('button');
+        mainChip.type = 'button';
+        mainChip.className = 'instareply-dm-reply-chip instareply-main-chip instareply-quick-chip';
+        mainChip.title = '✨ AI Reply: Click to draft reply (Shift+Click for Assistant Dialog)';
+        mainChip.innerHTML = '<span class="instareply-chip-sparkle">✨</span> AI Reply';
 
-          // Locate active thread pane
-          const threadContainer = findActiveDmThreadContainer(quickChip);
+        const caretBtn = document.createElement('button');
+        caretBtn.type = 'button';
+        caretBtn.className = 'instareply-chip-caret';
+        caretBtn.title = 'Select quick reply tone';
+        caretBtn.innerHTML = '▾';
 
-          // Locate DM composer input in this thread container
+        const menu = document.createElement('div');
+        menu.className = 'instareply-chip-menu hidden';
+        menu.innerHTML = `
+          <div class="instareply-menu-header">Quick Tones</div>
+          <button type="button" class="instareply-menu-item" data-tone="friendly">😊 Friendly</button>
+          <button type="button" class="instareply-menu-item" data-tone="humorous">😄 Witty & Funny</button>
+          <button type="button" class="instareply-menu-item" data-tone="savage">😏 Savage Roast</button>
+          <button type="button" class="instareply-menu-item" data-tone="concise">⚡ Short & Sweet</button>
+          <div class="instareply-menu-divider"></div>
+          <button type="button" class="instareply-menu-item instareply-menu-dialog" data-action="dialog">🪟 Full Assistant Card...</button>
+        `;
+
+        function resolveDmContext() {
+          const threadContainer = findActiveDmThreadContainer(mainChip);
           const dmInput = threadContainer.querySelector(`
             .ig-dm-composer div[contenteditable="true"],
             .ig-dm-composer textarea,
@@ -2723,57 +2794,97 @@
             div[contenteditable="true"],
             textarea
           `) || document.querySelector('div[role="main"] div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
-
-          // Locate chat partner in this thread
           const partnerAuthor = extractDmPartner(threadContainer, dmInput);
+          return { threadContainer, dmInput, partnerAuthor };
+        }
 
-          await generateQuickReply({
-            targetInput: dmInput,
-            contextType: 'dm',
-            triggerBtn: quickChip,
-            explicitContext: {
+        caretBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          document.querySelectorAll('.instareply-chip-menu:not(.hidden)').forEach(m => {
+            if (m !== menu) m.classList.add('hidden');
+          });
+          menu.classList.toggle('hidden');
+        });
+
+        menu.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const item = e.target.closest('.instareply-menu-item');
+          if (!item) return;
+          menu.classList.add('hidden');
+
+          const { dmInput, partnerAuthor } = resolveDmContext();
+
+          if (item.dataset.action === 'dialog') {
+            openAssistantCard(dmInput, 'dm', mainChip, {
               incomingText: text,
               author: partnerAuthor || 'Chat partner'
-            }
-          });
+            });
+          } else if (item.dataset.tone) {
+            await generateQuickReply({
+              targetInput: dmInput,
+              contextType: 'dm',
+              triggerBtn: mainChip,
+              explicitTone: item.dataset.tone,
+              explicitContext: {
+                incomingText: text,
+                author: partnerAuthor || 'Chat partner'
+              }
+            });
+          }
         });
 
-        // 2. ✨ Customize chip (Opens Full Assistant Card)
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'instareply-dm-reply-chip';
-        chip.title = '✨ Customize AI Reply: Open full assistant dialog';
-        chip.innerHTML = '<span class="instareply-chip-sparkle">✨</span> AI Reply';
-
-        chip.addEventListener('click', (e) => {
+        mainChip.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
+          menu.classList.add('hidden');
 
-          // Locate active thread pane
-          const threadContainer = findActiveDmThreadContainer(chip);
+          const { dmInput, partnerAuthor } = resolveDmContext();
+          const cfg = await getConfig();
 
-          // Locate DM composer input in this thread container
-          const dmInput = threadContainer.querySelector(`
-            .ig-dm-composer div[contenteditable="true"],
-            .ig-dm-composer textarea,
-            div[contenteditable="true"][data-lexical-editor="true"],
-            div[contenteditable="true"][role="textbox"],
-            div[contenteditable="true"],
-            textarea
-          `) || document.querySelector('div[role="main"] div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"]');
-
-          // Locate chat partner in this thread
-          const partnerAuthor = extractDmPartner(threadContainer, dmInput);
-
-          openAssistantCard(dmInput, 'dm', chip, {
-            incomingText: text,
-            author: partnerAuthor || 'Chat partner'
-          });
+          if (cfg.shortcutClickAction === 'quick') {
+            if (e.shiftKey) {
+              openAssistantCard(dmInput, 'dm', mainChip, {
+                incomingText: text,
+                author: partnerAuthor || 'Chat partner'
+              });
+            } else {
+              await generateQuickReply({
+                targetInput: dmInput,
+                contextType: 'dm',
+                triggerBtn: mainChip,
+                explicitContext: {
+                  incomingText: text,
+                  author: partnerAuthor || 'Chat partner'
+                }
+              });
+            }
+          } else {
+            if (e.shiftKey) {
+              await generateQuickReply({
+                targetInput: dmInput,
+                contextType: 'dm',
+                triggerBtn: mainChip,
+                explicitContext: {
+                  incomingText: text,
+                  author: partnerAuthor || 'Chat partner'
+                }
+              });
+            } else {
+              openAssistantCard(dmInput, 'dm', mainChip, {
+                incomingText: text,
+                author: partnerAuthor || 'Chat partner'
+              });
+            }
+          }
         });
 
-        // Insert: [Bubble] [⚡ Quick Reply] [✨ AI Reply]
-        bubble.insertAdjacentElement('afterend', chip);
-        bubble.insertAdjacentElement('afterend', quickChip);
+        chipGroup.appendChild(mainChip);
+        chipGroup.appendChild(caretBtn);
+        chipGroup.appendChild(menu);
+
+        bubble.insertAdjacentElement('afterend', chipGroup);
       });
     });
   }
@@ -4242,7 +4353,7 @@
    * Referencing ChatGPT AI for Instagram (MailMagic)
    * Generates AI reply in background and directly inserts into target input field.
    */
-  async function generateQuickReply({ targetInput = null, contextType = 'comment', triggerBtn = null, explicitContext = null } = {}) {
+  async function generateQuickReply({ targetInput = null, contextType = 'comment', triggerBtn = null, explicitContext = null, explicitTone = null } = {}) {
     if (!targetInput) {
       targetInput = document.querySelector(`
         form div[role="textbox"][contenteditable="true"],
@@ -4289,7 +4400,7 @@
         ...(explicitContext || {})
       };
 
-      const quickTone = normalizeToneName(config.quickReplyTone || config.defaultTone || 'friendly');
+      const quickTone = normalizeToneName(explicitTone || config.quickReplyTone || config.defaultTone || 'friendly');
       const quickStance = (config.defaultStance || 'positive').toLowerCase().trim();
       const replyLanguage = config.replyLanguage || 'auto';
 
@@ -4920,6 +5031,20 @@
   }
 
   /**
+   * Helper: Updates active variation dots (• • •) in the card footer
+   */
+  function updateVariationDots(card, index) {
+    if (!card) return;
+    const dots = card.querySelectorAll('.instareply-dot');
+    if (dots.length > 0) {
+      const activeIdx = Math.abs(index) % dots.length;
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('active', i === activeIdx);
+      });
+    }
+  }
+
+  /**
    * Renders AI response details: Sentiment pill, Topics, and Reply textarea
    */
   function renderAIResult(data, isFromCache = false) {
@@ -4937,6 +5062,7 @@
       outputArea.classList.remove('hidden');
       outputArea.value = data.reply || '';
       outputArea.focus();
+      updateVariationDots(activeCard, currentVariation);
     }
 
     if (modelBadge) {
@@ -4969,6 +5095,22 @@
     // Key Topics
     if (data.topics && data.topics.length > 0) {
       pillsHTML += data.topics.map(t => `<span class="instareply-topic-tag">#${escapeHTML(t)}</span>`).join('');
+    }
+
+    if (lastContextData?.postVisuals?.thumbnailUrl || lastContextData?.postVisuals?.description) {
+      pillsHTML += `
+        <span class="instareply-inspector-pill visual-pill" title="AI Vision: ${escapeHTML(lastContextData.postVisuals.description || 'Photo analyzed')}">
+          ${lastContextData.postVisuals.thumbnailUrl ? `<img src="${escapeHTML(lastContextData.postVisuals.thumbnailUrl)}" class="instareply-mini-thumb" alt="thumb">` : '👁️'}
+          <span class="pill-text">Photo</span>
+        </span>
+      `;
+    }
+    if (lastContextData?.userDraftHint) {
+      pillsHTML += `
+        <span class="instareply-inspector-pill hint-pill" title="Draft Hint: ${escapeHTML(lastContextData.userDraftHint)}">
+          💡 <span class="pill-text">Hint</span>
+        </span>
+      `;
     }
 
     if (insightBar) {
@@ -5171,8 +5313,20 @@
     const card = document.createElement('div');
     card.className = 'instareply-card-overlay';
 
+    // Auto-detect Instagram theme (Light vs Dark mode)
+    const isLightTheme = document.documentElement.classList.contains('theme-light') ||
+      document.body.classList.contains('theme-light') ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches && !document.documentElement.classList.contains('theme-dark'));
+    if (isLightTheme) {
+      card.classList.add('instareply-theme-light');
+    }
+
     const hasHint = Boolean(context.userDraftHint);
     const isStory = context.contextType === 'story' || context.replyMode === 'story_reply';
+    const hasVisual = Boolean(context.postVisuals?.thumbnailUrl || context.postVisuals?.description);
+    const hasPostCaption = Boolean(context.postCaption);
+    const hasCommentText = Boolean(context.incomingText && context.incomingText !== context.postCaption);
+    const hasDetails = hasVisual || hasPostCaption || hasCommentText || hasHint;
 
     card.innerHTML = `
       <!-- Minimized Bar (Visible only when minimized) -->
@@ -5183,6 +5337,7 @@
           <span class="instareply-minimized-pill">Ready</span>
         </div>
         <div class="instareply-header-actions">
+          <a href="https://github.com/sponsors/seventhmoon" target="_blank" rel="noopener noreferrer" class="instareply-header-sponsor-btn" title="Sponsor InstaReply AI on GitHub">💖</a>
           <button type="button" class="instareply-expand-btn" title="Expand Assistant Window">&#x26F6;</button>
           <button type="button" class="instareply-close-min-btn" title="Close">&times;</button>
         </div>
@@ -5195,67 +5350,105 @@
           <span class="instareply-model-badge">AI Assistant</span>
         </div>
         <div class="instareply-header-actions">
+          <a href="https://github.com/sponsors/seventhmoon" target="_blank" rel="noopener noreferrer" class="instareply-header-sponsor-btn" title="Sponsor InstaReply AI on GitHub">💖</a>
           <button type="button" class="instareply-minimize-btn" title="Minimize / Collapse window">&minus;</button>
           <button type="button" class="instareply-close-btn" title="Close">&times;</button>
         </div>
       </div>
 
       <div class="instareply-card-body">
-        <!-- Interaction Role & Relationship Badge -->
-        ${context.relationshipSummary ? `
-          <div class="instareply-relationship-badge ${context.replyMode === 'comment_reply' ? 'is-comment-reply' : 'is-post-comment'}">
-            <span>${context.replyMode === 'comment_reply' ? '💬' : (isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '📝')}</span>
-            <span>${escapeHTML(context.relationshipSummary)}</span>
-          </div>
-        ` : ''}
+        <!-- Context Inspector Header Bar (Spacious 2-Row Header Layout) -->
+        <div class="instareply-context-inspector">
+          <div class="instareply-inspector-header">
+            <div class="instareply-inspector-target">
+              ${context.relationshipSummary ? `
+                <span class="instareply-inspector-pill role-pill" title="${escapeHTML(context.relationshipSummary)}">
+                  <span class="pill-icon">${context.replyMode === 'comment_reply' ? '💬' : (isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '📝')}</span>
+                  <span class="pill-text">${escapeHTML(context.relationshipSummary)}</span>
+                </span>
+              ` : `
+                <span class="instareply-inspector-pill role-pill">
+                  <span class="pill-icon">✨</span>
+                  <span class="pill-text">AI Reply Assistant</span>
+                </span>
+              `}
+            </div>
 
-        <!-- Sentiment & Key Topics Bar -->
-        <div class="instareply-insight-bar">
-          <span class="instareply-sentiment-pill">🔍 Analyzing sentiment...</span>
+            ${hasDetails ? `
+              <button type="button" class="instareply-inspector-toggle" title="Show/Hide referenced context details">
+                <span class="toggle-label">Details</span>
+                <span class="toggle-caret">▾</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- Intelligence & Metadata Sub-Row (Plenty of horizontal room) -->
+          <div class="instareply-insight-bar">
+            <!-- Sentiment Pill -->
+            <span class="instareply-sentiment-pill" title="Detected Sentiment">🔍 Analyzing...</span>
+
+            <!-- AI Vision Mini Pill -->
+            ${hasVisual ? `
+              <span class="instareply-inspector-pill visual-pill" title="AI Vision: ${escapeHTML(context.postVisuals.description || 'Photo analyzed')}">
+                ${context.postVisuals.thumbnailUrl ? `<img src="${escapeHTML(context.postVisuals.thumbnailUrl)}" class="instareply-mini-thumb" alt="thumb">` : '👁️'}
+                <span class="pill-text">Photo Analyzed</span>
+              </span>
+            ` : ''}
+
+            <!-- Hint Pill -->
+            ${hasHint ? `
+              <span class="instareply-inspector-pill hint-pill" title="Draft Hint: ${escapeHTML(context.userDraftHint)}">
+                💡 <span class="pill-text">Draft Hint</span>
+              </span>
+            ` : ''}
+          </div>
         </div>
 
-        <!-- Detected Image/Video Visual Context Banner -->
-        ${(context.postVisuals?.thumbnailUrl || context.postVisuals?.description) ? `
-          <div class="instareply-context-banner instareply-visual-banner" title="Post Image & AI Vision Analysis">
-            ${context.postVisuals.thumbnailUrl ? `
-              <img src="${escapeHTML(context.postVisuals.thumbnailUrl)}" class="instareply-visual-thumb" alt="Post thumbnail">
-            ` : `<span class="instareply-banner-icon">👁️</span>`}
-            <div class="instareply-context-text">
-              <strong style="color: #a78bfa;">👁️ AI Vision:</strong> <span class="instareply-vision-text">${context.postVisuals.description ? `"${escapeHTML(context.postVisuals.description)}"` : 'Analyzing post visual content...'}</span>
+        <!-- Collapsible Context Detail Drawer (Hidden by default to keep card ultra-compact) -->
+        <div class="instareply-context-drawer hidden">
+          <!-- Detected Image/Video Visual Context Banner -->
+          ${hasVisual ? `
+            <div class="instareply-context-banner instareply-visual-banner" title="Post Image & AI Vision Analysis">
+              ${context.postVisuals.thumbnailUrl ? `
+                <img src="${escapeHTML(context.postVisuals.thumbnailUrl)}" class="instareply-visual-thumb" alt="Post thumbnail">
+              ` : `<span class="instareply-banner-icon">👁️</span>`}
+              <div class="instareply-context-text">
+                <strong style="color: #a78bfa;">👁️ AI Vision:</strong> <span class="instareply-vision-text">${context.postVisuals.description ? `"${escapeHTML(context.postVisuals.description)}"` : 'Analyzing post visual content...'}</span>
+              </div>
+              <button type="button" class="instareply-unbind-btn" id="instareply-unbind-visual" title="Unbind image context">&times;</button>
             </div>
-            <button type="button" class="instareply-unbind-btn" id="instareply-unbind-visual" title="Unbind image context">&times;</button>
-          </div>
-        ` : ''}
+          ` : ''}
 
-        <!-- Post Caption / Story Text Banner -->
-        ${context.postCaption ? `
-          <div class="instareply-context-banner instareply-post-banner" title="${isStory ? 'Referenced Story Sticker Text' : 'Referenced Post Caption'}">
-            <span class="instareply-banner-icon">${isStory ? '📸' : '📌'}</span>
-            <div class="instareply-context-text">
-              <strong>${isStory ? 'Story Text:' : 'Post:'}</strong> "${escapeHTML(context.postCaption)}"
+          <!-- Post Caption / Story Text Banner -->
+          ${hasPostCaption ? `
+            <div class="instareply-context-banner instareply-post-banner" title="${isStory ? 'Referenced Story Sticker Text' : 'Referenced Post Caption'}">
+              <span class="instareply-banner-icon">${isStory ? '📸' : '📌'}</span>
+              <div class="instareply-context-text">
+                <strong>${isStory ? 'Story Text:' : 'Post:'}</strong> "${escapeHTML(context.postCaption)}"
+              </div>
+              <button type="button" class="instareply-unbind-btn" id="instareply-unbind-post" title="${isStory ? 'Unbind / Remove story text' : 'Unbind / Remove post context'}">&times;</button>
             </div>
-            <button type="button" class="instareply-unbind-btn" id="instareply-unbind-post" title="${isStory ? 'Unbind / Remove story text' : 'Unbind / Remove post context'}">&times;</button>
-          </div>
-        ` : ''}
+          ` : ''}
 
-        <!-- Specific Comment / DM Message Target Banner (if different from caption) -->
-        ${context.incomingText && context.incomingText !== context.postCaption ? `
-          <div class="instareply-context-banner instareply-comment-banner" style="border-left-color: ${isStory ? '#f43f5e' : context.contextType === 'dm' ? '#8b5cf6' : '#ec4899'}; background: ${isStory ? 'rgba(244, 63, 94, 0.08)' : context.contextType === 'dm' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(236, 72, 153, 0.08)'}; color: ${isStory ? '#fecdd3' : context.contextType === 'dm' ? '#ddd6fe' : '#fbcfe8'};" title="${isStory ? 'Replying to Story' : context.contextType === 'dm' ? 'Replying to DM Message' : 'Replying to Comment'}">
-            <span class="instareply-banner-icon">${isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '💬'}</span>
-            <div class="instareply-context-text">
-              <strong>${context.author ? `@${escapeHTML(context.author)}` : (isStory ? 'Story' : context.contextType === 'dm' ? 'Incoming Message' : 'Replying')}:</strong> "${escapeHTML(context.incomingText)}"
+          <!-- Specific Comment / DM Message Target Banner -->
+          ${hasCommentText ? `
+            <div class="instareply-context-banner instareply-comment-banner" style="border-left-color: ${isStory ? '#f43f5e' : context.contextType === 'dm' ? '#8b5cf6' : '#ec4899'}; background: ${isStory ? 'rgba(244, 63, 94, 0.08)' : context.contextType === 'dm' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(236, 72, 153, 0.08)'}; color: ${isStory ? '#fecdd3' : context.contextType === 'dm' ? '#ddd6fe' : '#fbcfe8'};" title="${isStory ? 'Replying to Story' : context.contextType === 'dm' ? 'Replying to DM Message' : 'Replying to Comment'}">
+              <span class="instareply-banner-icon">${isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '💬'}</span>
+              <div class="instareply-context-text">
+                <strong>${context.author ? `@${escapeHTML(context.author)}` : (isStory ? 'Story' : context.contextType === 'dm' ? 'Incoming Message' : 'Replying')}:</strong> "${escapeHTML(context.incomingText)}"
+              </div>
+              <button type="button" class="instareply-unbind-btn" id="instareply-unbind-comment" title="Unbind / Remove message context">&times;</button>
             </div>
-            <button type="button" class="instareply-unbind-btn" id="instareply-unbind-comment" title="Unbind / Remove message context">&times;</button>
-          </div>
-        ` : ''}
+          ` : ''}
 
-        <!-- User Draft Hint Banner -->
-        ${hasHint ? `
-          <div class="instareply-hint-banner">
-            <span>💡</span>
-            <div><strong>Using Draft Hint:</strong> "${escapeHTML(context.userDraftHint)}"</div>
-          </div>
-        ` : ''}
+          <!-- User Draft Hint Banner -->
+          ${hasHint ? `
+            <div class="instareply-hint-banner">
+              <span>💡</span>
+              <div><strong>Using Draft Hint:</strong> "${escapeHTML(context.userDraftHint)}"</div>
+            </div>
+          ` : ''}
+        </div>
 
         <!-- Reply Stance (Positive / Neutral / Negative) -->
         <div class="instareply-stance-wrapper">
@@ -5276,28 +5469,38 @@
           </div>
         </div>
 
-        <!-- Tone Chips -->
+        <!-- Tone Selector (Ribbon with Desktop Chevrons + Grid View Toggle + Mouse Wheel) -->
         <div class="instareply-tones-wrapper">
           <div class="instareply-control-header">
-            <span class="instareply-control-label">Tone Style</span>
+            <div class="instareply-control-header-left">
+              <span class="instareply-control-label">Tone Style</span>
+              <span class="instareply-tones-hint" id="instareply-active-tone-name">😊 Friendly</span>
+            </div>
+            <div class="instareply-tones-nav">
+              <button type="button" class="instareply-tone-nav-btn" id="instareply-tone-prev" title="Scroll left (or use mouse wheel)">‹</button>
+              <button type="button" class="instareply-tone-nav-btn" id="instareply-tone-next" title="Scroll right (or use mouse wheel)">›</button>
+              <button type="button" class="instareply-tone-view-btn" id="instareply-tone-toggle-view" title="Toggle Grid / Ribbon view">⊞ Grid</button>
+            </div>
           </div>
-          <div class="instareply-tones-row">
-            <button type="button" class="instareply-tone-chip" data-tone="friendly" title="Friendly & Casual">😊 Friendly</button>
-            <button type="button" class="instareply-tone-chip" data-tone="flirting" title="Flirting & Romantic">😘 Flirty</button>
-            <button type="button" class="instareply-tone-chip" data-tone="sexy" title="Sexy & Sensual">💋 Sexy</button>
-            <button type="button" class="instareply-tone-chip" data-tone="seductive" title="Seductive & Tantalizing">🥀 Seductive</button>
-            <button type="button" class="instareply-tone-chip" data-tone="alluring" title="Alluring & Enchanting">✨ Alluring</button>
-            <button type="button" class="instareply-tone-chip" data-tone="humorous" title="Witty & Funny">😄 Funny</button>
-            <button type="button" class="instareply-tone-chip" data-tone="playful" title="Playful & Naughty / Cheeky">😈 Playful</button>
-            <button type="button" class="instareply-tone-chip" data-tone="savage" title="Savage & Roast / Sarcastic Clapback">😏 Savage</button>
-            <button type="button" class="instareply-tone-chip" data-tone="mean" title="Mean & Haughty / Elite Snark">💅 Mean</button>
-            <button type="button" class="instareply-tone-chip" data-tone="evil" title="Evil & Villain Era / Wicked Mastermind">🦹 Evil</button>
-            <button type="button" class="instareply-tone-chip" data-tone="geek" title="Geek & Tech / Nerd Culture">🤓 Geek</button>
-            <button type="button" class="instareply-tone-chip" data-tone="spicy" title="Spicy & Bold / Charismatic">🌶️ Spicy</button>
-            <button type="button" class="instareply-tone-chip" data-tone="enthusiastic" title="Enthusiastic & Hyped">🔥 Hyped</button>
-            <button type="button" class="instareply-tone-chip" data-tone="professional" title="Professional & Polished">💼 Professional</button>
-            <button type="button" class="instareply-tone-chip" data-tone="empathetic" title="Empathetic & Caring">❤️ Empathetic</button>
-            <button type="button" class="instareply-tone-chip" data-tone="concise" title="Short & Punchy">⚡ Short</button>
+          <div class="instareply-tones-ribbon" title="Click & drag, or scroll mouse wheel to browse all tones">
+            <div class="instareply-tones-row">
+              <button type="button" class="instareply-tone-chip" data-tone="friendly" title="Friendly & Casual">😊 Friendly</button>
+              <button type="button" class="instareply-tone-chip" data-tone="flirting" title="Flirting & Romantic">😘 Flirty</button>
+              <button type="button" class="instareply-tone-chip" data-tone="sexy" title="Sexy & Sensual">💋 Sexy</button>
+              <button type="button" class="instareply-tone-chip" data-tone="seductive" title="Seductive & Tantalizing">🥀 Seductive</button>
+              <button type="button" class="instareply-tone-chip" data-tone="alluring" title="Alluring & Enchanting">✨ Alluring</button>
+              <button type="button" class="instareply-tone-chip" data-tone="humorous" title="Witty & Funny">😄 Funny</button>
+              <button type="button" class="instareply-tone-chip" data-tone="playful" title="Playful & Naughty / Cheeky">😈 Playful</button>
+              <button type="button" class="instareply-tone-chip" data-tone="savage" title="Savage & Roast / Sarcastic Clapback">😏 Savage</button>
+              <button type="button" class="instareply-tone-chip" data-tone="mean" title="Mean & Haughty / Elite Snark">💅 Mean</button>
+              <button type="button" class="instareply-tone-chip" data-tone="evil" title="Evil & Villain Era / Wicked Mastermind">🦹 Evil</button>
+              <button type="button" class="instareply-tone-chip" data-tone="geek" title="Geek & Tech / Nerd Culture">🤓 Geek</button>
+              <button type="button" class="instareply-tone-chip" data-tone="spicy" title="Spicy & Bold / Charismatic">🌶️ Spicy</button>
+              <button type="button" class="instareply-tone-chip" data-tone="enthusiastic" title="Enthusiastic & Hyped">🔥 Hyped</button>
+              <button type="button" class="instareply-tone-chip" data-tone="professional" title="Professional & Polished">💼 Professional</button>
+              <button type="button" class="instareply-tone-chip" data-tone="empathetic" title="Empathetic & Caring">❤️ Empathetic</button>
+              <button type="button" class="instareply-tone-chip" data-tone="concise" title="Short & Punchy">⚡ Short</button>
+            </div>
           </div>
         </div>
 
@@ -5324,11 +5527,16 @@
           </div>
         </div>
 
-        <!-- Textarea & Loading State -->
+        <!-- Textarea & Loading State with Shimmer Skeleton -->
         <div class="instareply-output-wrapper">
           <div class="instareply-loading-container hidden">
             <div class="instareply-pulse-ring"></div>
-            <span class="instareply-loading-text">Analyzing & drafting with AI...</span>
+            <div class="instareply-shimmer-box">
+              <div class="instareply-shimmer-line" style="width: 88%;"></div>
+              <div class="instareply-shimmer-line" style="width: 95%;"></div>
+              <div class="instareply-shimmer-line" style="width: 65%;"></div>
+            </div>
+            <span class="instareply-loading-text">Crafting authentic AI reply...</span>
           </div>
           <div class="instareply-error-container hidden"></div>
           <textarea class="instareply-output-textarea" placeholder="Drafting reply..."></textarea>
@@ -5343,12 +5551,29 @@
           <button type="button" class="instareply-btn instareply-btn-copy" title="Copy to clipboard">
             📋 Copy
           </button>
+          <div class="instareply-var-dots" id="instareply-var-dots" title="Variation indicators">
+            <span class="instareply-dot active"></span>
+            <span class="instareply-dot"></span>
+            <span class="instareply-dot"></span>
+          </div>
         </div>
-        <button type="button" class="instareply-btn instareply-btn-insert" title="Insert directly into Instagram reply box">
+        <button type="button" class="instareply-btn instareply-btn-insert" title="Insert directly into Instagram reply box (Enter)">
           Insert Reply ↵
         </button>
       </div>
+      <div class="instareply-resize-grip" title="Drag to resize assistant window"></div>
     `;
+
+    // Connect Collapsible Context Drawer Toggle
+    const toggleBtn = card.querySelector('.instareply-inspector-toggle');
+    const drawer = card.querySelector('.instareply-context-drawer');
+    if (toggleBtn && drawer) {
+      toggleBtn.addEventListener('click', () => {
+        const isHidden = drawer.classList.toggle('hidden');
+        const caret = toggleBtn.querySelector('.toggle-caret');
+        if (caret) caret.textContent = isHidden ? '▾' : '▴';
+      });
+    }
 
     // Setup unbind context buttons
     setupUnbindButtons(card);
@@ -5365,9 +5590,108 @@
       });
     });
 
+    // Tone navigation & desktop controls (Chevrons, Mouse Wheel, Drag-to-Scroll, Grid Toggle)
+    const tonesRibbon = card.querySelector('.instareply-tones-ribbon');
+    const tonesWrapper = card.querySelector('.instareply-tones-wrapper');
+    const prevToneBtn = card.querySelector('#instareply-tone-prev');
+    const nextToneBtn = card.querySelector('#instareply-tone-next');
+    const viewToggleBtn = card.querySelector('#instareply-tone-toggle-view');
+
+    if (tonesRibbon) {
+      // 1. Mouse wheel horizontal scrolling
+      tonesRibbon.addEventListener('wheel', (e) => {
+        if (tonesWrapper && tonesWrapper.classList.contains('is-grid')) return;
+        if (e.deltaY !== 0) {
+          e.preventDefault();
+          tonesRibbon.scrollLeft += e.deltaY;
+        }
+      }, { passive: false });
+
+      // 2. Desktop Click-and-Drag / Grab-to-Scroll
+      let isDraggingTone = false;
+      let toneStartX = 0;
+      let toneStartScroll = 0;
+      let toneDragDist = 0;
+
+      tonesRibbon.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        if (tonesWrapper && tonesWrapper.classList.contains('is-grid')) return;
+        isDraggingTone = true;
+        toneDragDist = 0;
+        toneStartX = e.pageX;
+        toneStartScroll = tonesRibbon.scrollLeft;
+        tonesRibbon.classList.add('is-dragging');
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDraggingTone || !tonesRibbon) return;
+        const deltaX = e.pageX - toneStartX;
+        toneDragDist += Math.abs(deltaX);
+        tonesRibbon.scrollLeft = toneStartScroll - deltaX;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isDraggingTone) {
+          isDraggingTone = false;
+          if (tonesRibbon) tonesRibbon.classList.remove('is-dragging');
+        }
+      });
+
+      // 3. Arrow buttons (‹ and ›)
+      if (prevToneBtn) {
+        prevToneBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          tonesRibbon.scrollBy({ left: -160, behavior: 'smooth' });
+        });
+      }
+      if (nextToneBtn) {
+        nextToneBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          tonesRibbon.scrollBy({ left: 160, behavior: 'smooth' });
+        });
+      }
+
+      // 4. Grid vs Ribbon View Toggle
+      if (viewToggleBtn && tonesWrapper) {
+        viewToggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isGrid = tonesWrapper.classList.toggle('is-grid');
+          viewToggleBtn.textContent = isGrid ? '↔ Ribbon' : '⊞ Grid';
+          viewToggleBtn.title = isGrid ? 'Switch to 1-row scrollable ribbon' : 'Switch to expanded grid view';
+          try {
+            localStorage.setItem('instareply_tone_view', isGrid ? 'grid' : 'ribbon');
+          } catch (_) {}
+        });
+
+        // Restore saved view preference
+        try {
+          if (localStorage.getItem('instareply_tone_view') === 'grid') {
+            tonesWrapper.classList.add('is-grid');
+            viewToggleBtn.textContent = '↔ Ribbon';
+          }
+        } catch (_) {}
+      }
+
+      // Record drag distance to suppress chip click during drag
+      tonesRibbon.dataset.dragDist = '0';
+      window.addEventListener('mousemove', () => {
+        if (isDraggingTone && tonesRibbon) {
+          tonesRibbon.dataset.dragDist = String(toneDragDist);
+        }
+      });
+      window.addEventListener('mouseup', () => {
+        setTimeout(() => {
+          if (tonesRibbon) tonesRibbon.dataset.dragDist = '0';
+        }, 120);
+      });
+    }
+
     // Tone chip clicks
     card.querySelectorAll('.instareply-tone-chip').forEach(chip => {
       chip.addEventListener('click', () => {
+        if (tonesRibbon && parseInt(tonesRibbon.dataset.dragDist || '0', 10) > 6) {
+          return; // Dragged, suppress click
+        }
         if (currentTone === chip.dataset.tone) return;
         currentTone = chip.dataset.tone;
         setCardActiveTone(card, currentTone);
@@ -5397,6 +5721,7 @@
     // Regen button
     card.querySelector('.instareply-btn-regen').addEventListener('click', () => {
       currentVariation += 1;
+      updateVariationDots(card, currentVariation);
       executeReplyGeneration();
     });
 
@@ -5470,6 +5795,9 @@
     // Make card draggable across screen
     makeCardDraggable(card);
 
+    // Make card resizable with corner grip
+    makeCardResizable(card);
+
     return card;
   }
 
@@ -5500,7 +5828,27 @@
     if (!card) return;
     const cleanTone = normalizeToneName(tone);
     card.querySelectorAll('.instareply-tone-chip').forEach(chip => {
-      chip.classList.toggle('active', chip.dataset.tone === cleanTone);
+      const isActive = chip.dataset.tone === cleanTone;
+      chip.classList.toggle('active', isActive);
+      if (isActive) {
+        // Auto-scroll active chip into view inside ribbon
+        const ribbon = card.querySelector('.instareply-tones-ribbon');
+        const wrapper = card.querySelector('.instareply-tones-wrapper');
+        if (ribbon && (!wrapper || !wrapper.classList.contains('is-grid'))) {
+          setTimeout(() => {
+            const chipRect = chip.getBoundingClientRect();
+            const ribbonRect = ribbon.getBoundingClientRect();
+            if (chipRect.left < ribbonRect.left || chipRect.right > ribbonRect.right) {
+              chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
+          }, 60);
+        }
+        // Update active tone name label in header
+        const hint = card.querySelector('#instareply-active-tone-name');
+        if (hint) {
+          hint.textContent = chip.textContent.trim();
+        }
+      }
     });
   }
 
@@ -5835,7 +6183,7 @@
     let cardStartY = 0;
 
     function onPointerDown(e) {
-      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) {
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input') || e.target.closest('a')) {
         return;
       }
       isDragging = true;
@@ -5890,6 +6238,84 @@
     if (minBar) {
       minBar.addEventListener('pointerdown', onPointerDown);
     }
+  }
+
+  /**
+   * Enables free resizing of the assistant card using a corner grip handle
+   */
+  function makeCardResizable(card) {
+    const grip = card.querySelector('.instareply-resize-grip');
+    if (!grip) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startY = 0;
+    let startW = 0;
+    let startH = 0;
+
+    // Restore previously saved width & height
+    try {
+      const savedWidth = localStorage.getItem('instareply_card_width');
+      const savedHeight = localStorage.getItem('instareply_card_height');
+      if (savedWidth) {
+        const w = parseInt(savedWidth, 10);
+        if (w >= 340 && w <= Math.min(850, window.innerWidth - 20)) {
+          card.style.width = `${w}px`;
+        }
+      }
+      if (savedHeight) {
+        const h = parseInt(savedHeight, 10);
+        if (h >= 300 && h <= Math.min(900, window.innerHeight - 20)) {
+          card.style.height = `${h}px`;
+        }
+      }
+    } catch (_) {}
+
+    function onPointerDown(e) {
+      isResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = card.offsetWidth;
+      startH = card.offsetHeight;
+
+      card.classList.add('is-resizing');
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerUp, { once: true });
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function onPointerMove(e) {
+      if (!isResizing) return;
+      e.preventDefault();
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      const minW = 340;
+      const maxW = Math.min(850, window.innerWidth - 20);
+      const minH = 300;
+      const maxH = Math.min(900, window.innerHeight - 20);
+
+      const newWidth = Math.max(minW, Math.min(startW + deltaX, maxW));
+      const newHeight = Math.max(minH, Math.min(startH + deltaY, maxH));
+
+      card.style.width = `${newWidth}px`;
+      card.style.height = `${newHeight}px`;
+    }
+
+    function onPointerUp() {
+      if (!isResizing) return;
+      isResizing = false;
+      card.classList.remove('is-resizing');
+      document.removeEventListener('pointermove', onPointerMove);
+
+      try {
+        localStorage.setItem('instareply_card_width', String(card.offsetWidth));
+        localStorage.setItem('instareply_card_height', String(card.offsetHeight));
+      } catch (_) {}
+    }
+
+    grip.addEventListener('pointerdown', onPointerDown);
   }
 
   /**

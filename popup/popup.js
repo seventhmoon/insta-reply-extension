@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Reply Preferences Elements
   const defaultTone = document.getElementById('defaultTone');
   const defaultStance = document.getElementById('defaultStance');
+  const replyLanguageSelect = document.getElementById('replyLanguageSelect');
   let savedReplyLanguage = 'auto';
   const enableAnalysis = document.getElementById('enableAnalysis');
   const includeEmojis = document.getElementById('includeEmojis');
@@ -75,6 +76,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   const connectionStatus = document.getElementById('connectionStatus');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const saveFeedback = document.getElementById('saveFeedback');
+
+  // Tab Switching Logic
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.tab;
+      tabBtns.forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      tabPanes.forEach(p => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const targetPane = document.getElementById(targetTab);
+      if (targetPane) targetPane.classList.add('active');
+    });
+  });
 
   // Load saved configuration
   const config = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
@@ -318,6 +339,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   testConnectionBtn.addEventListener('click', async () => {
     const currentConfig = getUIConfig();
     const spinner = testConnectionBtn.querySelector('.btn-spinner');
+    const startTime = Date.now();
     
     testConnectionBtn.disabled = true;
     if (spinner) spinner.classList.remove('hidden');
@@ -330,9 +352,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         config: currentConfig
       });
 
+      const elapsed = Date.now() - startTime;
+
       if (res && res.success) {
         connectionStatus.className = 'connection-status-msg success';
-        connectionStatus.textContent = res.message || 'Connected successfully!';
+        connectionStatus.innerHTML = `✓ ${res.message || 'Connected successfully!'} <span class="connection-latency-badge">${elapsed}ms</span>`;
       } else {
         connectionStatus.className = 'connection-status-msg error';
         connectionStatus.textContent = res?.error || 'Connection failed.';
@@ -412,7 +436,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Preferences
     if (cfg.defaultTone) defaultTone.value = cfg.defaultTone;
     if (defaultStance && cfg.defaultStance) defaultStance.value = cfg.defaultStance;
-    if (cfg.replyLanguage) savedReplyLanguage = cfg.replyLanguage;
+    if (cfg.replyLanguage) {
+      savedReplyLanguage = cfg.replyLanguage;
+      if (replyLanguageSelect) replyLanguageSelect.value = cfg.replyLanguage;
+    }
     enableAnalysis.checked = cfg.enableAnalysis !== false;
     includeEmojis.checked = cfg.includeEmojis !== false;
     includePostCaption.checked = cfg.includePostCaption !== false;
@@ -463,7 +490,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       localLlmModel: getSelectedLocalModelName(),
       defaultTone: defaultTone.value,
       defaultStance: defaultStance ? defaultStance.value : 'positive',
-      replyLanguage: savedReplyLanguage || 'auto',
+      replyLanguage: replyLanguageSelect ? replyLanguageSelect.value : (savedReplyLanguage || 'auto'),
       enableAnalysis: enableAnalysis.checked,
       includeEmojis: includeEmojis.checked,
       includePostCaption: includePostCaption.checked,
@@ -523,5 +550,72 @@ document.addEventListener('DOMContentLoaded', async () => {
       edgeAiStatus.className = 'status-indicator not-ready';
       edgeAiStatus.textContent = 'Prompt API check unavailable.';
     }
+  }
+
+  // Setup Popup Resizing
+  setupPopupResize();
+
+  function setupPopupResize() {
+    const resizeHandle = document.getElementById('popupResizeHandle');
+    if (!resizeHandle) return;
+
+    // Load saved dimensions
+    try {
+      chrome.storage?.local?.get(['popupWidth', 'popupHeight'], (res) => {
+        if (res?.popupWidth) {
+          const w = Math.min(Math.max(res.popupWidth, 360), 780);
+          document.body.style.width = `${w}px`;
+        }
+        if (res?.popupHeight) {
+          const h = Math.min(Math.max(res.popupHeight, 480), 600);
+          document.body.style.height = `${h}px`;
+        }
+      });
+    } catch (_) {}
+
+    let isResizing = false;
+    let startX = 0;
+    let startY = 0;
+    let startW = 0;
+    let startH = 0;
+
+    resizeHandle.addEventListener('pointerdown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = document.body.offsetWidth;
+      startH = document.body.offsetHeight;
+      document.body.classList.add('is-resizing');
+
+      function onPointerMove(ev) {
+        if (!isResizing) return;
+        const deltaX = ev.clientX - startX;
+        const deltaY = ev.clientY - startY;
+
+        const newW = Math.min(Math.max(startW + deltaX, 360), 780);
+        const newH = Math.min(Math.max(startH + deltaY, 480), 600);
+
+        document.body.style.width = `${newW}px`;
+        document.body.style.height = `${newH}px`;
+      }
+
+      function onPointerUp() {
+        if (!isResizing) return;
+        isResizing = false;
+        document.body.classList.remove('is-resizing');
+        document.removeEventListener('pointermove', onPointerMove);
+        try {
+          chrome.storage?.local?.set({
+            popupWidth: document.body.offsetWidth,
+            popupHeight: document.body.offsetHeight
+          });
+        } catch (_) {}
+      }
+
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp, { once: true });
+      e.preventDefault();
+      e.stopPropagation();
+    });
   }
 });
