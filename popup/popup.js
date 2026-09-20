@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shortcutClickAction = document.getElementById('shortcutClickAction');
   const quickReplyTone = document.getElementById('quickReplyTone');
   const composerButtonMode = document.getElementById('composerButtonMode');
+  const commentButtonMode = document.getElementById('commentButtonMode');
   const myVoiceSamples = document.getElementById('myVoiceSamples');
   const customInstructions = document.getElementById('customInstructions');
 
@@ -449,6 +450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (shortcutClickAction) shortcutClickAction.value = cfg.shortcutClickAction || 'quick';
     if (quickReplyTone) quickReplyTone.value = cfg.quickReplyTone || cfg.defaultTone || 'friendly';
     if (composerButtonMode) composerButtonMode.value = cfg.composerButtonMode || 'smart';
+    if (commentButtonMode) commentButtonMode.value = cfg.commentButtonMode || 'auto';
     if (myVoiceSamples) myVoiceSamples.value = cfg.myVoiceSamples || '';
     customInstructions.value = cfg.customInstructions || '';
   }
@@ -500,6 +502,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       shortcutClickAction: shortcutClickAction ? shortcutClickAction.value : 'quick',
       quickReplyTone: quickReplyTone ? quickReplyTone.value : 'friendly',
       composerButtonMode: composerButtonMode ? composerButtonMode.value : 'smart',
+      commentButtonMode: commentButtonMode ? commentButtonMode.value : 'auto',
       myVoiceSamples: myVoiceSamples ? myVoiceSamples.value.trim() : '',
       customInstructions: customInstructions.value.trim()
     };

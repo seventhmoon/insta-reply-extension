@@ -24,6 +24,7 @@ const DEFAULT_CONFIG = {
   shortcutClickAction: 'quick',
   quickReplyTone: 'friendly',
   composerButtonMode: 'smart',
+  commentButtonMode: 'auto',
   myVoiceSamples: '',
   replyLanguage: 'auto',
   customInstructions: ''

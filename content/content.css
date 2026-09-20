@@ -221,6 +221,8 @@ form:has(.instareply-shortcut-btn) > div {
   border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .instareply-chip-group.instareply-dm-chip-group {
@@ -239,7 +241,7 @@ form:has(.instareply-shortcut-btn) > div {
 .instareply-quick-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: rgba(225, 48, 108, 0.12);
   border: 1px solid rgba(225, 48, 108, 0.3);
   border-top-left-radius: 12px;
@@ -250,7 +252,7 @@ form:has(.instareply-shortcut-btn) > div {
   color: #f43f5e;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 2px 7px;
   margin: 0;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -258,6 +260,51 @@ form:has(.instareply-shortcut-btn) > div {
   outline: none;
   font-family: inherit;
   user-select: none;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.instareply-chip-sparkle {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.instareply-chip-label {
+  white-space: nowrap !important;
+}
+
+/* Compact Icon-Only Chip Styling */
+.instareply-chip-group.instareply-compact-group .instareply-chip-label,
+.instareply-comment-reply-chip.instareply-icon-only .instareply-chip-label,
+.instareply-dm-reply-chip.instareply-icon-only .instareply-chip-label {
+  display: none !important;
+}
+
+.instareply-chip-group.instareply-compact-group .instareply-comment-reply-chip,
+.instareply-comment-reply-chip.instareply-icon-only,
+.instareply-chip-group.instareply-compact-group .instareply-dm-reply-chip,
+.instareply-dm-reply-chip.instareply-icon-only {
+  padding: 2px 6px !important;
+  gap: 0 !important;
+  font-size: 12px !important;
+}
+
+.instareply-chip-group.instareply-compact-group .instareply-chip-caret {
+  padding: 2px 5px 2px 3px !important;
+  font-size: 9px !important;
+}
+
+/* Single Icon Mode (No Caret) */
+.instareply-comment-reply-chip.instareply-single-icon,
+.instareply-dm-reply-chip.instareply-single-icon {
+  border-top-right-radius: 12px !important;
+  border-bottom-right-radius: 12px !important;
+  border-right: 1px solid rgba(225, 48, 108, 0.3) !important;
+  padding: 2px 7px !important;
+}
+
+.instareply-dm-reply-chip.instareply-single-icon {
+  border-right-color: rgba(139, 92, 246, 0.35) !important;
 }
 
 .instareply-dm-reply-chip {
@@ -297,6 +344,8 @@ form:has(.instareply-shortcut-btn) > div {
   transition: all 0.15s ease;
   outline: none;
   line-height: 1.4;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .instareply-dm-chip-group .instareply-chip-caret {
@@ -1736,6 +1785,22 @@ form:has(.instareply-shortcut-btn) > div {
 
 .instareply-card-overlay.instareply-theme-light .instareply-resize-grip {
   background: linear-gradient(135deg, transparent 0%, transparent 45%, #4b5563 45%, #4b5563 55%, transparent 55%, transparent 70%, #4b5563 70%, #4b5563 80%, transparent 80%);
+}
+
+/* Responsive Compact Comment Chip Mode for Narrow Viewports */
+@media (max-width: 680px) {
+  .instareply-comment-reply-chip .instareply-chip-label,
+  .instareply-dm-reply-chip .instareply-chip-label {
+    display: none !important;
+  }
+  .instareply-comment-reply-chip,
+  .instareply-dm-reply-chip {
+    padding: 2px 6px !important;
+  }
+  .instareply-chip-caret {
+    padding: 2px 4px 2px 3px !important;
+    font-size: 9px !important;
+  }
 }
 
 .hidden {

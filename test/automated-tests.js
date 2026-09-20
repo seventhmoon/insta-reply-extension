@@ -2091,6 +2091,97 @@ Hope this helps!
     assert.ok(fundingYml.includes('github: seventhmoon'), '.github/FUNDING.yml must declare seventhmoon as funding recipient');
     assert.ok(readmeMd.includes('https://github.com/sponsors/seventhmoon'), 'README.md must include GitHub Sponsors badge and link');
   });
+
+  // =========================================================================
+  // SUITE 12: Comment Reply Button Style, Compact Icon Mode & Layout Protection
+  // =========================================================================
+  console.log('\n🎨 Suite 12: Comment Button Style, Compact Icon Mode & Layout Protection');
+
+  runTest('CommentButtonModeConfig', 'DEFAULT_CONFIG in service worker includes commentButtonMode: auto', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(
+      swCode.includes("commentButtonMode: 'auto'"),
+      'DEFAULT_CONFIG must define commentButtonMode: auto'
+    );
+  });
+
+  runTest('CommentButtonModePopupUI', 'popup.html and popup.js provide user setting for Comment Button Mode', () => {
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+
+    assert.ok(popupHtml.includes('id="commentButtonMode"'), 'popup.html must contain select #commentButtonMode');
+    assert.ok(popupHtml.includes('value="auto"'), 'popup.html must have auto option');
+    assert.ok(popupHtml.includes('value="icon"'), 'popup.html must have icon option');
+    assert.ok(popupHtml.includes('value="icon_only"'), 'popup.html must have icon_only option');
+    assert.ok(popupHtml.includes('value="badge"'), 'popup.html must have badge option');
+
+    assert.ok(popupJs.includes('commentButtonMode: commentButtonMode ? commentButtonMode.value'), 'popup.js must bind commentButtonMode in getUIConfig');
+    assert.ok(popupJs.includes('commentButtonMode.value = cfg.commentButtonMode'), 'popup.js must load saved commentButtonMode');
+  });
+
+  runTest('CommentButtonModeStyles', 'content.css prevents wrapping and supports compact icon-only styles', () => {
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.css'), 'utf8');
+
+    // No-wrap layout protection
+    assert.ok(cssCode.includes('.instareply-chip-group {') && cssCode.includes('white-space: nowrap !important;'), 'instareply-chip-group must have white-space: nowrap !important');
+    assert.ok(cssCode.includes('.instareply-comment-reply-chip') && cssCode.includes('white-space: nowrap !important;'), 'instareply-comment-reply-chip must have white-space: nowrap !important');
+    assert.ok(cssCode.includes('.instareply-chip-label'), 'content.css must define .instareply-chip-label');
+
+    // Compact mode rules
+    assert.ok(cssCode.includes('.instareply-compact-group .instareply-chip-label'), 'compact group must hide chip label');
+    assert.ok(cssCode.includes('.instareply-comment-reply-chip.instareply-icon-only'), 'icon-only chip must have compact padding');
+    assert.ok(cssCode.includes('.instareply-single-icon'), 'content.css must support .instareply-single-icon');
+  });
+
+  runTest('CommentButtonModeContentLogic', 'content.js implements intelligent compact detection and icon-only loading state', () => {
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+
+    // Span wrapped label
+    assert.ok(contentJs.includes('<span class="instareply-chip-label"> AI Reply</span>'), 'content.js must wrap label in instareply-chip-label span');
+
+    // Responsive and space auto-detection logic
+    assert.ok(contentJs.includes('hasTranslation'), 'content.js must check for translation text in action row');
+    assert.ok(contentJs.includes('commentBtnMode === \'icon\''), 'content.js must respect icon commentButtonMode setting');
+    assert.ok(contentJs.includes('hideCaret'), 'content.js must hide caret when icon_only is selected');
+
+    // isIconOnly drafting state in generateQuickReply
+    assert.ok(contentJs.includes('instareply-icon-only') && contentJs.includes('instareply-compact-group'), 'generateQuickReply isIconOnly check must include compact and icon-only classes');
+  });
+
+  runTest('CommentButtonModeLayoutSimulation', 'Simulates auto-compact and explicit icon modes in action rows', () => {
+    function computeMode(cachedConfig, actionRowText, actionCount, clientWidth) {
+      const commentBtnMode = cachedConfig?.commentButtonMode || 'auto';
+      const hasTranslation = Boolean(actionRowText?.match(/translation|翻譯|翻译|翻訳|번역|tradu/i));
+      const hasManyActions = actionCount >= 3;
+      const isNarrowContainer = Boolean(clientWidth > 0 && clientWidth < 320);
+      const isCompact = commentBtnMode === 'icon' || commentBtnMode === 'icon_only' || (commentBtnMode === 'auto' && (hasTranslation || hasManyActions || isNarrowContainer));
+      const hideCaret = commentBtnMode === 'icon_only';
+      return { isCompact, hideCaret };
+    }
+
+    // 1. Auto mode with "See translation" -> should be compact
+    const r1 = computeMode({ commentButtonMode: 'auto' }, '3 likes  Reply  See translation', 3, 300);
+    assert.strictEqual(r1.isCompact, true, 'Auto mode with translation must be compact');
+    assert.strictEqual(r1.hideCaret, false, 'Auto mode must still show tone caret');
+
+    // 2. Auto mode with plenty of space and no translation -> standard badge
+    const r2 = computeMode({ commentButtonMode: 'auto' }, 'Reply', 1, 450);
+    assert.strictEqual(r2.isCompact, false, 'Auto mode in spacious row must remain badge');
+
+    // 3. Explicit icon mode -> compact even with space
+    const r3 = computeMode({ commentButtonMode: 'icon' }, 'Reply', 1, 450);
+    assert.strictEqual(r3.isCompact, true, 'Explicit icon mode must always be compact');
+    assert.strictEqual(r3.hideCaret, false, 'Icon mode includes tone caret');
+
+    // 4. Explicit icon_only mode -> compact and no caret
+    const r4 = computeMode({ commentButtonMode: 'icon_only' }, 'Reply', 1, 450);
+    assert.strictEqual(r4.isCompact, true, 'Explicit icon_only mode must be compact');
+    assert.strictEqual(r4.hideCaret, true, 'icon_only mode must hide caret');
+
+    // 5. Explicit badge mode -> never compact even with translation
+    const r5 = computeMode({ commentButtonMode: 'badge' }, '3 likes  Reply  See translation', 3, 280);
+    assert.strictEqual(r5.isCompact, false, 'Explicit badge mode must stay badge');
+  });
   console.log(`📊 Tests Executed: ${totalTests} | Passed: ${passedTests} | Failed: ${failedTests}`);
   console.log('=================================================');
 

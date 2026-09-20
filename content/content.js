@@ -12,6 +12,7 @@
   let currentVariation = 0;
   let lastContextData = null;
   let lastActiveCommentContext = null;
+  let cachedConfig = null;
 
   // In-memory predictive cache for instant comment replies
   const replyCache = new Map();
@@ -1326,18 +1327,30 @@
       }
 
       // Unified Split-Chip Group: [✨ AI Reply | ▾]
+      const commentBtnMode = cachedConfig?.commentButtonMode || 'auto';
+      const actionRow = targetReplyBtn.parentElement;
+      const hasTranslation = actionRow && Boolean(actionRow.textContent?.match(/translation|翻譯|翻译|翻訳|번역|tradu/i));
+      const hasManyActions = actionRow && actionRow.querySelectorAll('button, time, [role="button"]').length >= 3;
+      const isNarrowContainer = Boolean(
+        (actionRow && actionRow.clientWidth > 0 && actionRow.clientWidth < 320) ||
+        targetReplyBtn.closest('.ig-reel-comments-drawer, div[role="dialog"] [role="list"], .ig-virtual-comments-stream') ||
+        (typeof window !== 'undefined' && window.innerWidth <= 768)
+      );
+      const isCompact = commentBtnMode === 'icon' || commentBtnMode === 'icon_only' || (commentBtnMode === 'auto' && (hasTranslation || hasManyActions || isNarrowContainer));
+      const hideCaret = commentBtnMode === 'icon_only';
+
       const chipGroup = document.createElement('div');
-      chipGroup.className = 'instareply-chip-group';
+      chipGroup.className = 'instareply-chip-group' + (isCompact ? ' instareply-compact-group' : '');
 
       const mainChip = document.createElement('button');
       mainChip.type = 'button';
-      mainChip.className = 'instareply-comment-reply-chip instareply-main-chip instareply-quick-chip';
+      mainChip.className = 'instareply-comment-reply-chip instareply-main-chip instareply-quick-chip' + (isCompact ? ' instareply-icon-only' : '') + (hideCaret ? ' instareply-single-icon' : '');
       mainChip.title = `✨ AI Reply to @${rawAuthor}: Click to draft reply (Shift+Click for Assistant Dialog)`;
-      mainChip.innerHTML = `<span class="instareply-chip-sparkle">✨</span> AI Reply`;
+      mainChip.innerHTML = `<span class="instareply-chip-sparkle">✨</span><span class="instareply-chip-label"> AI Reply</span>`;
 
       const caretBtn = document.createElement('button');
       caretBtn.type = 'button';
-      caretBtn.className = 'instareply-chip-caret';
+      caretBtn.className = 'instareply-chip-caret' + (hideCaret ? ' hidden' : '');
       caretBtn.title = 'Select quick reply tone';
       caretBtn.innerHTML = '▾';
 
@@ -2973,18 +2986,22 @@
         bubble.dataset.instareplyDmInjected = 'true';
 
         // Unified DM Split-Chip Group: [✨ AI Reply | ▾]
+        const dmBtnMode = cachedConfig?.commentButtonMode || 'auto';
+        const isCompactDm = dmBtnMode === 'icon' || dmBtnMode === 'icon_only' || (typeof window !== 'undefined' && window.innerWidth <= 768);
+        const hideDmCaret = dmBtnMode === 'icon_only';
+
         const chipGroup = document.createElement('div');
-        chipGroup.className = 'instareply-chip-group instareply-dm-chip-group';
+        chipGroup.className = 'instareply-chip-group instareply-dm-chip-group' + (isCompactDm ? ' instareply-compact-group' : '');
 
         const mainChip = document.createElement('button');
         mainChip.type = 'button';
-        mainChip.className = 'instareply-dm-reply-chip instareply-main-chip instareply-quick-chip';
+        mainChip.className = 'instareply-dm-reply-chip instareply-main-chip instareply-quick-chip' + (isCompactDm ? ' instareply-icon-only' : '') + (hideDmCaret ? ' instareply-single-icon' : '');
         mainChip.title = '✨ AI Reply: Click to draft reply (Shift+Click for Assistant Dialog)';
-        mainChip.innerHTML = '<span class="instareply-chip-sparkle">✨</span> AI Reply';
+        mainChip.innerHTML = '<span class="instareply-chip-sparkle">✨</span><span class="instareply-chip-label"> AI Reply</span>';
 
         const caretBtn = document.createElement('button');
         caretBtn.type = 'button';
-        caretBtn.className = 'instareply-chip-caret';
+        caretBtn.className = 'instareply-chip-caret' + (hideDmCaret ? ' hidden' : '');
         caretBtn.title = 'Select quick reply tone';
         caretBtn.innerHTML = '▾';
 
@@ -4588,7 +4605,13 @@
 
     // Save initial button state for visual feedback
     const originalContent = triggerBtn ? triggerBtn.innerHTML : null;
-    const isIconOnly = triggerBtn ? triggerBtn.classList.contains('instareply-shortcut-btn') : false;
+    const isIconOnly = triggerBtn ? (
+      triggerBtn.classList.contains('instareply-shortcut-btn') ||
+      triggerBtn.classList.contains('instareply-icon-only') ||
+      triggerBtn.classList.contains('instareply-single-icon') ||
+      Boolean(triggerBtn.closest('.instareply-compact-group')) ||
+      !triggerBtn.querySelector('.instareply-chip-label')
+    ) : false;
 
     if (triggerBtn) {
       triggerBtn.classList.remove('is-success', 'is-error');
@@ -6576,10 +6599,22 @@
    */
   async function getConfig() {
     try {
-      return await chrome.runtime.sendMessage({ action: 'GET_CONFIG' }) || {};
+      const cfg = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' }) || {};
+      cachedConfig = cfg;
+      return cfg;
     } catch {
-      return {};
+      return cachedConfig || {};
     }
   }
+
+  // Pre-load configuration into memory
+  try {
+    getConfig();
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener(() => {
+        getConfig();
+      });
+    }
+  } catch (_) {}
 
 })();

@@ -330,6 +330,19 @@
           </div>
         </div>
 
+        <div class="form-group mt-8" id="commentButtonModeGroup">
+          <label for="commentButtonMode">Comment Reply Button Style</label>
+          <select id="commentButtonMode" class="select-input">
+            <option value="auto" selected>🤖 Auto (Icon in tight spaces, Badge when spacious)</option>
+            <option value="icon">✨ Compact Icon [ ✨ | ▾ ] (Prevents layout overflow)</option>
+            <option value="icon_only">✨ Pure Icon Only [ ✨ ]</option>
+            <option value="badge">🏷️ Full Badge [ ✨ AI Reply | ▾ ]</option>
+          </select>
+          <div class="hint-text">
+            Controls button size under comments to prevent line wrapping and crowding alongside &quot;See translation&quot;.
+          </div>
+        </div>
+
         <div class="form-group mt-8" id="quickReplyActionGroup">
           <label for="shortcutClickAction">Shortcut Button Behavior</label>
           <select id="shortcutClickAction" class="select-input">
