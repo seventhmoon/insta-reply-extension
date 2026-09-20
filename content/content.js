@@ -742,13 +742,58 @@
   /**
    * Extracts clean, complete comment text from a comment row/container element
    */
-  function extractCommentTextFromContainer(commentItem, rawAuthor = '') {
+  /**
+   * Helper to check if an element is an Instagram native reply button
+   */
+  function isNativeReplyButton(el) {
+    if (!el) return false;
+    if (el.closest('.instareply-card-overlay, .instareply-comment-reply-chip, .instareply-chip-group, .instareply-shortcut-btn')) {
+      return false;
+    }
+    const t = el.textContent?.trim()?.toLowerCase() || '';
+    const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').toLowerCase();
+    return (
+      t === 'reply' || t === '回覆' || t === '回复' || t === '返信' ||
+      t === 'responder' || t === 'répondre' || t === 'antworten' || t === 'rispondi' ||
+      t === '답글 달기' || t === '답글' ||
+      aria.includes('reply to') || aria.includes('responder a') || aria.includes('antworten an') ||
+      aria.includes('répondre à') || aria.includes('rispondi a') || aria.includes('回覆') ||
+      aria.includes('回复') || aria.includes('返信') || aria.includes('답글')
+    );
+  }
+
+  /**
+   * Counts distinct native reply buttons inside a container
+   */
+  function countNativeReplyButtons(container) {
+    if (!container) return 0;
+    const candidates = container.querySelectorAll('button, [role="button"], span');
+    const seen = new Set();
+    for (const c of candidates) {
+      if (isNativeReplyButton(c)) {
+        const btn = c.closest('button, [role="button"]') || c;
+        seen.add(btn);
+      }
+    }
+    return seen.size;
+  }
+
+  function extractCommentTextFromContainer(commentItem, rawAuthor = '', replyBtn = null) {
     if (!commentItem) return '';
 
     const cleanAuthor = (rawAuthor || '').trim().replace(/^@/, '');
 
     // 1. Try dedicated Instagram dir="auto" elements (Instagram's standard for comment text)
-    const dirAutoElements = commentItem.querySelectorAll('span[dir="auto"], div[dir="auto"], p[dir="auto"]');
+    let dirAutoElements = Array.from(commentItem.querySelectorAll('span[dir="auto"], div[dir="auto"], p[dir="auto"]'));
+
+    // If replyBtn is provided, prioritize elements preceding replyBtn in document order
+    if (replyBtn) {
+      const preceding = dirAutoElements.filter(el => (el.compareDocumentPosition(replyBtn) & Node.DOCUMENT_POSITION_FOLLOWING));
+      if (preceding.length > 0) {
+        dirAutoElements = preceding.reverse();
+      }
+    }
+
     for (const el of dirAutoElements) {
       // Ensure element is not an author link or header
       if (
@@ -776,7 +821,7 @@
       const clone = commentItem.cloneNode(true);
 
       // Strip InstaReply injected buttons
-      clone.querySelectorAll('.instareply-shortcut-btn, .instareply-comment-reply-chip').forEach(n => n.remove());
+      clone.querySelectorAll('.instareply-shortcut-btn, .instareply-comment-reply-chip, .instareply-chip-group').forEach(n => n.remove());
 
       // Strip buttons, roles, SVGs, images
       clone.querySelectorAll('button, [role="button"], img, svg, canvas').forEach(n => n.remove());
@@ -829,24 +874,12 @@
 
   /**
    * Accurately locates a single comment row container from any element inside it.
-   * Works across semantic <li>, <ul > div>, and modern Instagram virtualized <div> comment lists.
+   * Isolates threaded replies and stops before enclosing lists or parent threads.
    */
   function findCommentContainer(node) {
     if (!node) return null;
 
-    // 1. Check explicit semantic containers
-    const semantic = node.closest('li, [role="listitem"], .ig-comment');
-    if (semantic && !semantic.closest('header')) {
-      return semantic;
-    }
-
-    // 2. Check if node is inside a direct ul > div
-    const ulDiv = node.closest('ul > div');
-    if (ulDiv && !ulDiv.closest('header')) {
-      return ulDiv;
-    }
-
-    // 3. Walk up ancestors (up to 9 levels)
+    // 1. Walk up ancestors looking for the tightest container holding this specific comment
     let curr = node.parentElement;
     let candidate = null;
 
@@ -855,29 +888,129 @@
         break;
       }
 
-      // Check if this sub-tree has an author profile link
+      // If an ancestor contains MORE than 1 native reply button, it encloses sibling comments
+      // (e.g. parent comment + nested replies, or a virtual list batch). Stop immediately!
+      const replyCount = countNativeReplyButtons(curr);
+      if (replyCount > 1) {
+        break;
+      }
+
+      // Check if this sub-tree has an author profile link or avatar
       const authorLinks = curr.querySelectorAll('a[href^="/"]:not([href*="/p/"]):not([href*="/reel/"]):not([href*="/explore/"]):not([href*="/stories/"])');
+      const hasAvatar = curr.querySelector('img[alt*="profile picture" i], img[alt*="的大頭貼照" i], img[alt*="的头像" i]') !== null;
       const hasTimeOrReply = curr.querySelector('time, button, [role="button"]') !== null;
 
-      if (authorLinks.length >= 1 && hasTimeOrReply) {
-        // Count how many reply buttons exist in curr to prevent capturing the entire comment list
-        const replyButtons = Array.from(curr.querySelectorAll('button, div[role="button"], span[role="button"], span'))
-          .filter(b => {
-            const t = b.textContent?.trim()?.toLowerCase() || '';
-            return t === 'reply' || t === '回覆' || t === '回复' || t === '返信' || t === 'responder' || t === 'répondre' || t === 'antworten';
-          });
+      if ((authorLinks.length >= 1 || hasAvatar) && hasTimeOrReply) {
+        candidate = curr;
+      }
 
-        if (replyButtons.length <= 1) {
-          candidate = curr;
-        } else {
-          break;
-        }
+      // If this element is a semantic listitem or comment container and only has 1 reply button,
+      // it is the authoritative comment container
+      if (
+        (curr.tagName === 'LI' || curr.getAttribute('role') === 'listitem' || curr.classList?.contains('ig-comment')) &&
+        replyCount <= 1
+      ) {
+        return curr;
       }
 
       curr = curr.parentElement;
     }
 
-    return candidate;
+    if (candidate) {
+      return candidate;
+    }
+
+    // 2. Semantic fallback if no other candidate found
+    const semantic = node.closest('li, [role="listitem"], .ig-comment');
+    if (semantic && !semantic.closest('header')) {
+      return semantic;
+    }
+
+    const ulDiv = node.closest('ul > div');
+    if (ulDiv && !ulDiv.closest('header')) {
+      return ulDiv;
+    }
+
+    return node.parentElement;
+  }
+
+  /**
+   * Helper to extract the comment author handle specifically for a given reply button
+   */
+  function extractAuthorForReplyButton(replyBtn, commentContainer) {
+    const banned = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'direct', 'developer', 'about', 'legal', 'emails']);
+
+    // 1. Check aria-label / title on replyBtn, parent, or children
+    if (replyBtn) {
+      const candidates = [
+        replyBtn,
+        replyBtn.parentElement,
+        ...Array.from(replyBtn.querySelectorAll('[aria-label], [title]'))
+      ];
+      for (const el of candidates) {
+        if (!el) continue;
+        const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+        if (!aria) continue;
+        const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
+                      aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+                      aria.match(/@([a-zA-Z0-9._]+)/);
+        if (match && match[1] && !banned.has(match[1].toLowerCase())) {
+          return match[1];
+        }
+      }
+    }
+
+    // 2. Search commentContainer
+    if (commentContainer) {
+      // 2a. Check avatar img alt e.g. "username's profile picture"
+      const imgs = commentContainer.querySelectorAll('img[alt*="profile picture" i], img[alt*="的大頭貼照" i], img[alt*="的头像" i], img[alt*="のプロフィール写真" i]');
+      for (const img of imgs) {
+        if (replyBtn && !(img.compareDocumentPosition(replyBtn) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          continue;
+        }
+        const alt = img.getAttribute('alt') || '';
+        const match = alt.match(/^([a-zA-Z0-9._]+)['’]s profile picture/i) ||
+                      alt.match(/^([a-zA-Z0-9._]+) 的大頭貼照/i) ||
+                      alt.match(/^([a-zA-Z0-9._]+) 的头像/i) ||
+                      alt.match(/^([a-zA-Z0-9._]+)のプロフィール写真/i);
+        if (match && match[1] && !banned.has(match[1].toLowerCase())) {
+          return match[1];
+        }
+      }
+
+      // 2b. Profile links preceding replyBtn
+      const allLinks = Array.from(commentContainer.querySelectorAll('a[href^="/"]'));
+      const precedingLinks = replyBtn
+        ? allLinks.filter(l => (l.compareDocumentPosition(replyBtn) & Node.DOCUMENT_POSITION_FOLLOWING))
+        : allLinks;
+
+      // Filter out links inside comment body (e.g. mentions inside span[dir="auto"])
+      const authorLinks = precedingLinks.filter(l => {
+        if (l.closest('span[dir="auto"], div[dir="auto"], p[dir="auto"]')) return false;
+        const href = l.getAttribute('href') || '';
+        const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        return m && m[1] && !banned.has(m[1].toLowerCase());
+      });
+
+      if (authorLinks.length > 0) {
+        // Pick the closest author link preceding replyBtn (the last in document order)
+        const chosen = authorLinks[authorLinks.length - 1];
+        const m = (chosen.getAttribute('href') || '').match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        if (m && m[1]) return m[1];
+      }
+
+      // 2c. Fallback across precedingLinks in reverse order
+      for (let i = precedingLinks.length - 1; i >= 0; i--) {
+        const link = precedingLinks[i];
+        const href = link.getAttribute('href') || '';
+        const m = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        if (m && m[1] && !banned.has(m[1].toLowerCase())) {
+          return m[1];
+        }
+      }
+    }
+
+    return extractAuthorFromCommentContainer(commentContainer);
   }
 
   /**
@@ -903,6 +1036,88 @@
       const txt = authorEl.textContent?.trim().replace(/^@/, '') || '';
       if (txt && !banned.has(txt.toLowerCase())) {
         return txt;
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * Helper to locate the active comment input element across forms and modals
+   */
+  function findActiveCommentInput(root = document) {
+    const scope = root || document;
+    return scope.querySelector(`
+      form div[role="textbox"][contenteditable="true"],
+      div[role="textbox"][contenteditable="true"],
+      div[contenteditable="true"][aria-label*="comment" i],
+      div[contenteditable="true"][aria-placeholder*="comment" i],
+      div[contenteditable="true"][data-lexical-editor="true"],
+      form textarea,
+      textarea[placeholder*="comment" i]
+    `) || document.querySelector(`
+      form div[role="textbox"][contenteditable="true"],
+      div[role="textbox"][contenteditable="true"],
+      div[contenteditable="true"][aria-label*="comment" i],
+      div[contenteditable="true"][aria-placeholder*="comment" i],
+      div[contenteditable="true"][data-lexical-editor="true"],
+      form textarea,
+      textarea[placeholder*="comment" i]
+    `);
+  }
+
+  /**
+   * Detects the recipient author from Instagram's native reply state
+   * (input value with @username or "Replying to @username" banner)
+   */
+  function detectAuthorFromInstagramReplyState(root = document, commentInput = null) {
+    const banned = new Set(['explore', 'p', 'reel', 'reels', 'stories', 'direct', 'developer', 'about', 'legal', 'emails']);
+
+    // 1. Check if commentInput currently contains an @mention
+    if (commentInput) {
+      const val = (getElementValue(commentInput) || '').trim();
+      const match = val.match(/^@([a-zA-Z0-9._]+)(?:\s|$)/);
+      if (match && match[1] && !banned.has(match[1].toLowerCase())) {
+        return match[1];
+      }
+    }
+
+    // 2. Check for "Replying to @username" banner or cancel reply button
+    const searchArea = root || document;
+    const candidates = searchArea.querySelectorAll(`
+      [aria-label*="reply" i],
+      [aria-label*="replying" i],
+      [aria-label*="回覆" i],
+      [aria-label*="回复" i],
+      [aria-label*="返信" i],
+      [aria-label*="답글" i],
+      div[role="button"],
+      span,
+      div,
+      p
+    `);
+
+    for (const el of candidates) {
+      if (el.closest('.instareply-card-overlay, .instareply-chip-group, .instareply-card')) continue;
+
+      const aria = el.getAttribute('aria-label') || '';
+      if (aria) {
+        const ariaMatch = aria.match(/(?:replying to|reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
+                          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
+        if (ariaMatch && ariaMatch[1] && !banned.has(ariaMatch[1].toLowerCase())) {
+          return ariaMatch[1];
+        }
+      }
+
+      if (el.children.length <= 2) {
+        const txt = el.textContent?.trim() || '';
+        if (txt.length > 0 && txt.length < 60) {
+          const txtMatch = txt.match(/(?:replying to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
+                           txt.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
+          if (txtMatch && txtMatch[1] && !banned.has(txtMatch[1].toLowerCase())) {
+            return txtMatch[1];
+          }
+        }
       }
     }
 
@@ -1052,8 +1267,8 @@
         return;
       }
 
-      // Extract comment author
-      const rawAuthor = extractAuthorFromCommentContainer(commentItem);
+      // Extract comment author specifically for this reply button
+      const rawAuthor = extractAuthorForReplyButton(targetReplyBtn, commentItem) || extractAuthorFromCommentContainer(commentItem);
       if (!rawAuthor) return;
 
       targetReplyBtn.dataset.instareplyCommentInjected = 'true';
@@ -1062,55 +1277,52 @@
       // Listen for native Instagram "Reply" clicks to capture context immediately
       targetReplyBtn.addEventListener('click', () => {
         try {
-          const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
-          const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
+          const currentContainer = findCommentContainer(targetReplyBtn) || commentItem;
+          const author = extractAuthorForReplyButton(targetReplyBtn, currentContainer) || rawAuthor;
+          const commentText = extractCommentTextFromContainer(currentContainer, author, targetReplyBtn);
+          const postCont = currentContainer.closest('article') || currentContainer.closest('div[role="dialog"]') || findPostContainer(currentContainer);
           const postId = extractPostIdentifier(postCont);
           lastActiveCommentContext = {
-            author: rawAuthor,
+            author,
             incomingText: commentText,
-            commentItem,
+            commentItem: currentContainer,
             postId,
             timestamp: Date.now()
           };
         } catch (_) {}
       });
 
-      function resolveCommentContext() {
-        const commentText = extractCommentTextFromContainer(commentItem, rawAuthor);
-        const postCont = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || findPostContainer(commentItem);
-        const postId = extractPostIdentifier(postCont);
-        lastActiveCommentContext = {
-          author: rawAuthor,
-          incomingText: commentText,
-          commentItem,
-          postId,
-          timestamp: Date.now()
-        };
+      async function resolveCommentContext() {
+        const currentContainer = findCommentContainer(targetReplyBtn) || commentItem;
+        let author = extractAuthorForReplyButton(targetReplyBtn, currentContainer) || rawAuthor;
 
         try {
           targetReplyBtn.click();
         } catch (_) {}
 
-        const article = commentItem.closest('article') || commentItem.closest('div[role="dialog"]') || document.querySelector('article') || document;
-        const commentInput = article.querySelector(`
-          form div[role="textbox"][contenteditable="true"],
-          div[role="textbox"][contenteditable="true"],
-          div[contenteditable="true"][aria-label*="comment" i],
-          div[contenteditable="true"][aria-placeholder*="comment" i],
-          div[contenteditable="true"][data-lexical-editor="true"],
-          form textarea,
-          textarea[placeholder*="comment" i]
-        `) || document.querySelector(`
-          form div[role="textbox"][contenteditable="true"],
-          div[role="textbox"][contenteditable="true"],
-          div[contenteditable="true"][aria-label*="comment" i],
-          div[contenteditable="true"][aria-placeholder*="comment" i],
-          div[contenteditable="true"][data-lexical-editor="true"],
-          form textarea,
-          textarea[placeholder*="comment" i]
-        `);
+        await new Promise(r => setTimeout(r, 60));
 
-        return { commentText, postId, commentInput };
+        const article = currentContainer.closest('article') || currentContainer.closest('div[role="dialog"]') || document.querySelector('article') || document;
+        const commentInput = findActiveCommentInput(article);
+
+        const detectedAuthor = detectAuthorFromInstagramReplyState(article, commentInput);
+        if (detectedAuthor) {
+          author = detectedAuthor;
+        }
+
+        const commentText = extractCommentTextFromContainer(currentContainer, author, targetReplyBtn);
+        const postCont = currentContainer.closest('article') || currentContainer.closest('div[role="dialog"]') || findPostContainer(currentContainer);
+        const postId = extractPostIdentifier(postCont);
+
+        lastActiveCommentContext = {
+          author,
+          incomingText: commentText,
+          commentItem: currentContainer,
+          postId,
+          timestamp: Date.now()
+        };
+
+        return { author, commentText, postId, commentInput };
       }
 
       // Unified Split-Chip Group: [✨ AI Reply | ▾]
@@ -1157,13 +1369,13 @@
         if (!item) return;
         menu.classList.add('hidden');
 
-        const { commentText, postId, commentInput } = resolveCommentContext();
-        await new Promise(r => setTimeout(r, 60));
+        const { author, commentText, postId, commentInput } = await resolveCommentContext();
 
         if (item.dataset.action === 'dialog') {
           openAssistantCard(commentInput, 'comment', mainChip, {
             incomingText: commentText,
-            author: rawAuthor
+            author,
+            postId
           });
         } else if (item.dataset.tone) {
           await generateQuickReply({
@@ -1173,8 +1385,9 @@
             explicitTone: item.dataset.tone,
             explicitContext: {
               incomingText: commentText,
-              author: rawAuthor,
-              postId
+              author,
+              postId,
+              isSpecificCommentReply: true
             }
           });
         }
@@ -1185,15 +1398,15 @@
         e.stopPropagation();
         menu.classList.add('hidden');
 
-        const { commentText, postId, commentInput } = resolveCommentContext();
-        await new Promise(r => setTimeout(r, 60));
+        const { author, commentText, postId, commentInput } = await resolveCommentContext();
 
         const cfg = await getConfig();
         if (cfg.shortcutClickAction === 'quick') {
           if (e.shiftKey) {
             openAssistantCard(commentInput, 'comment', mainChip, {
               incomingText: commentText,
-              author: rawAuthor
+              author,
+              postId
             });
           } else {
             await generateQuickReply({
@@ -1202,8 +1415,9 @@
               triggerBtn: mainChip,
               explicitContext: {
                 incomingText: commentText,
-                author: rawAuthor,
-                postId
+                author,
+                postId,
+                isSpecificCommentReply: true
               }
             });
           }
@@ -1215,14 +1429,16 @@
               triggerBtn: mainChip,
               explicitContext: {
                 incomingText: commentText,
-                author: rawAuthor,
-                postId
+                author,
+                postId,
+                isSpecificCommentReply: true
               }
             });
           } else {
             openAssistantCard(commentInput, 'comment', mainChip, {
               incomingText: commentText,
-              author: rawAuthor
+              author,
+              postId
             });
           }
         }
@@ -4256,16 +4472,11 @@
         author = mentionMatch[1];
       }
 
-      // 2. Check for Instagram's reply banner near the form: e.g. "Replying to @username"
+      // 2. Check for Instagram's reply banner or input state near the form: e.g. "Replying to @username"
       if (!author && article) {
-        const allTextEls = article.querySelectorAll('div, span');
-        for (const el of allTextEls) {
-          const txt = el.textContent?.trim() || '';
-          const match = txt.match(/^Replying to\s+@?([a-zA-Z0-9._]+)/i);
-          if (match) {
-            author = match[1];
-            break;
-          }
+        const detected = detectAuthorFromInstagramReplyState(article, inputEl);
+        if (detected) {
+          author = detected;
         }
       }
 
@@ -4398,6 +4609,14 @@
       const contextData = {
         ...extracted,
         ...(explicitContext || {})
+      };
+
+      // Synchronize lastContextData with active comment reply context
+      lastContextData = {
+        ...contextData,
+        contextType: contextData.contextType || contextType,
+        isSpecificCommentReply: contextData.isSpecificCommentReply || Boolean(contextData.author),
+        timestamp: Date.now()
       };
 
       const quickTone = normalizeToneName(explicitTone || config.quickReplyTone || config.defaultTone || 'friendly');
@@ -5905,21 +6124,31 @@
   /**
    * Injects drafted text into Instagram React inputs (ContentEditable or Textarea)
    */
-  function insertTextIntoInstagramInput(element, text) {
+  function insertTextIntoInstagramInput(element, text, contextOverride = null) {
     if (!element) {
       element = document.querySelector('form textarea, div[role="textbox"][contenteditable="true"]');
     }
     if (!element) return;
 
-    // Prepend @author mention if replying to an individual comment and not already present
+    const ctx = contextOverride || lastContextData;
+
+    // Prepend or correct @author mention if replying to an individual comment
     let textToInsert = text;
-    if (lastContextData?.author && lastContextData.contextType === 'comment') {
-      const shouldPrepend = lastContextData.isSpecificCommentReply ||
-        (lastContextData.postAuthor && lastContextData.author !== lastContextData.postAuthor);
+    if (ctx?.author && ctx.contextType === 'comment') {
+      const targetAuthor = ctx.author.trim().replace(/^@/, '');
+      const authorMention = `@${targetAuthor}`;
+      const shouldPrepend = ctx.isSpecificCommentReply ||
+        (ctx.postAuthor && targetAuthor.toLowerCase() !== ctx.postAuthor.toLowerCase());
+
       if (shouldPrepend) {
-        const authorMention = `@${lastContextData.author}`;
-        const currentVal = getElementValue(element);
-        if (!textToInsert.startsWith('@') && !currentVal.includes(authorMention)) {
+        // If text already begins with an @mention, ensure it matches targetAuthor
+        const leadingMentionMatch = textToInsert.match(/^@([a-zA-Z0-9._]+)\s*/);
+        if (leadingMentionMatch) {
+          if (leadingMentionMatch[1].toLowerCase() !== targetAuthor.toLowerCase()) {
+            // Replace mismatched handle with the correct target author
+            textToInsert = textToInsert.replace(/^@[a-zA-Z0-9._]+\s*/, `${authorMention} `);
+          }
+        } else {
           textToInsert = `${authorMention} ${textToInsert}`;
         }
       }

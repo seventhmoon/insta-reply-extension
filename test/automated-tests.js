@@ -1119,6 +1119,175 @@ async function main() {
     assert.strictEqual(extractAuthor(mockContainer), 'nk.l.1001');
   });
 
+  runTest('ThreadedCommentIsolationAndAuthorMatching', 'Accurately resolves last commenter vs 2nd-last commenter in shared threaded comment containers', () => {
+    // Parent comment: eva
+    // 2nd-last commenter: frank
+    // Last commenter: grace
+    const evaLink = { href: '/eva/', getAttribute: (k) => k === 'href' ? '/eva/' : null, closest: () => null };
+    const evaReplyBtn = { textContent: 'Reply', getAttribute: () => null, closest: () => null };
+    const evaRow = {
+      className: 'parent-comment eva-comment',
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [evaLink];
+        if (sel.includes('button')) return [evaReplyBtn];
+        return [];
+      },
+      querySelector: (sel) => sel.includes('button') ? evaReplyBtn : null,
+      parentElement: null
+    };
+    evaReplyBtn.parentElement = evaRow;
+
+    const frankLink = { href: '/frank/', getAttribute: (k) => k === 'href' ? '/frank/' : null, closest: () => null };
+    const frankReplyBtn = { textContent: 'Reply', getAttribute: () => null, closest: () => null };
+    const frankRow = {
+      className: 'nested-comment frank-comment',
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [frankLink];
+        if (sel.includes('button')) return [frankReplyBtn];
+        return [];
+      },
+      querySelector: (sel) => sel.includes('button') ? frankReplyBtn : null,
+      parentElement: null
+    };
+    frankReplyBtn.parentElement = frankRow;
+
+    const graceLink = { href: '/grace/', getAttribute: (k) => k === 'href' ? '/grace/' : null, closest: () => null };
+    const graceReplyBtn = { textContent: 'Reply', getAttribute: () => null, closest: () => null };
+    const graceRow = {
+      className: 'nested-comment grace-comment',
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [graceLink];
+        if (sel.includes('button')) return [graceReplyBtn];
+        return [];
+      },
+      querySelector: (sel) => sel.includes('button') ? graceReplyBtn : null,
+      parentElement: null
+    };
+    graceReplyBtn.parentElement = graceRow;
+
+    const nestedContainer = {
+      className: 'nested-replies-container',
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [frankLink, graceLink];
+        if (sel.includes('button')) return [frankReplyBtn, graceReplyBtn];
+        return [];
+      },
+      parentElement: null
+    };
+    frankRow.parentElement = nestedContainer;
+    graceRow.parentElement = nestedContainer;
+
+    const parentLi = {
+      tagName: 'LI',
+      className: 'comment-item threaded-thread',
+      querySelectorAll: (sel) => {
+        if (sel.includes('a[')) return [evaLink, frankLink, graceLink];
+        if (sel.includes('button')) return [evaReplyBtn, frankReplyBtn, graceReplyBtn];
+        return [];
+      },
+      parentElement: { tagName: 'ARTICLE', getAttribute: () => null }
+    };
+    evaRow.parentElement = parentLi;
+    nestedContainer.parentElement = parentLi;
+
+    function countReplyBtns(container) {
+      const btns = container.querySelectorAll('button');
+      return btns.length;
+    }
+
+    function findContainer(node) {
+      let curr = node.parentElement;
+      let candidate = null;
+      while (curr && curr.tagName !== 'ARTICLE') {
+        const replyCount = countReplyBtns(curr);
+        if (replyCount > 1) {
+          break; // Stop before enclosing sibling comments!
+        }
+        const authorLinks = curr.querySelectorAll('a[href^="/"]');
+        if (authorLinks.length >= 1) {
+          candidate = curr;
+        }
+        curr = curr.parentElement;
+      }
+      return candidate;
+    }
+
+    // Grace is the last comment: must isolate graceRow, NOT nestedContainer and NOT parentLi
+    const graceContainer = findContainer(graceReplyBtn);
+    assert.strictEqual(graceContainer, graceRow, 'Grace reply button must resolve specifically to Grace row container');
+
+    // Frank is the 2nd-last comment: must isolate frankRow
+    const frankContainer = findContainer(frankReplyBtn);
+    assert.strictEqual(frankContainer, frankRow, 'Frank reply button must resolve specifically to Frank row container');
+
+    // Eva is parent comment: must isolate evaRow
+    const evaContainer = findContainer(evaReplyBtn);
+    assert.strictEqual(evaContainer, evaRow, 'Eva reply button must resolve specifically to Eva row container');
+
+    function extractAuthorForBtn(btn, container) {
+      const links = container.querySelectorAll('a[href^="/"]');
+      if (links.length > 0) {
+        const m = links[links.length - 1].getAttribute('href').match(/^\/([a-zA-Z0-9._]+)\/?$/);
+        return m ? m[1] : '';
+      }
+      return '';
+    }
+
+    assert.strictEqual(extractAuthorForBtn(graceReplyBtn, graceContainer), 'grace', 'Last comment must extract grace');
+    assert.strictEqual(extractAuthorForBtn(frankReplyBtn, frankContainer), 'frank', '2nd-last comment must extract frank');
+    assert.strictEqual(extractAuthorForBtn(evaReplyBtn, evaContainer), 'eva', 'Parent comment must extract eva');
+  });
+
+  runTest('AriaLabelAndMultilingualAuthorExtraction', 'Extracts target comment author from multilingual button aria-labels', () => {
+    function extractFromAria(btn) {
+      const aria = btn.getAttribute('aria-label') || '';
+      const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
+                    aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+                    aria.match(/@([a-zA-Z0-9._]+)/);
+      return match ? match[1] : '';
+    }
+
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'Reply to grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => '回覆 grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => '回复 grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'Responder a grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'Répondre à grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'Antworten an grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'Rispondi a grace' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'grace에 답글' }), 'grace');
+    assert.strictEqual(extractFromAria({ getAttribute: () => 'graceに返信' }), 'grace');
+  });
+
+  runTest('CommentAuthorInsertionCorrection', 'Corrects mismatched leading author mentions and prepends target author mention', () => {
+    function prepareCommentText(draftText, targetAuthor, isSpecificReply = true) {
+      let textToInsert = draftText;
+      const authorMention = `@${targetAuthor}`;
+      if (isSpecificReply) {
+        const leadingMentionMatch = textToInsert.match(/^@([a-zA-Z0-9._]+)\s*/);
+        if (leadingMentionMatch) {
+          if (leadingMentionMatch[1].toLowerCase() !== targetAuthor.toLowerCase()) {
+            textToInsert = textToInsert.replace(/^@[a-zA-Z0-9._]+\s*/, `${authorMention} `);
+          }
+        } else {
+          textToInsert = `${authorMention} ${textToInsert}`;
+        }
+      }
+      return textToInsert;
+    }
+
+    // Case 1: Reply was generated tagging 2nd last commenter @frank, but target is @grace
+    const corrected1 = prepareCommentText('@frank Thanks for the tip!', 'grace');
+    assert.strictEqual(corrected1, '@grace Thanks for the tip!', 'Must replace mismatched handle @frank with target @grace');
+
+    // Case 2: Reply generated without mention
+    const corrected2 = prepareCommentText('Thanks for the tip!', 'grace');
+    assert.strictEqual(corrected2, '@grace Thanks for the tip!', 'Must prepend @grace to reply');
+
+    // Case 3: Reply already correctly tagged @grace
+    const corrected3 = prepareCommentText('@grace Thanks for the tip!', 'grace');
+    assert.strictEqual(corrected3, '@grace Thanks for the tip!', 'Must preserve existing correct @grace mention');
+  });
+
   // =========================================================================
   // SUITE 4: Multi-Tone Bundling & AI Response Parsing
   // =========================================================================

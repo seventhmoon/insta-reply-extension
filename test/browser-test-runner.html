@@ -102,6 +102,42 @@
             <span dir="auto">Visiting next week! Any recommendations?</span>
             <button type="button" class="reply-button">Reply</button>
           </li>
+
+          <!-- Threaded Comment: Parent Eva, 1st reply Frank, Last reply Grace -->
+          <li class="comment-item threaded-thread" style="margin-top: 12px;">
+            <div class="parent-comment eva-comment" style="display: flex; gap: 8px;">
+              <div class="avatar-col"><a href="/eva/"><img src="https://instagram.com/eva.jpg" alt="eva's profile picture"></a></div>
+              <div class="content-col">
+                <a href="/eva/" role="link">eva</a>
+                <span dir="auto">Is the patio pet friendly?</span>
+                <div class="actions-row">
+                  <button type="button" class="reply-button">Reply</button>
+                </div>
+              </div>
+            </div>
+            <div class="nested-replies-container" style="margin-left: 32px; margin-top: 8px;">
+              <div class="nested-comment frank-comment" style="display: flex; gap: 8px;">
+                <div class="avatar-col"><a href="/frank/"><img src="https://instagram.com/frank.jpg" alt="frank's profile picture"></a></div>
+                <div class="content-col">
+                  <a href="/frank/" role="link">frank</a>
+                  <span dir="auto">@eva Yes, dogs are allowed outside!</span>
+                  <div class="actions-row">
+                    <button type="button" class="reply-button">Reply</button>
+                  </div>
+                </div>
+              </div>
+              <div class="nested-comment grace-comment" style="display: flex; gap: 8px; margin-top: 6px;">
+                <div class="avatar-col"><a href="/grace/"><img src="https://instagram.com/grace.jpg" alt="grace's profile picture"></a></div>
+                <div class="content-col">
+                  <a href="/grace/" role="link">grace</a>
+                  <span dir="auto">@frank They even give free dog biscuits!</span>
+                  <div class="actions-row">
+                    <button type="button" class="reply-button">Reply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
         </ul>
 
         <!-- Modern Instagram virtualized comment stream (no li, no ul) -->
@@ -240,6 +276,37 @@
           assert("Assistant card opens on Bob comment chip click", Boolean(card));
           const cardText = card ? card.innerText : "";
           assert("Assistant card targets @bob", cardText.includes("bob") || inputEl.innerText.includes("bob"));
+        }
+
+        // Test 4b: Threaded Comment reply button - verify Grace (the last comment) correctly tags @grace, not Frank or Eva
+        const graceReplyBtn = document.querySelector(".grace-comment .reply-button");
+        const graceChip = document.querySelector(".grace-comment .instareply-comment-reply-chip");
+        assert("Grace (last comment) reply chip injected", Boolean(graceChip));
+        if (graceChip) {
+          graceChip.click();
+          await new Promise(r => setTimeout(r, 250));
+
+          const card = document.querySelector(".instareply-card-overlay");
+          assert("Assistant card opens on Grace comment chip click", Boolean(card));
+          if (card) {
+            const cardText = card.innerText || "";
+            const rolePill = card.querySelector(".role-pill")?.textContent || "";
+            const bannerAuthor = card.querySelector(".instareply-comment-banner strong")?.textContent || "";
+            assert("Assistant card targets @grace (last commenter), NOT @frank or @eva",
+              (rolePill.includes("grace") || bannerAuthor.includes("grace")) &&
+              !rolePill.includes("frank") && !rolePill.includes("eva")
+            );
+            assert("Assistant card extracts Grace's specific comment text", cardText.includes("dog biscuits"));
+
+            // Test inserting reply into input
+            const insertBtn = card.querySelector(".instareply-btn-insert");
+            assert("Insert button exists in comment card", Boolean(insertBtn));
+            if (insertBtn) {
+              insertBtn.click();
+              assert("Inserted text tags @grace", inputEl.innerText.startsWith("@grace") || inputEl.innerText.includes("@grace"));
+              assert("Inserted text does NOT tag 2nd last commenter @frank", !inputEl.innerText.includes("@frank"));
+            }
+          }
         }
 
         // Test 5: Story Reply shortcut button injection
