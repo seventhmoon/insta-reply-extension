@@ -1,13 +1,20 @@
-# InstaReply AI - Smart Instagram Comment, DM, Reel & Story Assistant
+# InstaReply AI - Smart Assistant for Instagram, Threads, X (Twitter), LinkedIn & Facebook
 
 [![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa?style=flat&logo=github&logoColor=white)](https://github.com/sponsors/seventhmoon)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram Comments**, **Reels**, **Direct Messages (DMs)**, and **Stories**.
+A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram** (Comments, Reels, DMs, Stories), **Threads** (Post Replies, Thread Conversations), **X / Twitter** (Tweets, Replies, DMs), **LinkedIn** (Feed, Comments, InMail), and **Facebook**.
 
 ---
 
 ## ✨ Core Features
+
+### 🌐 Multi-Platform Social Media Support
+- **Meta Threads**: Injects into Threads post reply boxes and composers with 500-character boundary limits, thread context extraction, and conversation starter assistance.
+- **X (Twitter)**: Directly injects into tweet composers (`div[data-testid="tweetTextarea_0"]`) and reply toolbars, with strict 280-character boundary enforcement, tweet context parsing, and thread author detection.
+- **LinkedIn**: Contextual replies for feed posts, comments (`.comments-comment-box`), and InMail messages with professional networking tone bias.
+- **Facebook**: Works seamlessly in Facebook feed comments and group discussions with warm, community-friendly responses.
+- **Universal ContentEditable Engine**: Natively supports React, Draft.js, and Lexical rich-text editors without breaking internal state, undo history, or cursor position.
 
 ### 📸 Instagram Stories & Story DM Replies
 - **Seamless Story Composer Shortcut**: Automatically injects a branded shortcut button into the Story reply pill on desktop web, supporting standard and localized placeholders (*"Reply to..."*, *"Send message..."*, *"Responder..."*, *"メッセージ..."*).

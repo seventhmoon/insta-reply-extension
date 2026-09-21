@@ -502,6 +502,7 @@ async function handleGenerateReply(payload) {
     const provider = config.provider || 'gemini';
 
     let {
+      platform = payload.platform || 'instagram',
       contextType = 'comment',
       replyMode = 'post_comment',
       isCurrentUserPostAuthor = false,
@@ -520,7 +521,11 @@ async function handleGenerateReply(payload) {
     } = payload;
 
     if (!incomingText && !postCaption && !userDraftHint && !postVisuals?.description) {
-      incomingText = 'Instagram post or reel. Draft a warm, engaging, and friendly creator comment or question for this post.';
+      incomingText = platform === 'x' ? 'Post on X / Twitter. Draft a punchy, engaging tweet reply.' :
+                     platform === 'threads' ? 'Meta Threads post. Draft a witty, engaging, conversational thread reply.' :
+                     platform === 'linkedin' ? 'LinkedIn post. Draft an insightful, professional comment.' :
+                     platform === 'facebook' ? 'Facebook post. Draft a friendly, community-oriented comment.' :
+                     'Instagram post or reel. Draft a warm, engaging, and friendly creator comment or question for this post.';
     }
 
     console.log('[InstaReply AI] Generating reply:', {
@@ -558,6 +563,7 @@ async function handleGenerateReply(payload) {
     let result;
     if (provider === 'gemini') {
       result = await generateWithGemini({
+        platform,
         config,
         contextType,
         replyMode,
@@ -577,6 +583,7 @@ async function handleGenerateReply(payload) {
       });
     } else if (provider === 'groq' || provider === 'openrouter' || provider === 'custom_openai' || provider === 'local_llm') {
       result = await generateWithOpenAiCompatible({
+        platform,
         provider,
         config,
         contextType,
@@ -796,6 +803,7 @@ function isVisionRejectionError(status, errText) {
  * Google Gemini API Generation with Sentiment & Key Topic extraction
  */
 async function generateWithGemini({
+  platform = 'instagram',
   config,
   contextType,
   replyMode,
@@ -839,6 +847,7 @@ async function generateWithGemini({
   }
 
   const prompt = buildStructuredPrompt({
+    platform,
     contextType,
     replyMode,
     isCurrentUserPostAuthor,
@@ -929,6 +938,7 @@ async function generateWithGemini({
  * Universal OpenAI-Compatible Generator (Groq, OpenRouter, Custom OpenAI, Local LLM)
  */
 async function generateWithOpenAiCompatible({
+  platform = 'instagram',
   provider,
   config,
   contextType,
@@ -1015,6 +1025,7 @@ async function generateWithOpenAiCompatible({
 
   function getPrompt(withVision) {
     return buildStructuredPrompt({
+      platform,
       contextType,
       replyMode,
       isCurrentUserPostAuthor,
@@ -1177,6 +1188,7 @@ async function generateWithOpenAiCompatible({
  * Builds the comprehensive prompt for AI
  */
 function buildStructuredPrompt({
+  platform = 'instagram',
   contextType,
   replyMode = 'post_comment',
   isCurrentUserPostAuthor = false,
@@ -1199,9 +1211,56 @@ function buildStructuredPrompt({
   myVoiceSamples = '',
   enableSpamFilter = true
 }) {
-  const isCommentReply = replyMode === 'comment_reply' || Boolean(isSpecificCommentReply);
-  const isStoryReply = replyMode === 'story_reply' || contextType === 'story';
-  const isPostComment = replyMode === 'post_comment' && !isCommentReply && !isStoryReply && contextType !== 'dm';
+  const isPostDraft = contextType === 'post_draft' || replyMode === 'post_draft';
+  const isCommentReply = !isPostDraft && (replyMode === 'comment_reply' || Boolean(isSpecificCommentReply));
+  const isStoryReply = !isPostDraft && (replyMode === 'story_reply' || contextType === 'story');
+  const isPostComment = !isPostDraft && replyMode === 'post_comment' && !isCommentReply && !isStoryReply && contextType !== 'dm';
+
+  let platformIntro = 'You are an expert Instagram engagement assistant.';
+  let platformGoal = isPostDraft
+    ? 'Your goal is to craft a captivating, authentic Instagram post caption with a strong hook, visual storytelling, and engaging call-to-action.'
+    : `Your goal is to craft a high-quality, authentic Instagram ${isStoryReply ? 'Story reply (direct message)' : (contextType === 'dm' ? 'Direct Message (DM) reply' : (isCommentReply ? 'reply to a comment' : 'top-level comment on a post'))}.`;
+  let platformLengthConstraint = isPostDraft
+    ? 'Engaging first hook sentence, structured paragraphs with line breaks, emojis, and a clear call-to-action.'
+    : '1 to 3 natural, impactful sentences authentic to Instagram.';
+
+  if (platform === 'x') {
+    platformIntro = isPostDraft
+      ? 'You are an expert X (Twitter) content creator and tweet craft assistant.'
+      : 'You are an expert X (Twitter) engagement assistant.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft a viral, high-engagement, and authentic Tweet or post for X / Twitter.'
+      : 'Your goal is to craft a high-quality, authentic Tweet or reply.';
+    platformLengthConstraint = 'CRITICAL CONSTRAINT: Keep strictly under 280 characters. Start with a magnetic hook line. Punchy, direct, witty, and conversational authentic to X / Twitter.';
+  } else if (platform === 'linkedin') {
+    platformIntro = isPostDraft
+      ? 'You are an expert LinkedIn thought leadership and professional content strategist.'
+      : 'You are an expert LinkedIn professional networking and engagement assistant.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft an insightful, high-value LinkedIn post that builds professional authority and sparks industry engagement.'
+      : 'Your goal is to craft an insightful, professional, and high-value comment or message.';
+    platformLengthConstraint = isPostDraft
+      ? 'Compelling opening hook, clear structured paragraphs or bullet points, and an engaging question at the end to drive comments. 100 to 250 words.'
+      : '1 to 3 thoughtful, professional sentences suitable for LinkedIn networking, industry discourse, and professional engagement.';
+  } else if (platform === 'threads') {
+    platformIntro = isPostDraft
+      ? 'You are an expert Meta Threads content creator.'
+      : 'You are an expert Threads engagement assistant.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft an engaging, authentic, and conversational thread or post for Meta Threads.'
+      : 'Your goal is to craft a high-quality, authentic Thread reply or conversation starter on Meta Threads.';
+    platformLengthConstraint = 'Keep under 500 characters. Conversational, authentic, thought-provoking, and community-first style authentic to Threads.';
+  } else if (platform === 'facebook') {
+    platformIntro = isPostDraft
+      ? 'You are an expert Facebook community post writer.'
+      : 'You are an expert Facebook engagement assistant.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft a warm, engaging, and relatable Facebook post that inspires community reactions and discussion.'
+      : 'Your goal is to craft a warm, conversational, and community-friendly Facebook comment or reply.';
+    platformLengthConstraint = isPostDraft
+      ? 'Warm storytelling, natural tone, relatable takeaway, and engaging closing prompt.'
+      : '1 to 3 natural, conversational sentences authentic to Facebook.';
+  }
 
   const primaryTone = normalizeToneName(tone);
   const altTones = getBundledTonesFor(primaryTone);
@@ -1229,7 +1288,7 @@ Adopt this exact personal voice and style while drafting your response!\n`;
 
   let spamShieldInstruction = '';
   let spamShieldSchema = '';
-  if (enableSpamFilter) {
+  if (enableSpamFilter && !isPostDraft) {
     spamShieldInstruction = `\n8. SPAM & TROLL SHIELD:
    - Carefully analyze the incoming comment/message for spam (crypto/forex schemes, bot promotion, telegram/whatsapp links, impersonation) or aggressive trolling / harassment.
    - If spam or hostile trolling is detected:
@@ -1247,7 +1306,9 @@ Adopt this exact personal voice and style while drafting your response!\n`;
   if (relationshipSummary) {
     roleHeader = `- Relationship: ${relationshipSummary}\n`;
   }
-  if (isCurrentUserPostAuthor) {
+  if (isPostDraft) {
+    roleHeader += `- User Perspective: Content Creator / Thought Leader drafting a new post.\n`;
+  } else if (isCurrentUserPostAuthor) {
     roleHeader += `- User Perspective: CREATOR of the post (@${postAuthor}). Replying directly to audience/commenters.\n`;
   } else if (isStoryReply) {
     roleHeader += `- User Perspective: FOLLOWER / FRIEND replying directly to @${postAuthor || 'creator'}'s Instagram Story (sent via DM).\n`;
@@ -1272,7 +1333,19 @@ Notice: Use this visual description to understand what the photo/video actually 
   }
 
   let incomingSection = '';
-  if (isCommentReply && incomingText) {
+  if (isPostDraft) {
+    const topicSource = userDraftHint || incomingText || postCaption;
+    if (topicSource) {
+      incomingSection = `### TOPIC / ROUGH IDEAS TO CRAFT POST ABOUT:
+"""
+${topicSource}
+"""
+Expand, polish, and structure these ideas into a complete, publication-ready post!`;
+    } else {
+      incomingSection = `### ACTION:
+Draft a captivating, creative, and original post from scratch on a compelling topic matching this tone and style.`;
+    }
+  } else if (isCommentReply && incomingText) {
     incomingSection = `### SPECIFIC COMMENT TO REPLY TO (from @${author}):
 """
 ${incomingText}
@@ -1291,7 +1364,12 @@ Writing a top-level engaging comment on the post described above.`;
   }
 
   let engagementRequirement = '';
-  if (isCurrentUserPostAuthor) {
+  if (isPostDraft) {
+    engagementRequirement = `1. POST DRAFTING & HOOK ARCHITECTURE:
+   - First sentence MUST be a powerful, attention-grabbing hook that stops the scroll.
+   - Deliver clear value, insightful takeaways, storytelling, or entertainment.
+   - Close with an engaging question or call-to-action to spark discussion and comments.`;
+  } else if (isCurrentUserPostAuthor) {
     engagementRequirement = `1. CREATOR ENGAGEMENT:
    - You are the creator responding to a fan or follower. Answer their questions warmly, thank them for their appreciation, or share background details about your work/post.
    - NEVER speak about @${postAuthor} in the third person or say "Love this post @${postAuthor}!".`;
@@ -1311,7 +1389,27 @@ Writing a top-level engaging comment on the post described above.`;
   }
 
   let stanceGuidance = '';
-  if (stance === 'negative') {
+  if (isPostDraft) {
+    if (stance === 'hook') {
+      stanceGuidance = `2. POST ARCHITECTURE & FRAMEWORK: VIRAL / MAGNETIC HOOK
+   - Open with a viral, scroll-stopping hook that immediately grips attention and creates curiosity or tension.
+   - Use unexpected contrasts, surprising data, or provocative questions.
+   - Flow smoothly into the core message and close with a comment-driving call-to-action.`;
+    } else if (stance === 'insights') {
+      stanceGuidance = `2. POST ARCHITECTURE & FRAMEWORK: ACTIONABLE INSIGHTS & VALUE
+   - Structure the post around clear, high-value insights, frameworks, or step-by-step bullet points.
+   - Actionable takeaways that readers can immediately understand and implement.
+   - Deliver authoritative, high-signal knowledge and ask an engaging closing question.`;
+    } else if (stance === 'hot_take') {
+      stanceGuidance = `2. POST ARCHITECTURE & FRAMEWORK: HOT TAKE / CONTRARIAN PERSPECTIVE
+   - Deliver a bold, counter-intuitive perspective that challenges conventional industry myths or habits.
+   - Justify the take with sharp, grounded reasoning that invites conversation without toxic hostility.
+   - Challenge readers to share their own take in the comments.`;
+    } else {
+      stanceGuidance = `2. POST ARCHITECTURE & FRAMEWORK: AUTHENTIC & COMPELLING
+   - Deliver engaging storytelling, relatable insights, and a clear call-to-action.`;
+    }
+  } else if (stance === 'negative') {
     stanceGuidance = `2. REPLY STANCE / ATTITUDE: NEGATIVE / CRITICAL / FIRM
    - You MUST adopt a critical, firm, disagreeing, or boundary-setting stance.
    - Politely disagree, correct a misconception, decline an offer, or firmly state boundaries.
@@ -1334,12 +1432,14 @@ Writing a top-level engaging comment on the post described above.`;
    - Thoughtfully reference what is actually shown in the image or video (e.g., the scene, lighting, mood, subject) so the reply is grounded in visual reality.`;
   }
 
-  return `You are an expert Instagram engagement assistant.
-Your goal is to craft a high-quality, authentic Instagram ${isStoryReply ? 'Story reply (direct message)' : (contextType === 'dm' ? 'Direct Message (DM) reply' : (isCommentReply ? 'reply to a comment' : 'top-level comment on a post'))}.
+  return `${platformIntro}
+${platformGoal}
+
+### OBJECTIVE: ${isPostDraft ? 'DRAFT A NEW POST (NOT A REPLY)' : 'ENGAGE / REPLY'}
 
 ### INTERACTION CONTEXT:
-- Context Type: ${isStoryReply ? 'Instagram Story Reply (via Direct Message)' : (contextType === 'dm' ? 'Direct Message (private chat)' : 'Public Post Comment')}
-- Reply Stance: ${stance.toUpperCase()} (${stance === 'negative' ? 'Critical / Firm / Boundary' : (stance === 'neutral' ? 'Neutral / Balanced / Objective' : 'Positive / Supportive / Warm')})
+- Context Type: ${isPostDraft ? 'Original Post Drafting (new post)' : (isStoryReply ? 'Instagram Story Reply (via Direct Message)' : (contextType === 'dm' ? 'Direct Message (private chat)' : 'Public Post Comment'))}
+- Reply Stance / Framework: ${stance.toUpperCase()} (${stance === 'hook' ? 'Viral / Scroll-Stopping Hook' : (stance === 'insights' ? 'Actionable Takeaways' : (stance === 'hot_take' ? 'Bold Contrarian View' : (stance === 'negative' ? 'Critical / Firm / Boundary' : (stance === 'neutral' ? 'Neutral / Balanced / Objective' : 'Positive / Supportive / Warm'))))})
 ${roleHeader}${postAuthor ? `- Post Author: @${postAuthor}\n` : ''}${author && author !== postAuthor ? `- Commenter: @${author}\n` : ''}
 ${visualContextBlock}
 ${postCaption ? `### ORIGINAL POST CAPTION & TOPIC:
@@ -1366,8 +1466,8 @@ ${postCaption ? `   - Specifically connect your reply to the topics, locations, 
    - Ground the reply in the specific details provided.` : '   - Ensure your reply directly engages with the specific subject matter.'}
 5. TONE & VOCABULARY:
    - Style: ${getToneInstruction(tone)}
-   - Emojis: ${includeEmojis ? 'Include natural, tasteful Instagram-style emojis' : 'Do NOT use emojis'}.
-${customInstructions ? `   - Custom Rule: ${customInstructions}\n` : ''}${variationIndex > 0 ? `   - Variation #${variationIndex + 1}: Make this variation noticeably distinct in phrasing and perspective from previous drafts.\n` : ''}   - Length: 1 to 3 natural, impactful sentences authentic to Instagram.
+   - Emojis: ${includeEmojis ? 'Include natural, tasteful social-media style emojis' : 'Do NOT use emojis'}.
+${customInstructions ? `   - Custom Rule: ${customInstructions}\n` : ''}${variationIndex > 0 ? `   - Variation #${variationIndex + 1}: Make this variation noticeably distinct in phrasing and perspective from previous drafts.\n` : ''}   - Length: ${platformLengthConstraint}
    - Avoid generic AI-sounding phrases, cliches, or corporate buzzwords.
 6. LANGUAGE PREFERENCE:
 ${getLanguageInstruction(replyLanguage)}

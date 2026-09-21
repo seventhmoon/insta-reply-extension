@@ -1806,3 +1806,221 @@ form:has(.instareply-shortcut-btn) > div {
 .hidden {
   display: none !important;
 }
+
+/* =========================================================================
+   POST DRAFTING & MULTI-PLATFORM ADAPTATIONS
+   ========================================================================= */
+
+/* Post Draft Topic Input in Assistant Card */
+.instareply-draft-topic-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.instareply-draft-topic-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.instareply-topic-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #0f1218;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f9fafb;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 54px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.instareply-topic-input:focus {
+  border-color: #E1306C;
+  box-shadow: 0 0 0 2px rgba(225, 48, 108, 0.2);
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-draft-topic-label {
+  color: #4b5563;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-topic-input {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #111827;
+}
+
+.instareply-card-overlay.instareply-theme-light .instareply-topic-input:focus {
+  border-color: #E1306C;
+  box-shadow: 0 0 0 2px rgba(225, 48, 108, 0.15);
+}
+
+/* Multi-platform Toolbar & Action Integrations */
+
+/* X / Twitter Toolbar Integration */
+div[data-testid="toolBar"] .instareply-composer-actions,
+div[data-testid="DMDrawer"] .instareply-composer-actions,
+div[aria-label*="Direct message" i] .instareply-composer-actions {
+  display: inline-flex !important;
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  align-items: center !important;
+  margin: 0 6px !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
+div[data-testid="toolBar"] .instareply-shortcut-btn,
+div[data-testid="DMDrawer"] .instareply-shortcut-btn,
+div[aria-label*="Direct message" i] .instareply-shortcut-btn {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  border-radius: 50% !important;
+  background: rgba(29, 155, 240, 0.12) !important;
+  border: 1px solid rgba(29, 155, 240, 0.3) !important;
+  color: #1d9bf0 !important;
+  box-shadow: none !important;
+}
+
+div[data-testid="toolBar"] .instareply-shortcut-btn:hover,
+div[data-testid="DMDrawer"] .instareply-shortcut-btn:hover,
+div[aria-label*="Direct message" i] .instareply-shortcut-btn:hover {
+  background: rgba(29, 155, 240, 0.22) !important;
+  border-color: #1d9bf0 !important;
+  transform: scale(1.06) !important;
+}
+
+/* LinkedIn Comment Box & Message Form (.msg-form__left-actions) Integration */
+.comments-comment-box__form-container .instareply-composer-actions,
+.comments-comment-box .instareply-composer-actions,
+.comments-comment-box__button-group .instareply-composer-actions,
+.msg-form__left-actions .instareply-composer-actions,
+.msg-form__footer .instareply-composer-actions,
+.share-creation-state .instareply-composer-actions {
+  display: inline-flex !important;
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  align-items: center !important;
+  margin: 0 5px !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
+.comments-comment-box .instareply-shortcut-btn,
+.comments-comment-box__form-container .instareply-shortcut-btn,
+.comments-comment-box__button-group .instareply-shortcut-btn,
+.msg-form__left-actions .instareply-shortcut-btn,
+.msg-form__footer .instareply-shortcut-btn,
+.share-creation-state .instareply-shortcut-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  border-radius: 50% !important;
+  background: rgba(10, 102, 194, 0.1) !important;
+  border: 1px solid rgba(10, 102, 194, 0.3) !important;
+  color: #0a66c2 !important;
+  box-shadow: none !important;
+}
+
+.comments-comment-box .instareply-shortcut-btn:hover,
+.comments-comment-box__form-container .instareply-shortcut-btn:hover,
+.comments-comment-box__button-group .instareply-shortcut-btn:hover,
+.msg-form__left-actions .instareply-shortcut-btn:hover,
+.msg-form__footer .instareply-shortcut-btn:hover,
+.share-creation-state .instareply-shortcut-btn:hover {
+  background: rgba(10, 102, 194, 0.2) !important;
+  border-color: #0a66c2 !important;
+  transform: scale(1.06) !important;
+}
+
+/* Facebook Comment & Composer Action Integration */
+form .instareply-composer-actions,
+div[role="presentation"] .instareply-composer-actions,
+div[role="toolbar"] .instareply-composer-actions {
+  display: inline-flex !important;
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  align-items: center !important;
+  margin: 0 4px !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
+form .instareply-composer-actions .instareply-shortcut-btn,
+div[role="presentation"] .instareply-composer-actions .instareply-shortcut-btn,
+div[role="toolbar"] .instareply-composer-actions .instareply-shortcut-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  border-radius: 50% !important;
+  background: rgba(24, 119, 242, 0.1) !important;
+  border: 1px solid rgba(24, 119, 242, 0.3) !important;
+  color: #1877f2 !important;
+  box-shadow: none !important;
+}
+
+form .instareply-composer-actions .instareply-shortcut-btn:hover,
+div[role="presentation"] .instareply-composer-actions .instareply-shortcut-btn:hover,
+div[role="toolbar"] .instareply-composer-actions .instareply-shortcut-btn:hover {
+  background: rgba(24, 119, 242, 0.2) !important;
+  border-color: #1877f2 !important;
+  transform: scale(1.06) !important;
+}
+
+/* Threads Toolbar Integration */
+[role="toolbar"] .instareply-composer-actions,
+[aria-label="New thread"] .instareply-composer-actions {
+  display: inline-flex !important;
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  align-items: center !important;
+  margin: 0 5px !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
+[role="toolbar"] .instareply-shortcut-btn,
+[aria-label="New thread"] .instareply-shortcut-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+[role="toolbar"] .instareply-shortcut-btn:hover,
+[aria-label="New thread"] .instareply-shortcut-btn:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-color: #ffffff !important;
+  transform: scale(1.06) !important;
+}
+

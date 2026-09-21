@@ -336,120 +336,201 @@
     // 0. Clean up any accidental duplicate buttons first
     pruneDuplicateShortcutButtons();
 
-    // 1. Instagram Stories Reply Inputs (run first so story inputs are never misclassified as comments)
-    const storyInputs = findStoryInputElements();
-    storyInputs.forEach((el) => {
-      if (
-        el.closest('.instareply-card-overlay') ||
-        el.closest('.instareply-card') ||
-        el.classList.contains('instareply-textarea') ||
-        el.id === 'instareply-output-text'
-      ) {
-        return;
-      }
-      injectShortcutButton(el, 'story');
-    });
+    const activePlatform = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com') ? 'x' :
+         window.location.hostname.includes('linkedin.com') ? 'linkedin' :
+         window.location.hostname.includes('threads.net') ? 'threads' :
+         window.location.hostname.includes('facebook.com') || window.location.hostname.includes('fb.com') ? 'facebook' : 'instagram');
 
-    // 2. Instagram Direct Message (DM) Composers (Fullscreen + PIP / Mini-window mode)
-    const dmInputs = findDmInputElements();
-    dmInputs.forEach((el) => {
-      if (
-        el.closest('.instareply-card-overlay') ||
-        el.closest('.instareply-card') ||
-        el.classList.contains('instareply-textarea') ||
-        el.id === 'instareply-output-text'
-      ) {
-        return;
-      }
-      injectShortcutButton(el, 'dm');
-    });
+    if (activePlatform === 'instagram') {
+      // 1. Instagram Stories Reply Inputs
+      const storyInputs = findStoryInputElements();
+      storyInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) {
+          return;
+        }
+        injectShortcutButton(el, 'story');
+      });
 
-    // 3. Instagram Post & Modal Comment Inputs
-    const commentCandidates = document.querySelectorAll(`
-      form textarea,
-      article textarea,
-      main textarea,
-      div[role="main"] textarea,
-      section form textarea,
-      form div[role="textbox"],
-      form div[contenteditable="true"],
-      article div[role="textbox"],
-      article div[contenteditable="true"],
-      main div[role="textbox"],
-      div[role="main"] div[role="textbox"],
-      .ig-post-card div[role="textbox"],
-      .ig-post-card div[contenteditable="true"],
-      textarea[aria-label*="comment" i],
-      textarea[placeholder*="comment" i],
-      textarea[aria-label*="留言" i],
-      textarea[placeholder*="留言" i],
-      textarea[aria-label*="評論" i],
-      textarea[placeholder*="評論" i],
-      textarea[aria-label*="评论" i],
-      textarea[placeholder*="评论" i],
-      textarea[aria-label*="コメント" i],
-      textarea[placeholder*="コメント" i],
-      textarea[aria-label*="coment" i],
-      textarea[placeholder*="coment" i],
-      div[role="textbox"][aria-label*="comment" i],
-      div[role="textbox"][placeholder*="comment" i],
-      div[role="textbox"][aria-placeholder*="comment" i],
-      div[role="textbox"][aria-label*="留言" i],
-      div[role="textbox"][aria-label*="評論" i],
-      div[role="textbox"][aria-label*="评论" i],
-      div[role="textbox"][aria-label*="コメント" i],
-      div[role="textbox"][aria-label*="coment" i],
-      div[contenteditable="true"][aria-label*="comment" i],
-      div[contenteditable="true"][placeholder*="comment" i],
-      div[contenteditable="true"][aria-placeholder*="comment" i],
-      div[contenteditable="true"][aria-label*="留言" i],
-      div[contenteditable="true"][aria-label*="評論" i],
-      div[contenteditable="true"][aria-label*="评论" i],
-      div[contenteditable="true"][aria-label*="コメント" i]
-    `);
+      // 2. Instagram Direct Message (DM) Composers
+      const dmInputs = findDmInputElements();
+      dmInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) {
+          return;
+        }
+        injectShortcutButton(el, 'dm');
+      });
 
-    commentCandidates.forEach((el) => {
-      if (
-        el.closest('.instareply-card-overlay') ||
-        el.closest('.instareply-card') ||
-        el.closest('header, nav, [role="navigation"]') ||
-        el.classList.contains('instareply-textarea') ||
-        el.id === 'instareply-output-text'
-      ) {
-        return;
-      }
+      // 3. Instagram Post & Modal Comment Inputs
+      const commentCandidates = document.querySelectorAll(`
+        form textarea,
+        article textarea,
+        main textarea,
+        div[role="main"] textarea,
+        section form textarea,
+        form div[role="textbox"],
+        form div[contenteditable="true"],
+        article div[role="textbox"],
+        article div[contenteditable="true"],
+        main div[role="textbox"],
+        div[role="main"] div[role="textbox"],
+        .ig-post-card div[role="textbox"],
+        .ig-post-card div[contenteditable="true"],
+        textarea[aria-label*="comment" i],
+        textarea[placeholder*="comment" i],
+        textarea[aria-label*="留言" i],
+        textarea[placeholder*="留言" i],
+        textarea[aria-label*="評論" i],
+        textarea[placeholder*="評論" i],
+        textarea[aria-label*="评论" i],
+        textarea[placeholder*="评论" i],
+        textarea[aria-label*="コメント" i],
+        textarea[placeholder*="コメント" i],
+        textarea[aria-label*="coment" i],
+        textarea[placeholder*="coment" i],
+        div[role="textbox"][aria-label*="comment" i],
+        div[role="textbox"][placeholder*="comment" i],
+        div[role="textbox"][aria-placeholder*="comment" i],
+        div[role="textbox"][aria-label*="留言" i],
+        div[role="textbox"][aria-label*="評論" i],
+        div[role="textbox"][aria-label*="评论" i],
+        div[role="textbox"][aria-label*="コメント" i],
+        div[role="textbox"][aria-label*="coment" i],
+        div[contenteditable="true"][aria-label*="comment" i],
+        div[contenteditable="true"][placeholder*="comment" i],
+        div[contenteditable="true"][aria-placeholder*="comment" i],
+        div[contenteditable="true"][aria-label*="留言" i],
+        div[contenteditable="true"][aria-label*="評論" i],
+        div[contenteditable="true"][aria-label*="评论" i],
+        div[contenteditable="true"][aria-label*="コメント" i]
+      `);
 
-      const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-      const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
-      const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
+      commentCandidates.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.closest('header, nav, [role="navigation"]') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) {
+          return;
+        }
 
-      // Strictly exclude Stories (routes, story composers, viewers)
-      if (
-        window.location.pathname.includes('/stories') ||
-        el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')
-      ) {
-        return;
-      }
+        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+        const ariaPlaceholder = (el.getAttribute('aria-placeholder') || '').toLowerCase();
 
-      // Exclude DM inputs (which have message cues or are in /direct/ route)
-      if (
-        ariaLabel.includes('message') ||
-        placeholder.includes('message') ||
-        ariaPlaceholder.includes('message') ||
-        el.closest('.ig-dm-composer') ||
-        (window.location.pathname.includes('/direct') && !el.closest('article, [role="article"]'))
-      ) {
-        return;
-      }
+        // Strictly exclude Stories
+        if (
+          window.location.pathname.includes('/stories') ||
+          el.closest('.ig-story-composer, .ig-story-viewer, [data-testid="story-viewer"]')
+        ) {
+          return;
+        }
 
-      injectShortcutButton(el, 'comment');
-    });
+        // Exclude DM inputs
+        if (
+          ariaLabel.includes('message') ||
+          placeholder.includes('message') ||
+          ariaPlaceholder.includes('message') ||
+          el.closest('.ig-dm-composer') ||
+          (window.location.pathname.includes('/direct') && !el.closest('article, [role="article"]'))
+        ) {
+          return;
+        }
 
-    // 4. Inline Comment "✨ AI Reply" buttons next to each comment's Reply link
-    scanAndInjectCommentActionButtons();
+        injectShortcutButton(el, 'comment');
+      });
 
-    // 5. Inline DM Message "✨ AI Reply" chips on incoming DM chat bubbles (Fullscreen + PIP)
-    scanAndInjectDmMessageReplyButtons();
+      // 5. Inline Comment "✨ AI Reply" buttons
+      scanAndInjectCommentActionButtons();
+
+      // 6. Inline DM Message "✨ AI Reply" chips
+      scanAndInjectDmMessageReplyButtons();
+      return;
+    }
+
+    // 4. Multi-Platform Composers (X/Twitter, LinkedIn, Threads, Facebook)
+    if (activePlatform === 'x' && typeof window.XAdapter !== 'undefined') {
+      const xInputs = window.XAdapter.findComposerElements();
+      xInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) return;
+        const ctx = window.XAdapter.extractContext(el);
+        injectShortcutButton(el, ctx.contextType || 'comment');
+      });
+    } else if (activePlatform === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
+      const liInputs = window.LinkedInAdapter.findComposerElements();
+      liInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) return;
+        const ctx = window.LinkedInAdapter.extractContext(el);
+        injectShortcutButton(el, ctx.contextType || 'comment');
+
+        // Continuous focus/click listener for LinkedIn dynamic React/Ember re-renders
+        if (!el.dataset.instareplyListenerBound) {
+          el.dataset.instareplyListenerBound = 'true';
+          const triggerScan = () => setTimeout(scanAndInjectShortcuts, 80);
+          el.addEventListener('focus', triggerScan);
+          el.addEventListener('click', triggerScan);
+        }
+      });
+    } else if (activePlatform === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
+      const thInputs = window.ThreadsAdapter.findComposerElements();
+      thInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) return;
+        const ctx = window.ThreadsAdapter.extractContext(el);
+        injectShortcutButton(el, ctx.contextType || 'comment');
+      });
+    } else if (activePlatform === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
+      const fbInputs = window.FacebookAdapter.findComposerElements();
+      fbInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) return;
+        const ctx = window.FacebookAdapter.extractContext(el);
+        injectShortcutButton(el, ctx.contextType || 'comment');
+      });
+    } else if (activePlatform === 'meta_business' && typeof window.MetaBusinessAdapter !== 'undefined') {
+      const mbInputs = window.MetaBusinessAdapter.findComposerElements();
+      mbInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) return;
+        const ctx = window.MetaBusinessAdapter.extractContext(el);
+        injectShortcutButton(el, ctx.contextType || 'dm');
+      });
+    }
   }
 
   /**
@@ -631,38 +712,63 @@
    * Prunes duplicate shortcut buttons across forms, post containers, and DM composer bars
    */
   function pruneDuplicateShortcutButtons() {
-    // Check all comment forms and post containers (avoid wiping buttons in div[role="dialog"])
-    document.querySelectorAll('form, article, .ig-post-card').forEach((container) => {
-      const btns = container.querySelectorAll('.instareply-shortcut-btn');
-      if (btns.length > 1) {
-        for (let i = 1; i < btns.length; i++) {
-          btns[i].remove();
-        }
-      }
-    });
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
 
-    // Check individual DM composer bars
-    document.querySelectorAll('.ig-dm-composer, div[role="main"] div[contenteditable="true"]').forEach((el) => {
-      const row = el.closest('.ig-dm-composer') || el.closest('form') || el.parentElement;
-      if (row) {
+    if (activePlat === 'instagram') {
+      // Check all comment forms and post containers (avoid wiping buttons in div[role="dialog"])
+      document.querySelectorAll('form, article, .ig-post-card').forEach((container) => {
+        const btns = container.querySelectorAll('.instareply-shortcut-btn');
+        if (btns.length > 1) {
+          for (let i = 1; i < btns.length; i++) {
+            btns[i].remove();
+          }
+        }
+      });
+
+      // Check individual DM composer bars
+      document.querySelectorAll('.ig-dm-composer, div[role="main"] div[contenteditable="true"]').forEach((el) => {
+        const row = el.closest('.ig-dm-composer') || el.closest('form') || el.parentElement;
+        if (row) {
+          const btns = row.querySelectorAll('.instareply-shortcut-btn');
+          if (btns.length > 1) {
+            for (let i = 1; i < btns.length; i++) {
+              btns[i].remove();
+            }
+          }
+        }
+      });
+
+      // Check individual Story composer bars
+      document.querySelectorAll('.ig-story-composer, .ig-story-viewer').forEach((row) => {
         const btns = row.querySelectorAll('.instareply-shortcut-btn');
         if (btns.length > 1) {
           for (let i = 1; i < btns.length; i++) {
             btns[i].remove();
           }
         }
-      }
-    });
-
-    // Check individual Story composer bars
-    document.querySelectorAll('.ig-story-composer, .ig-story-viewer').forEach((row) => {
-      const btns = row.querySelectorAll('.instareply-shortcut-btn');
-      if (btns.length > 1) {
-        for (let i = 1; i < btns.length; i++) {
-          btns[i].remove();
+      });
+    } else {
+      // For multi-platform (X, LinkedIn, Facebook, Threads):
+      // Only prune duplicates within the EXACT same composer actions container or toolbar
+      document.querySelectorAll('.instareply-composer-actions').forEach((actions) => {
+        const btns = actions.querySelectorAll('.instareply-shortcut-btn');
+        if (btns.length > 1) {
+          for (let i = 1; i < btns.length; i++) {
+            btns[i].remove();
+          }
         }
-      }
-    });
+      });
+      document.querySelectorAll('div[data-testid="toolBar"], .msg-form__left-actions, .comments-comment-box__button-group').forEach((tb) => {
+        const btns = tb.querySelectorAll('.instareply-shortcut-btn');
+        if (btns.length > 1) {
+          for (let i = 1; i < btns.length; i++) {
+            btns[i].remove();
+          }
+        }
+      });
+    }
 
     // Purge any button mistakenly placed in dialog headers or next to close buttons
     document.querySelectorAll('.instareply-shortcut-btn').forEach((btn) => {
@@ -679,12 +785,17 @@
       btn.remove();
     });
 
-    // Purge any reply chip mistakenly placed inside or near follow buttons, notification items, or headers
-    document.querySelectorAll('.instareply-dm-reply-chip, .instareply-comment-reply-chip').forEach((chip) => {
+    // Purge any reply chip mistakenly placed inside or near follow buttons, notification items, or on non-Instagram platforms
+    document.querySelectorAll('.instareply-dm-reply-chip, .instareply-comment-reply-chip, .instareply-chip-group').forEach((chip) => {
       const parentButton = chip.closest('button:not(.instareply-dm-reply-chip):not(.instareply-comment-reply-chip)');
+      const followContainer = chip.closest('[data-testid*="follow" i], [data-testid*="UserCell" i], aside, [aria-label*="follow" i]');
+      const followText = chip.parentElement?.textContent?.match(/follow/i);
       if (
+        activePlat !== 'instagram' ||
         parentButton ||
-        chip.parentElement?.textContent?.match(/follow\s*back|following|started following you/i) ||
+        followContainer ||
+        followText ||
+        chip.parentElement?.textContent?.match(/started following you|liked your post/i) ||
         chip.closest('h1, h2, h3, header')
       ) {
         chip.remove();
@@ -1202,6 +1313,11 @@
    * Scans for individual comment rows and injects an inline "✨ AI Reply" button next to "Reply"
    */
   function scanAndInjectCommentActionButtons() {
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+    if (activePlat !== 'instagram') return;
+
     // Find reply buttons/links under individual comments
     const replyElements = document.querySelectorAll('button, span[role="button"], div[role="button"], span');
 
@@ -1238,9 +1354,11 @@
 
       if (!isReplyBtn) return;
 
-      // Never match inside a follow button, notifications panel, or header
+      // Never match inside a follow button, user recommendation card, notifications panel, or header
       if (
-        el.closest('button')?.textContent?.match(/follow\s*back|following|requested/i) ||
+        el.closest('[data-testid*="follow" i], [data-testid*="UserCell" i], aside, [aria-label*="follow" i]') ||
+        el.closest('button')?.textContent?.match(/follow/i) ||
+        el.textContent?.match(/^\s*follow\b/i) ||
         el.closest('header, nav')
       ) {
         return;
@@ -1582,6 +1700,53 @@
   function insertShortcutIntoComment(btn, inputEl) {
     if (!inputEl || inputEl.closest('.instareply-card-overlay') || inputEl.closest('.instareply-card')) return;
 
+    // Platform-specific toolbar injection for X, LinkedIn, Threads, and Facebook
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+
+    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
+      if (window.XAdapter.attachToToolbar) {
+        window.XAdapter.attachToToolbar(btn, inputEl);
+      } else {
+        const tb = window.XAdapter.findToolbarContainer(inputEl);
+        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
+          tb.appendChild(btn);
+        }
+      }
+      return;
+    } else if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
+      if (window.LinkedInAdapter.attachToToolbar) {
+        window.LinkedInAdapter.attachToToolbar(btn, inputEl);
+      } else {
+        const tb = window.LinkedInAdapter.findToolbarContainer(inputEl);
+        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
+          tb.appendChild(btn);
+        }
+      }
+      return;
+    } else if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
+      if (window.ThreadsAdapter.attachToToolbar) {
+        window.ThreadsAdapter.attachToToolbar(btn, inputEl);
+      } else {
+        const tb = window.ThreadsAdapter.findToolbarContainer(inputEl);
+        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
+          tb.appendChild(btn);
+        }
+      }
+      return;
+    } else if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
+      if (window.FacebookAdapter.attachToToolbar) {
+        window.FacebookAdapter.attachToToolbar(btn, inputEl);
+      } else {
+        const tb = window.FacebookAdapter.findToolbarContainer(inputEl);
+        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
+          tb.appendChild(btn);
+        }
+      }
+      return;
+    }
+
     const container = findCommentInputContainer(inputEl);
     if (!container) {
       inputEl.insertAdjacentElement('afterend', btn);
@@ -1677,6 +1842,33 @@
   function insertShortcutIntoDm(btn, inputEl) {
     if (!inputEl || inputEl.closest('.instareply-card-overlay') || inputEl.closest('.instareply-card')) return;
 
+    // Delegate multi-platform to their adapters
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+
+    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
+      if (window.XAdapter.attachToToolbar) {
+        window.XAdapter.attachToToolbar(btn, inputEl);
+        return;
+      }
+    } else if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
+      if (window.LinkedInAdapter.attachToToolbar) {
+        window.LinkedInAdapter.attachToToolbar(btn, inputEl);
+        return;
+      }
+    } else if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
+      if (window.ThreadsAdapter.attachToToolbar) {
+        window.ThreadsAdapter.attachToToolbar(btn, inputEl);
+        return;
+      }
+    } else if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
+      if (window.FacebookAdapter.attachToToolbar) {
+        window.FacebookAdapter.attachToToolbar(btn, inputEl);
+        return;
+      }
+    }
+
     const pill = findDmPillContainer(inputEl);
     if (!pill) {
       inputEl.insertAdjacentElement('afterend', btn);
@@ -1716,7 +1908,9 @@
     const otherButtons = Array.from(pill.querySelectorAll('button:not(.instareply-shortcut-btn):not(.instareply-quick-reply-btn), [role="button"]:not(.instareply-shortcut-btn):not(.instareply-quick-reply-btn), svg'))
       .filter(el => !inputEl.contains(el) && !el.closest('.instareply-shortcut-btn') && !el.closest('.instareply-composer-actions'));
 
-    if (otherButtons.length > 0) {
+    if (activePlat === 'x') {
+      btn.style.setProperty('right', '28px', 'important');
+    } else if (otherButtons.length > 0) {
       let rightOffset = 14;
       const pRect = pill.getBoundingClientRect();
       if (pRect.width > 0) {
@@ -1730,7 +1924,7 @@
           }
         });
       }
-      btn.style.setProperty('right', `${rightOffset}px`, 'important');
+      btn.style.setProperty('right', `${Math.max(rightOffset, 14)}px`, 'important');
     } else {
       btn.style.setProperty('right', '14px', 'important');
     }
@@ -2439,85 +2633,114 @@
       return;
     }
 
-    // Check if the parent comment container or form already has an InstaReply button
-    const commentContainer = findCommentInputContainer(inputEl);
-    if (commentContainer) {
-      if (!commentContainer.querySelector('.instareply-shortcut-btn')) {
-        commentContainer.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
-      } else {
-        const existingBtns = commentContainer.querySelectorAll('.instareply-shortcut-btn');
-        if (existingBtns.length > 0) {
-          // Prune any extra duplicates
-          for (let i = 1; i < existingBtns.length; i++) {
-            existingBtns[i].remove();
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+
+    if (activePlat === 'instagram') {
+      // Check if the parent comment container or form already has an InstaReply button
+      const commentContainer = findCommentInputContainer(inputEl);
+      if (commentContainer) {
+        if (!commentContainer.querySelector('.instareply-shortcut-btn')) {
+          commentContainer.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
+        } else {
+          const existingBtns = commentContainer.querySelectorAll('.instareply-shortcut-btn');
+          if (existingBtns.length > 0) {
+            // Prune any extra duplicates
+            for (let i = 1; i < existingBtns.length; i++) {
+              existingBtns[i].remove();
+            }
+            inputEl.dataset.instareplyInjected = 'true';
+            return;
           }
+        }
+      }
+
+      // Check if DM composer pill already has an InstaReply button
+      if (contextType === 'dm') {
+        const dmRow = findDmPillContainer(inputEl) || inputEl.closest('.ig-dm-composer') || inputEl.parentElement;
+        if (dmRow) {
+          if (!dmRow.querySelector('.instareply-shortcut-btn')) {
+            dmRow.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
+          } else {
+            const existingBtns = dmRow.querySelectorAll('.instareply-shortcut-btn');
+            if (existingBtns.length > 0) {
+              for (let i = 1; i < existingBtns.length; i++) {
+                existingBtns[i].remove();
+              }
+              inputEl.dataset.instareplyInjected = 'true';
+              return;
+            }
+          }
+        }
+      }
+
+      // Check if Story composer pill already has an InstaReply button
+      if (contextType === 'story') {
+        const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
+        if (storyRow) {
+          if (!storyRow.querySelector('.instareply-shortcut-btn')) {
+            storyRow.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
+          } else {
+            const existingBtns = storyRow.querySelectorAll('.instareply-shortcut-btn');
+            if (existingBtns.length > 0) {
+              for (let i = 1; i < existingBtns.length; i++) {
+                existingBtns[i].remove();
+              }
+              inputEl.dataset.instareplyInjected = 'true';
+              return;
+            }
+          }
+        }
+      }
+
+      if (inputEl.dataset.instareplyInjected === 'true') {
+        let stillHasBtn = false;
+        if (contextType === 'story') {
+          const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
+          if (storyRow && storyRow.querySelector('.instareply-shortcut-btn')) {
+            stillHasBtn = true;
+          }
+        } else if (contextType === 'dm') {
+          const dmRow = findDmPillContainer(inputEl) || inputEl.closest('.ig-dm-composer') || inputEl.parentElement;
+          if (dmRow && dmRow.querySelector('.instareply-shortcut-btn')) {
+            stillHasBtn = true;
+          }
+        } else {
+          const commentRow = findCommentInputContainer(inputEl) || inputEl.closest('form') || inputEl.parentElement;
+          if (commentRow && commentRow.querySelector('.instareply-shortcut-btn')) {
+            stillHasBtn = true;
+          }
+        }
+
+        if (stillHasBtn) {
+          return;
+        }
+        delete inputEl.dataset.instareplyInjected;
+      }
+    } else {
+      // Multi-Platform (X, LinkedIn, Threads, Facebook):
+      // Check if this input's toolbar already has an InstaReply button
+      const adapter = activePlat === 'x' ? window.XAdapter :
+                      activePlat === 'linkedin' ? window.LinkedInAdapter :
+                      activePlat === 'threads' ? window.ThreadsAdapter :
+                      activePlat === 'facebook' ? window.FacebookAdapter :
+                      activePlat === 'meta_business' ? window.MetaBusinessAdapter : null;
+      if (adapter && adapter.findToolbarContainer) {
+        const tb = adapter.findToolbarContainer(inputEl);
+        if (tb && tb.querySelector('.instareply-shortcut-btn')) {
           inputEl.dataset.instareplyInjected = 'true';
           return;
         }
       }
-    }
 
-    // Check if DM composer pill already has an InstaReply button
-    if (contextType === 'dm') {
-      const dmRow = findDmPillContainer(inputEl) || inputEl.closest('.ig-dm-composer') || inputEl.parentElement;
-      if (dmRow) {
-        if (!dmRow.querySelector('.instareply-shortcut-btn')) {
-          dmRow.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
-        } else {
-          const existingBtns = dmRow.querySelectorAll('.instareply-shortcut-btn');
-          if (existingBtns.length > 0) {
-            for (let i = 1; i < existingBtns.length; i++) {
-              existingBtns[i].remove();
-            }
-            inputEl.dataset.instareplyInjected = 'true';
-            return;
-          }
+      if (inputEl.dataset.instareplyInjected === 'true') {
+        const parentScope = inputEl.closest('form, div[role="dialog"], article, .feed-shared-update-v2, .comments-comment-box') || inputEl.parentElement;
+        if (parentScope && parentScope.querySelector('.instareply-shortcut-btn')) {
+          return;
         }
+        delete inputEl.dataset.instareplyInjected;
       }
-    }
-
-    // Check if Story composer pill already has an InstaReply button
-    if (contextType === 'story') {
-      const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
-      if (storyRow) {
-        if (!storyRow.querySelector('.instareply-shortcut-btn')) {
-          storyRow.querySelectorAll('.instareply-composer-actions').forEach(el => el.remove());
-        } else {
-          const existingBtns = storyRow.querySelectorAll('.instareply-shortcut-btn');
-          if (existingBtns.length > 0) {
-            for (let i = 1; i < existingBtns.length; i++) {
-              existingBtns[i].remove();
-            }
-            inputEl.dataset.instareplyInjected = 'true';
-            return;
-          }
-        }
-      }
-    }
-
-    if (inputEl.dataset.instareplyInjected === 'true') {
-      let stillHasBtn = false;
-      if (contextType === 'story') {
-        const storyRow = findStoryPillContainer(inputEl) || inputEl.closest('.ig-story-composer') || inputEl.parentElement;
-        if (storyRow && storyRow.querySelector('.instareply-shortcut-btn')) {
-          stillHasBtn = true;
-        }
-      } else if (contextType === 'dm') {
-        const dmRow = findDmPillContainer(inputEl) || inputEl.closest('.ig-dm-composer') || inputEl.parentElement;
-        if (dmRow && dmRow.querySelector('.instareply-shortcut-btn')) {
-          stillHasBtn = true;
-        }
-      } else {
-        const commentRow = findCommentInputContainer(inputEl) || inputEl.closest('form') || inputEl.parentElement;
-        if (commentRow && commentRow.querySelector('.instareply-shortcut-btn')) {
-          stillHasBtn = true;
-        }
-      }
-
-      if (stillHasBtn) {
-        return;
-      }
-      delete inputEl.dataset.instareplyInjected;
     }
 
     inputEl.dataset.instareplyInjected = 'true';
@@ -2546,7 +2769,7 @@
     if (contextType === 'story') {
       btn.classList.add('instareply-story-shortcut-btn');
     }
-    const contextLabel = contextType === 'story' ? 'Story Reply' : contextType === 'dm' ? 'DM Reply' : 'Comment';
+    const contextLabel = contextType === 'story' ? 'Story Reply' : contextType === 'dm' ? 'DM Reply' : (contextType === 'post_draft' ? 'Draft Post' : 'Comment');
     btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly into box (Shift+Click for Assistant Dialog)`;
     btn.innerHTML = SPARKLE_SVG;
 
@@ -2611,13 +2834,84 @@
     actionsWrapper.appendChild(quickBtn);
     actionsWrapper.appendChild(btn);
 
-    if (contextType === 'comment') {
+    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
+      const ok = window.XAdapter.attachToToolbar(actionsWrapper, inputEl);
+      if (!ok) {
+        delete inputEl.dataset.instareplyInjected;
+      }
+      bindDynamicActivation(inputEl, 'x', contextType);
+      return;
+    } else if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
+      const ok = window.LinkedInAdapter.attachToToolbar(actionsWrapper, inputEl);
+      if (!ok) {
+        delete inputEl.dataset.instareplyInjected;
+      }
+      bindDynamicActivation(inputEl, 'linkedin', contextType);
+      return;
+    } else if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
+      const ok = window.ThreadsAdapter.attachToToolbar(actionsWrapper, inputEl);
+      if (!ok) {
+        delete inputEl.dataset.instareplyInjected;
+      }
+      bindDynamicActivation(inputEl, 'threads', contextType);
+      return;
+    } else if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
+      const ok = window.FacebookAdapter.attachToToolbar(actionsWrapper, inputEl);
+      if (!ok) {
+        delete inputEl.dataset.instareplyInjected;
+      }
+      bindDynamicActivation(inputEl, 'facebook', contextType);
+      return;
+    } else if (activePlat === 'meta_business' && typeof window.MetaBusinessAdapter !== 'undefined') {
+      const ok = window.MetaBusinessAdapter.attachToToolbar(actionsWrapper, inputEl);
+      if (!ok) {
+        delete inputEl.dataset.instareplyInjected;
+      }
+      bindDynamicActivation(inputEl, 'meta_business', contextType);
+      return;
+    }
+
+    if (contextType === 'comment' || contextType === 'post_draft') {
       insertShortcutIntoComment(actionsWrapper, inputEl);
     } else if (contextType === 'story') {
       insertShortcutIntoStory(actionsWrapper, inputEl);
     } else {
       insertShortcutIntoDm(actionsWrapper, inputEl);
     }
+  }
+
+  /**
+   * Listens for user focus or click on dynamic composer inputs so that
+   * single-page apps (X, LinkedIn, Facebook, Threads, Meta Business) that mount toolbars lazily on focus
+   * will immediately have the AI button attached.
+   */
+  function bindDynamicActivation(inputEl, platform, contextType) {
+    if (!inputEl || inputEl.dataset.instareplyActivationBound) return;
+    inputEl.dataset.instareplyActivationBound = 'true';
+
+    const trigger = () => {
+      [80, 250, 600].forEach(delay => {
+        setTimeout(() => {
+          if (!document.body.contains(inputEl)) return;
+          const adapter = platform === 'x' ? window.XAdapter :
+                          platform === 'linkedin' ? window.LinkedInAdapter :
+                          platform === 'facebook' ? window.FacebookAdapter :
+                          platform === 'threads' ? window.ThreadsAdapter :
+                          platform === 'meta_business' ? window.MetaBusinessAdapter : null;
+          if (adapter) {
+            const tb = adapter.findToolbarContainer ? adapter.findToolbarContainer(inputEl) : null;
+            if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
+              injectShortcutButton(inputEl, contextType);
+            } else if (!tb) {
+              injectShortcutButton(inputEl, contextType);
+            }
+          }
+        }, delay);
+      });
+    };
+
+    inputEl.addEventListener('focus', trigger, { passive: true });
+    inputEl.addEventListener('click', trigger, { passive: true });
   }
 
   /**
@@ -4434,6 +4728,72 @@
     // Read user's existing draft text in the input
     const userDraftHint = getElementValue(inputEl).trim();
 
+    // Multi-platform Context Extraction (X/Twitter, LinkedIn, Facebook)
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+
+    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
+      const xContext = window.XAdapter.extractContext(inputEl, postContainer);
+      return {
+        ...xContext,
+        contextType: xContext.contextType || contextType || 'comment',
+        author: xContext.author || '',
+        incomingText: xContext.incomingText || '',
+        postCaption: xContext.postCaption || '',
+        postAuthor: xContext.postAuthor || '',
+        postVisuals: xContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
+        isSpecificCommentReply: Boolean(xContext.incomingText && xContext.author),
+        userDraftHint: userDraftHint,
+        platform: 'x'
+      };
+    }
+    if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
+      const liContext = window.LinkedInAdapter.extractContext(inputEl, postContainer);
+      return {
+        ...liContext,
+        contextType: liContext.contextType || contextType || 'comment',
+        author: liContext.author || '',
+        incomingText: liContext.incomingText || '',
+        postCaption: liContext.postCaption || '',
+        postAuthor: liContext.postAuthor || '',
+        postVisuals: liContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
+        isSpecificCommentReply: Boolean(liContext.incomingText && liContext.author),
+        userDraftHint: userDraftHint,
+        platform: 'linkedin'
+      };
+    }
+    if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
+      const thContext = window.ThreadsAdapter.extractContext(inputEl, postContainer);
+      return {
+        ...thContext,
+        contextType: thContext.contextType || contextType || 'comment',
+        author: thContext.author || '',
+        incomingText: thContext.incomingText || '',
+        postCaption: thContext.postCaption || '',
+        postAuthor: thContext.postAuthor || '',
+        postVisuals: thContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
+        isSpecificCommentReply: Boolean(thContext.incomingText && thContext.author),
+        userDraftHint: userDraftHint,
+        platform: 'threads'
+      };
+    }
+    if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
+      const fbContext = window.FacebookAdapter.extractContext(inputEl, postContainer);
+      return {
+        ...fbContext,
+        contextType: fbContext.contextType || contextType || 'comment',
+        author: fbContext.author || '',
+        incomingText: fbContext.incomingText || '',
+        postCaption: fbContext.postCaption || '',
+        postAuthor: fbContext.postAuthor || '',
+        postVisuals: fbContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
+        isSpecificCommentReply: Boolean(fbContext.incomingText && fbContext.author),
+        userDraftHint: userDraftHint,
+        platform: 'facebook'
+      };
+    }
+
     let incomingText = '';
     let author = '';
     let postCaption = '';
@@ -4545,6 +4905,7 @@
     const isReplyingToComment = Boolean(incomingText && author);
 
     return {
+      platform: 'instagram',
       contextType,
       incomingText,
       author,
@@ -4665,6 +5026,7 @@
         console.log('[InstaReply AI] ⚡ Quick Reply served from instant cache!');
       } else {
         const payload = {
+          platform: contextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram'),
           contextType: contextData.contextType || contextType,
           replyMode: contextData.replyMode || (contextType === 'story' ? 'story_reply' : contextType === 'dm' ? 'dm_reply' : 'post_comment'),
           isCurrentUserPostAuthor: Boolean(contextData.isCurrentUserPostAuthor),
@@ -4812,10 +5174,18 @@
     let requestPromise = null;
     const thisGenId = ++currentGenerationId;
 
+    const topicInput = activeCard ? activeCard.querySelector('.instareply-topic-input') : null;
+    if (topicInput && topicInput.value.trim()) {
+      lastContextData.draftNotes = topicInput.value.trim();
+      lastContextData.userDraftHint = topicInput.value.trim();
+      lastContextData.incomingText = topicInput.value.trim();
+    }
+
     const normalizedTone = normalizeToneName(currentTone);
     const normalizedStance = (currentStance || 'positive').toLowerCase().trim();
 
     const payload = {
+      platform: lastContextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram'),
       contextType: lastContextData.contextType,
       replyMode: lastContextData.replyMode || 'post_comment',
       isCurrentUserPostAuthor: Boolean(lastContextData.isCurrentUserPostAuthor),
@@ -5564,6 +5934,7 @@
     }
 
     const hasHint = Boolean(context.userDraftHint);
+    const isPostDraft = context.contextType === 'post_draft' || context.replyMode === 'post_draft';
     const isStory = context.contextType === 'story' || context.replyMode === 'story_reply';
     const hasVisual = Boolean(context.postVisuals?.thumbnailUrl || context.postVisuals?.description);
     const hasPostCaption = Boolean(context.postCaption);
@@ -5575,7 +5946,7 @@
       <div class="instareply-minimized-bar" title="Click to expand InstaReply AI">
         <div class="instareply-minimized-left">
           <span class="instareply-drag-handle">⠿</span>
-          <span class="instareply-title">✨ InstaReply</span>
+          <span class="instareply-title">${isPostDraft ? '✨ Post Drafter' : '✨ InstaReply'}</span>
           <span class="instareply-minimized-pill">Ready</span>
         </div>
         <div class="instareply-header-actions">
@@ -5588,8 +5959,8 @@
       <div class="instareply-card-header" title="Drag by header to reposition">
         <div class="instareply-header-left">
           <span class="instareply-drag-handle">⠿</span>
-          <span class="instareply-title">InstaReply AI</span>
-          <span class="instareply-model-badge">AI Assistant</span>
+          <span class="instareply-title">${isPostDraft ? '✨ Draft New Post' : 'InstaReply AI'}</span>
+          <span class="instareply-model-badge">${isPostDraft ? (context.platform ? context.platform.toUpperCase() : 'Post') : 'AI Assistant'}</span>
         </div>
         <div class="instareply-header-actions">
           <a href="https://github.com/sponsors/seventhmoon" target="_blank" rel="noopener noreferrer" class="instareply-header-sponsor-btn" title="Sponsor InstaReply AI on GitHub">💖</a>
@@ -5603,7 +5974,12 @@
         <div class="instareply-context-inspector">
           <div class="instareply-inspector-header">
             <div class="instareply-inspector-target">
-              ${context.relationshipSummary ? `
+              ${isPostDraft ? `
+                <span class="instareply-inspector-pill role-pill">
+                  <span class="pill-icon">🚀</span>
+                  <span class="pill-text">Drafting ${(context.platform ? context.platform.toUpperCase() : 'Social')} Post</span>
+                </span>
+              ` : (context.relationshipSummary ? `
                 <span class="instareply-inspector-pill role-pill" title="${escapeHTML(context.relationshipSummary)}">
                   <span class="pill-icon">${context.replyMode === 'comment_reply' ? '💬' : (isStory ? '📸' : context.contextType === 'dm' ? '✉️' : '📝')}</span>
                   <span class="pill-text">${escapeHTML(context.relationshipSummary)}</span>
@@ -5613,7 +5989,7 @@
                   <span class="pill-icon">✨</span>
                   <span class="pill-text">AI Reply Assistant</span>
                 </span>
-              `}
+              `)}
             </div>
 
             ${hasDetails ? `
@@ -5627,7 +6003,7 @@
           <!-- Intelligence & Metadata Sub-Row (Plenty of horizontal room) -->
           <div class="instareply-insight-bar">
             <!-- Sentiment Pill -->
-            <span class="instareply-sentiment-pill" title="Detected Sentiment">🔍 Analyzing...</span>
+            <span class="instareply-sentiment-pill" title="Status">${isPostDraft ? '💡 Post Crafting' : '🔍 Analyzing...'}</span>
 
             <!-- AI Vision Mini Pill -->
             ${hasVisual ? `
@@ -5638,13 +6014,24 @@
             ` : ''}
 
             <!-- Hint Pill -->
-            ${hasHint ? `
+            ${hasHint && !isPostDraft ? `
               <span class="instareply-inspector-pill hint-pill" title="Draft Hint: ${escapeHTML(context.userDraftHint)}">
                 💡 <span class="pill-text">Draft Hint</span>
               </span>
             ` : ''}
           </div>
         </div>
+
+        ${isPostDraft ? `
+          <!-- Topic / Ideas Input for Post Drafting -->
+          <div class="instareply-draft-topic-wrapper">
+            <div class="instareply-control-header">
+              <span class="instareply-control-label">💡 Topic / Rough Ideas</span>
+              <span class="instareply-topic-hint">Press Cmd+Enter to draft</span>
+            </div>
+            <textarea class="instareply-topic-input" placeholder="e.g. Share 3 actionable prompt engineering techniques for AI creators...">${escapeHTML(context.draftNotes || context.incomingText || context.userDraftHint || '')}</textarea>
+          </div>
+        ` : ''}
 
         <!-- Collapsible Context Detail Drawer (Hidden by default to keep card ultra-compact) -->
         <div class="instareply-context-drawer hidden">
@@ -5684,7 +6071,7 @@
           ` : ''}
 
           <!-- User Draft Hint Banner -->
-          ${hasHint ? `
+          ${hasHint && !isPostDraft ? `
             <div class="instareply-hint-banner">
               <span>💡</span>
               <div><strong>Using Draft Hint:</strong> "${escapeHTML(context.userDraftHint)}"</div>
@@ -5692,22 +6079,34 @@
           ` : ''}
         </div>
 
-        <!-- Reply Stance (Positive / Neutral / Negative) -->
+        <!-- Reply Stance or Post Framework -->
         <div class="instareply-stance-wrapper">
           <div class="instareply-control-header">
-            <span class="instareply-control-label">Reply Stance</span>
-            <span class="instareply-stance-hint" id="instareply-stance-hint">Encouraging & warm</span>
+            <span class="instareply-control-label">${isPostDraft ? 'Post Framework' : 'Reply Stance'}</span>
+            <span class="instareply-stance-hint" id="instareply-stance-hint">${isPostDraft ? 'Attention Hook & Value' : 'Encouraging & warm'}</span>
           </div>
           <div class="instareply-stance-row">
-            <button type="button" class="instareply-stance-btn" data-stance="positive" title="Positive: Warm, supportive, agreeable">
-              🟢 Positive
-            </button>
-            <button type="button" class="instareply-stance-btn" data-stance="neutral" title="Neutral: Balanced, factual, objective">
-              ⚪ Neutral
-            </button>
-            <button type="button" class="instareply-stance-btn" data-stance="negative" title="Negative: Disagree, decline, or set firm boundaries">
-              🔴 Negative
-            </button>
+            ${isPostDraft ? `
+              <button type="button" class="instareply-stance-btn" data-stance="positive" title="Hook & Story: Scroll-stopping opening with authentic narrative">
+                💡 Hook
+              </button>
+              <button type="button" class="instareply-stance-btn" data-stance="neutral" title="Key Insights: Clear bullet points and actionable takeaways">
+                📊 Insights
+              </button>
+              <button type="button" class="instareply-stance-btn" data-stance="negative" title="Contrarian / Debate: Bold take or thought-provoking discussion">
+                🔥 Hot Take
+              </button>
+            ` : `
+              <button type="button" class="instareply-stance-btn" data-stance="positive" title="Positive: Warm, supportive, agreeable">
+                🟢 Positive
+              </button>
+              <button type="button" class="instareply-stance-btn" data-stance="neutral" title="Neutral: Balanced, factual, objective">
+                ⚪ Neutral
+              </button>
+              <button type="button" class="instareply-stance-btn" data-stance="negative" title="Negative: Disagree, decline, or set firm boundaries">
+                🔴 Negative
+              </button>
+            `}
           </div>
         </div>
 
@@ -5781,13 +6180,13 @@
             <span class="instareply-loading-text">Crafting authentic AI reply...</span>
           </div>
           <div class="instareply-error-container hidden"></div>
-          <textarea class="instareply-output-textarea" placeholder="Drafting reply..."></textarea>
+          <textarea class="instareply-output-textarea" placeholder="${isPostDraft ? 'Drafting post...' : 'Drafting reply...'}"></textarea>
         </div>
       </div>
 
       <div class="instareply-card-footer">
         <div class="instareply-footer-left">
-          <button type="button" class="instareply-btn instareply-btn-regen" title="Generate another reply variation">
+          <button type="button" class="instareply-btn instareply-btn-regen" title="Generate another variation">
             🔄 Regen
           </button>
           <button type="button" class="instareply-btn instareply-btn-copy" title="Copy to clipboard">
@@ -5799,8 +6198,8 @@
             <span class="instareply-dot"></span>
           </div>
         </div>
-        <button type="button" class="instareply-btn instareply-btn-insert" title="Insert directly into Instagram reply box (Enter)">
-          Insert Reply ↵
+        <button type="button" class="instareply-btn instareply-btn-insert" title="Insert directly into composer (Enter)">
+          ${isPostDraft ? 'Insert Post ↵' : 'Insert Reply ↵'}
         </button>
       </div>
       <div class="instareply-resize-grip" title="Drag to resize assistant window"></div>
@@ -5814,6 +6213,30 @@
         const isHidden = drawer.classList.toggle('hidden');
         const caret = toggleBtn.querySelector('.toggle-caret');
         if (caret) caret.textContent = isHidden ? '▾' : '▴';
+      });
+    }
+
+    // Connect Topic Input listeners for post drafting
+    const topicInput = card.querySelector('.instareply-topic-input');
+    if (topicInput) {
+      topicInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          if (lastContextData) {
+            lastContextData.draftNotes = topicInput.value.trim();
+            lastContextData.userDraftHint = topicInput.value.trim();
+            lastContextData.incomingText = topicInput.value.trim();
+          }
+          currentVariation = 0;
+          executeReplyGeneration();
+        }
+      });
+      topicInput.addEventListener('input', () => {
+        if (lastContextData) {
+          lastContextData.draftNotes = topicInput.value.trim();
+          lastContextData.userDraftHint = topicInput.value.trim();
+          lastContextData.incomingText = topicInput.value.trim();
+        }
       });
     }
 
@@ -6219,25 +6642,32 @@
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
     } else if (element.isContentEditable || element.getAttribute('contenteditable') === 'true') {
-      // React ContentEditable div (Instagram DM and Feed Comments)
-      element.innerText = textToInsert;
+      // React, Draft.js (X/Twitter), Lexical (Facebook, LinkedIn) ContentEditable
+      let execSuccess = false;
+      try {
+        execSuccess = document.execCommand('insertText', false, textToInsert);
+      } catch (_) {}
 
-      // Dispatch input events
-      const inputEvent = new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: textToInsert
-      });
-      element.dispatchEvent(inputEvent);
+      if (!execSuccess || !element.innerText.includes(textToInsert.slice(0, 10))) {
+        element.innerText = textToInsert;
 
-      // Move cursor to end
-      const range = document.createRange();
-      const sel = window.getSelection();
-      range.selectNodeContents(element);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
+        // Dispatch input events
+        const inputEvent = new InputEvent('input', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: textToInsert
+        });
+        element.dispatchEvent(inputEvent);
+
+        // Move cursor to end
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
     }
 
     element.focus();
