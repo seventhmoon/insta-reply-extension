@@ -13,6 +13,7 @@
   let lastContextData = null;
   let lastActiveCommentContext = null;
   let cachedConfig = null;
+  let isQuickReplyActive = false;
 
   // In-memory predictive cache for instant comment replies
   const replyCache = new Map();
@@ -4938,54 +4939,87 @@
   }
 
   /**
+   * Trims text to fit platform length constraints (e.g. 280 for X, 500 for Threads)
+   */
+  function enforcePlatformLengthLimit(text, limit) {
+    if (!text || typeof text !== 'string' || !limit || text.length <= limit) {
+      return text;
+    }
+    const trimmed = text.slice(0, limit);
+    const lastSentenceEnd = Math.max(
+      trimmed.lastIndexOf('. '),
+      trimmed.lastIndexOf('! '),
+      trimmed.lastIndexOf('? '),
+      trimmed.lastIndexOf('.\n'),
+      trimmed.lastIndexOf('!\n'),
+      trimmed.lastIndexOf('?\n')
+    );
+    if (lastSentenceEnd > limit * 0.6) {
+      return trimmed.slice(0, lastSentenceEnd + 1).trim();
+    }
+    const lastSpace = trimmed.lastIndexOf(' ');
+    if (lastSpace > limit * 0.7) {
+      return trimmed.slice(0, lastSpace).trim();
+    }
+    return trimmed.trim();
+  }
+
+  /**
    * ⚡ 1-Click Quick Reply (Direct Insert, No Popup Dialog)
    * Referencing ChatGPT AI for Instagram (MailMagic)
    * Generates AI reply in background and directly inserts into target input field.
    */
   async function generateQuickReply({ targetInput = null, contextType = 'comment', triggerBtn = null, explicitContext = null, explicitTone = null } = {}) {
-    if (!targetInput) {
-      targetInput = document.querySelector(`
-        form div[role="textbox"][contenteditable="true"],
-        div[role="textbox"][contenteditable="true"],
-        div[contenteditable="true"][aria-label*="comment" i],
-        div[contenteditable="true"][data-lexical-editor="true"],
-        .ig-dm-composer div[contenteditable="true"],
-        form textarea,
-        textarea
-      `);
-    }
-
-    if (!targetInput) {
-      if (triggerBtn) {
-        triggerBtn.classList.add('is-error');
-        setTimeout(() => triggerBtn.classList.remove('is-error'), 1500);
-      }
-      showQuickReplyToast('⚠️ Could not locate Instagram reply field.');
+    if (isQuickReplyActive) {
+      console.log('[InstaReply AI] Quick reply already in-flight, skipping duplicate trigger.');
       return;
     }
+    isQuickReplyActive = true;
 
-    // Save initial button state for visual feedback
     const originalContent = triggerBtn ? triggerBtn.innerHTML : null;
-    const isIconOnly = triggerBtn ? (
-      triggerBtn.classList.contains('instareply-shortcut-btn') ||
-      triggerBtn.classList.contains('instareply-icon-only') ||
-      triggerBtn.classList.contains('instareply-single-icon') ||
-      Boolean(triggerBtn.closest('.instareply-compact-group')) ||
-      !triggerBtn.querySelector('.instareply-chip-label')
-    ) : false;
-
-    if (triggerBtn) {
-      triggerBtn.classList.remove('is-success', 'is-error');
-      triggerBtn.classList.add('is-loading');
-      triggerBtn.disabled = true;
-      if (isIconOnly) {
-        triggerBtn.innerHTML = '<span class="instareply-btn-spinner"></span>';
-      } else {
-        triggerBtn.innerHTML = '<span class="instareply-btn-spinner"></span> <span>Drafting...</span>';
-      }
-    }
+    let isIconOnly = false;
 
     try {
+      if (!targetInput) {
+        targetInput = document.querySelector(`
+          form div[role="textbox"][contenteditable="true"],
+          div[role="textbox"][contenteditable="true"],
+          div[contenteditable="true"][aria-label*="comment" i],
+          div[contenteditable="true"][data-lexical-editor="true"],
+          .ig-dm-composer div[contenteditable="true"],
+          form textarea,
+          textarea
+        `);
+      }
+
+      if (!targetInput) {
+        if (triggerBtn) {
+          triggerBtn.classList.add('is-error');
+          setTimeout(() => triggerBtn.classList.remove('is-error'), 1500);
+        }
+        showQuickReplyToast('⚠️ Could not locate reply field.');
+        return;
+      }
+
+      // Save initial button state for visual feedback
+      isIconOnly = triggerBtn ? (
+        triggerBtn.classList.contains('instareply-shortcut-btn') ||
+        triggerBtn.classList.contains('instareply-icon-only') ||
+        triggerBtn.classList.contains('instareply-single-icon') ||
+        Boolean(triggerBtn.closest('.instareply-compact-group')) ||
+        !triggerBtn.querySelector('.instareply-chip-label')
+      ) : false;
+
+      if (triggerBtn) {
+        triggerBtn.classList.remove('is-success', 'is-error');
+        triggerBtn.classList.add('is-loading');
+        triggerBtn.disabled = true;
+        if (isIconOnly) {
+          triggerBtn.innerHTML = '<span class="instareply-btn-spinner"></span>';
+        } else {
+          triggerBtn.innerHTML = '<span class="instareply-btn-spinner"></span> <span>Drafting...</span>';
+        }
+      }
       const config = await getConfig();
       const extracted = extractContext(targetInput, contextType);
 
@@ -5025,8 +5059,12 @@
         replyText = cached.reply;
         console.log('[InstaReply AI] ⚡ Quick Reply served from instant cache!');
       } else {
+        const activePlat = contextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+        const effectiveLimit = contextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : undefined);
+
         const payload = {
-          platform: contextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram'),
+          platform: activePlat,
+          charLimit: effectiveLimit,
           contextType: contextData.contextType || contextType,
           replyMode: contextData.replyMode || (contextType === 'story' ? 'story_reply' : contextType === 'dm' ? 'dm_reply' : 'post_comment'),
           isCurrentUserPostAuthor: Boolean(contextData.isCurrentUserPostAuthor),
@@ -5073,7 +5111,14 @@
       }
 
       if (replyText) {
-        // Direct insertion into Instagram input without any popup dialog!
+        // Enforce strict limit for X (280) and Threads (500)
+        const activePlat = contextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+        const effectiveLimit = contextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+        if (effectiveLimit && replyText.length > effectiveLimit) {
+          replyText = enforcePlatformLengthLimit(replyText, effectiveLimit);
+        }
+
+        // Direct insertion into input without any popup dialog!
         insertTextIntoInstagramInput(targetInput, replyText);
 
         // Ensure focus on input so user can review or press Enter to post
@@ -5119,6 +5164,8 @@
         }, 2000);
       }
       showQuickReplyToast(`⚠️ Quick Reply: ${err.message || 'Error generating reply'}`);
+    } finally {
+      isQuickReplyActive = false;
     }
   }
 
@@ -5184,8 +5231,12 @@
     const normalizedTone = normalizeToneName(currentTone);
     const normalizedStance = (currentStance || 'positive').toLowerCase().trim();
 
+    const activePlat = lastContextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+    const effectiveLimit = lastContextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : undefined);
+
     const payload = {
-      platform: lastContextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram'),
+      platform: activePlat,
+      charLimit: effectiveLimit,
       contextType: lastContextData.contextType,
       replyMode: lastContextData.replyMode || 'post_comment',
       isCurrentUserPostAuthor: Boolean(lastContextData.isCurrentUserPostAuthor),
@@ -5672,9 +5723,16 @@
     if (errorContainer) errorContainer.classList.add('hidden');
     if (outputArea) {
       outputArea.classList.remove('hidden');
-      outputArea.value = data.reply || '';
+      let text = data.reply || '';
+      const activePlat = lastContextData?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+      const limit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+      if (limit && text.length > limit) {
+        text = enforcePlatformLengthLimit(text, limit);
+      }
+      outputArea.value = text;
       outputArea.focus();
       updateVariationDots(activeCard, currentVariation);
+      updateCardCharCount(activeCard);
     }
 
     if (modelBadge) {
@@ -6192,6 +6250,8 @@
           <button type="button" class="instareply-btn instareply-btn-copy" title="Copy to clipboard">
             📋 Copy
           </button>
+          <div class="instareply-char-badge" id="instareply-char-badge" title="Character count">0/280</div>
+          <button type="button" class="instareply-btn instareply-btn-trim hidden" id="instareply-btn-trim" title="Trim cleanly to fit platform limit">✂️ Trim</button>
           <div class="instareply-var-dots" id="instareply-var-dots" title="Variation indicators">
             <span class="instareply-dot active"></span>
             <span class="instareply-dot"></span>
@@ -6457,13 +6517,72 @@
       });
     }
 
+    // Real-time character limit and counter listeners
+    const outputTextarea = card.querySelector('.instareply-output-textarea');
+    if (outputTextarea) {
+      outputTextarea.addEventListener('input', () => {
+        updateCardCharCount(card);
+      });
+    }
+
+    const trimBtn = card.querySelector('#instareply-btn-trim');
+    if (trimBtn) {
+      trimBtn.addEventListener('click', () => {
+        const textarea = card.querySelector('.instareply-output-textarea');
+        if (!textarea) return;
+        const activePlat = lastContextData?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+        const limit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : 280);
+        textarea.value = enforcePlatformLengthLimit(textarea.value, limit);
+        updateCardCharCount(card);
+      });
+    }
+
     // Make card draggable across screen
     makeCardDraggable(card);
 
     // Make card resizable with corner grip
     makeCardResizable(card);
 
+    // Initialize character counter
+    updateCardCharCount(card);
+
     return card;
+  }
+
+  /**
+   * Updates live character counter badge and auto-trim button on assistant card
+   */
+  function updateCardCharCount(card) {
+    if (!card) return;
+    const textarea = card.querySelector('.instareply-output-textarea');
+    const badge = card.querySelector('#instareply-char-badge');
+    const trimBtn = card.querySelector('#instareply-btn-trim');
+    if (!textarea || !badge) return;
+
+    const text = textarea.value || '';
+    const charCount = text.length;
+    const activePlat = lastContextData?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+    const charLimit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+
+    badge.classList.remove('is-near-limit', 'is-over-limit');
+
+    if (charLimit) {
+      if (charCount > charLimit) {
+        badge.classList.add('is-over-limit');
+        badge.textContent = `${charCount}/${charLimit} (+${charCount - charLimit})`;
+        if (trimBtn) trimBtn.classList.remove('hidden');
+      } else if (charCount >= charLimit - 30) {
+        badge.classList.add('is-near-limit');
+        badge.textContent = `${charCount}/${charLimit}`;
+        if (trimBtn) trimBtn.classList.add('hidden');
+      } else {
+        badge.textContent = `${charCount}/${charLimit}`;
+        if (trimBtn) trimBtn.classList.add('hidden');
+      }
+    } else {
+      badge.textContent = `${charCount} chars`;
+      if (trimBtn) trimBtn.classList.add('hidden');
+    }
   }
 
   /**
@@ -6598,6 +6717,13 @@
           textToInsert = `${authorMention} ${textToInsert}`;
         }
       }
+    }
+
+    // Strictly enforce platform character limit on insertion (e.g. 280 on X, 500 on Threads)
+    const activePlat = ctx?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
+    const effectiveLimit = ctx?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+    if (effectiveLimit && textToInsert.length > effectiveLimit) {
+      textToInsert = enforcePlatformLengthLimit(textToInsert, effectiveLimit);
     }
 
     element.focus();

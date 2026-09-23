@@ -1618,6 +1618,58 @@ form:has(.instareply-shortcut-btn) > div {
   transform: translateY(-1px);
 }
 
+/* Live Character Limit & Counter Badge */
+.instareply-char-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9ca3af;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.2s ease;
+  align-self: center;
+}
+
+.instareply-char-badge.is-near-limit {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.instareply-char-badge.is-over-limit {
+  background: rgba(239, 68, 68, 0.22);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.55);
+  font-weight: 700;
+  animation: instareplyLimitPulse 1.6s infinite;
+}
+
+.instareply-btn-trim {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 4px 8px;
+  font-size: 10px;
+  border-radius: 6px;
+  align-self: center;
+}
+
+.instareply-btn-trim:hover {
+  background: rgba(239, 68, 68, 0.38);
+  color: #ffffff;
+}
+
+@keyframes instareplyLimitPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+
 /* Shimmer Skeleton Loading */
 .instareply-shimmer-box {
   width: 82%;

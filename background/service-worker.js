@@ -494,6 +494,34 @@ async function handleTestConnection(config) {
 }
 
 /**
+ * Enforces strict character limits for platforms like X (280) and Threads (500)
+ */
+function enforcePlatformLengthLimit(text, limit) {
+  if (!text || typeof text !== 'string' || !limit || text.length <= limit) {
+    return text;
+  }
+  const trimmed = text.slice(0, limit);
+  // Find sentence end if within reasonable proximity
+  const lastSentenceEnd = Math.max(
+    trimmed.lastIndexOf('. '),
+    trimmed.lastIndexOf('! '),
+    trimmed.lastIndexOf('? '),
+    trimmed.lastIndexOf('.\n'),
+    trimmed.lastIndexOf('!\n'),
+    trimmed.lastIndexOf('?\n')
+  );
+  if (lastSentenceEnd > limit * 0.6) {
+    return trimmed.slice(0, lastSentenceEnd + 1).trim();
+  }
+  // Find word boundary
+  const lastSpace = trimmed.lastIndexOf(' ');
+  if (lastSpace > limit * 0.7) {
+    return trimmed.slice(0, lastSpace).trim();
+  }
+  return trimmed.trim();
+}
+
+/**
  * Main orchestrator for sentiment analysis & contextual reply generation
  */
 async function handleGenerateReply(payload) {
@@ -610,6 +638,19 @@ async function handleGenerateReply(payload) {
       };
     } else {
       return { success: false, error: `Unsupported provider: ${provider}` };
+    }
+
+    // Strictly enforce platform character limits (e.g. 280 for X, 500 for Threads)
+    const effectiveCharLimit = payload.charLimit || (platform === 'x' ? 280 : platform === 'threads' ? 500 : null);
+    if (result && result.success && effectiveCharLimit) {
+      if (result.reply) {
+        result.reply = enforcePlatformLengthLimit(result.reply, effectiveCharLimit);
+      }
+      if (result.toneDrafts && typeof result.toneDrafts === 'object') {
+        for (const [toneKey, draft] of Object.entries(result.toneDrafts)) {
+          result.toneDrafts[toneKey] = enforcePlatformLengthLimit(draft, effectiveCharLimit);
+        }
+      }
     }
 
     if (result && result.success && isCacheEligible && cacheKey) {
@@ -1231,7 +1272,7 @@ function buildStructuredPrompt({
     platformGoal = isPostDraft
       ? 'Your goal is to craft a viral, high-engagement, and authentic Tweet or post for X / Twitter.'
       : 'Your goal is to craft a high-quality, authentic Tweet or reply.';
-    platformLengthConstraint = 'CRITICAL CONSTRAINT: Keep strictly under 280 characters. Start with a magnetic hook line. Punchy, direct, witty, and conversational authentic to X / Twitter.';
+    platformLengthConstraint = 'CRITICAL HARD LIMIT FOR X: The entire tweet/reply MUST be strictly under 280 characters total (including emojis, spaces, and punctuation). Tweets exceeding 280 characters will be rejected by X. Aim for 140 to 250 characters. Start with a magnetic hook line. Punchy, direct, witty, and conversational authentic to X / Twitter.';
   } else if (platform === 'linkedin') {
     platformIntro = isPostDraft
       ? 'You are an expert LinkedIn thought leadership and professional content strategist.'
@@ -1481,7 +1522,7 @@ You MUST respond with valid JSON matching this exact structure:
   "sentimentLabel": "Friendly & Positive" (short 2-4 word summary with sentiment emoji),
   "topics": ["Key Topic 1", "Key Topic 2"],
   "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining."${spamShieldSchema},
-  "reply": "Your drafted reply text here in ${primaryTone} style"${multiToneSchema}
+  "reply": "Your drafted reply text here${platform === 'x' ? ' strictly under 280 characters' : ''} in ${primaryTone} style"${multiToneSchema}
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
 }

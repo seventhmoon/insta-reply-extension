@@ -318,6 +318,20 @@
         charLimit: 280, // X/Twitter tweet character limit
         isDirectMessage: isDM
       };
+    },
+
+    /**
+     * Inserts text into X tweet composer with strict 280-character limit enforcement
+     */
+    insertText(inputEl, text) {
+      if (!inputEl || !text) return false;
+      const safeText = text.length > 280 ? text.slice(0, 280) : text;
+      inputEl.focus();
+      try {
+        return document.execCommand('insertText', false, safeText);
+      } catch (_) {
+        return false;
+      }
     }
   };
 

@@ -1864,6 +1864,15 @@ Hope this helps!
     assert.ok(cssCode.includes('.instareply-quick-toast'), 'CSS must style .instareply-quick-toast');
     assert.ok(cssCode.includes('.instareply-btn-spinner'), 'CSS must define .instareply-btn-spinner for drafting state');
     assert.ok(cssCode.includes('min-width: 140px !important'), 'CSS must protect comment textarea container from collapsing');
+    assert.ok(contentCode.includes('let isQuickReplyActive = false;'), 'content.js must declare isQuickReplyActive in top-level state scope');
+  });
+
+  runTest('QuickReplyInFlightLockSafety', 'Quick reply locks in-flight duplicate calls and resets flag reliably in finally block', () => {
+    const contentCode = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+
+    assert.ok(contentCode.includes('let isQuickReplyActive = false;'), 'isQuickReplyActive must be explicitly declared to prevent ReferenceError');
+    assert.ok(contentCode.includes('if (isQuickReplyActive) {'), 'generateQuickReply must guard against concurrent calls');
+    assert.ok(contentCode.includes('finally {\n      isQuickReplyActive = false;\n    }'), 'generateQuickReply must reset isQuickReplyActive in finally block');
   });
 
   runTest('QuickReplyDirectInsertionSimulation', 'Simulating quick reply inserts generated text directly into target input without creating card dialog', () => {
@@ -2608,6 +2617,41 @@ Hope this helps!
     assert.ok(mbCode.includes('button[aria-label*="send" i]'), 'MetaBusinessAdapter must detect Send button in toolbar');
     assert.ok(mbCode.includes('extractContext(inputEl)'), 'MetaBusinessAdapter must implement extractContext');
     assert.ok(mbCode.includes('insertText(inputEl, text'), 'MetaBusinessAdapter must implement insertText');
+  });
+
+  runTest('XCharacterLimitEnforcement', 'Strictly enforces 280-character limit for X across prompt, post-processor, and UI', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const xCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/x-adapter.js'), 'utf8');
+
+    // 1. Service worker prompt and post-processing bounds
+    assert.ok(swCode.includes('CRITICAL HARD LIMIT FOR X'), 'Service worker prompt must declare CRITICAL HARD LIMIT FOR X');
+    assert.ok(swCode.includes('enforcePlatformLengthLimit(result.reply, effectiveCharLimit)'), 'Service worker must post-process and trim reply to limit');
+    assert.ok(swCode.includes('enforcePlatformLengthLimit(draft, effectiveCharLimit)'), 'Service worker must trim toneDrafts to limit');
+
+    // 2. Content script insertion and UI counter
+    assert.ok(contentJs.includes('instareply-char-badge'), 'Content script must render character limit badge');
+    assert.ok(contentJs.includes('instareply-btn-trim'), 'Content script must render auto-trim button for over-limit text');
+    assert.ok(contentJs.includes('updateCardCharCount'), 'Content script must implement updateCardCharCount');
+    assert.ok(contentJs.includes('enforcePlatformLengthLimit(textToInsert, effectiveLimit)'), 'Content script must enforce 280 limit before insertion into X');
+
+    // 3. X Adapter
+    assert.ok(xCode.includes('insertText(inputEl, text)'), 'XAdapter must implement insertText');
+    assert.ok(xCode.includes('text.length > 280'), 'XAdapter must enforce 280-character limit in insertText');
+
+    // 4. Test enforcePlatformLengthLimit logic directly
+    const evalEnforce = new Function(`
+      ${swCode.slice(swCode.indexOf('function enforcePlatformLengthLimit('), swCode.indexOf('async function handleGenerateReply'))}
+      return enforcePlatformLengthLimit;
+    `)();
+
+    const shortText = 'This is a short, punchy tweet.';
+    assert.strictEqual(evalEnforce(shortText, 280), shortText);
+
+    const longText = 'A'.repeat(250) + ' and another sentence here that exceeds the limit completely. And even more words.';
+    const trimmed = evalEnforce(longText, 280);
+    assert.ok(trimmed.length <= 280, `Trimmed text must not exceed 280 chars (got ${trimmed.length})`);
+    assert.ok(!trimmed.endsWith(' '), 'Trimmed text must not have trailing spaces');
   });
 
   console.log('=================================================');
