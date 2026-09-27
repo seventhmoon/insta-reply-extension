@@ -82,8 +82,8 @@ English
 | Screenshot 2 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ To capture | Post & Reel Comments with inline AI Reply chips |
 | Screenshot 3 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ To capture | Direct Message (DM) chat reply in mini-window |
 | Screenshot 4 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ To capture | Popup Settings with Multi-Provider Combobox |
-| Small Promo Tile [RECOMMENDED] | 440×280 PNG/JPEG | ⬜ To create | `promo/promo-small.png` |
-| Marquee Promo Tile | 1400×560 PNG/JPEG | ⬜ Optional | `promo/promo-marquee.png` |
+| Small Promo Tile [RECOMMENDED] | 440×280 PNG | ✅ Ready | `promo/promo-small.png` |
+| Marquee Promo Tile | 1400×560 / 1440×560 PNG | ✅ Ready | `promo/promo-marquee.png` |
 
 ### Screenshot Guidance
 1. **Screenshot 1 (Story Reply)**: Open an Instagram Story with text or image. Click the InstaReply shortcut button to display the floating card showing the Story badge `📸 Replying to @creator's Story (sent via DM)`, visual analysis, and tone chips.

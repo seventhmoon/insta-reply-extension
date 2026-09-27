@@ -28,6 +28,7 @@ zip -r "$OUTPUT" . \
   -x "CHROMEWEBSTORE.md" \
   -x "README.md" \
   -x "PRIVACY.md" \
+  -x "promo/*" \
   -x ".DS_Store" \
   -x "*/.DS_Store" \
   -x "Thumbs.db" \
