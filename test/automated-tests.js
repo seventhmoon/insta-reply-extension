@@ -91,6 +91,8 @@ async function main() {
     assert.ok(manifest.permissions.includes('storage'), 'Must include storage permission');
     assert.ok(manifest.content_scripts.some(cs => cs.matches.some(m => m.includes('instagram.com'))), 'Content scripts must target instagram.com');
     assert.ok(manifest.host_permissions.some(h => h.includes('instagram.com') || h === 'https://*/*'), 'Host permissions must allow API calls');
+    assert.ok(manifest.name && manifest.name.length <= 75, `manifest.name length (${manifest.name?.length}) must be <= 75 chars for Chrome Web Store`);
+    assert.ok(manifest.description && manifest.description.length <= 132, `manifest.description length (${manifest.description?.length}) must be <= 132 chars for Chrome Web Store`);
   });
 
   // =========================================================================

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "InstaReply AI - Social Media Assistant (Instagram, Threads, X, LinkedIn, Facebook & Meta Business)",
+  "name": "InstaReply AI - Social Media Assistant for Instagram, X & LinkedIn",
   "version": "1.4.0",
-  "description": "AI-powered assistant to draft context-aware replies on Instagram, Threads, X/Twitter, LinkedIn, Facebook, and Meta Business Suite with sentiment analysis & tone presets.",
+  "description": "Draft smart, context-aware replies and posts on Instagram, Threads, X, LinkedIn, Facebook, and Meta Business Suite with AI.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

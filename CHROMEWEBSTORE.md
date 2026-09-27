@@ -1,23 +1,26 @@
 # Chrome Web Store Listing — InstaReply AI
 
-> Last Updated: 2026-09-14
+> Last Updated: 2026-09-26
 
 ---
 
 ## Store Listing
 
-**Extension Name** [REQUIRED]
-InstaReply AI - Smart Instagram Reply Assistant
+**Extension Name** [REQUIRED] (67 / 75 chars)
+InstaReply AI - Social Media Assistant for Instagram, X & LinkedIn
 
-**Short Description** [REQUIRED] (130 / 132 chars)
-Draft smart, contextual replies to Instagram comments, Reels, DMs, and Stories with multi-tone bundling and AI visual awareness.
+**Short Description** [REQUIRED] (124 / 132 chars)
+Draft smart, context-aware replies and posts on Instagram, Threads, X, LinkedIn, Facebook, and Meta Business Suite with AI.
 
 **Detailed Description** [REQUIRED]
-InstaReply AI is a fast, privacy-first Chrome Extension that drafts authentic, context-aware responses directly inside Instagram comments, Reels, Direct Messages (DMs), and Stories.
+InstaReply AI is a fast, privacy-first Chrome Extension that drafts authentic, context-aware responses and posts directly inside Instagram, Threads, X (Twitter), LinkedIn, Facebook, and Meta Business Suite.
 
 Connect your own AI model (Google Gemini, Groq, OpenRouter, local Ollama, or custom OpenAI endpoints) and craft personalized, high-engagement replies with one click.
 
 KEY FEATURES
+• Multi-Platform Social Media Support — Works across Instagram (Comments, Reels, DMs, Stories), Meta Threads, X/Twitter, LinkedIn, Facebook, and Meta Business Suite.
+• Platform Character Limit Enforcement — Real-time live character counter badge with over-limit warnings and a 1-click Auto-Trim button (strictly enforcing 280 chars on X and 500 chars on Threads).
+• Universal Rich-Text Insertion — Seamlessly integrates with React, Draft.js, and Lexical editors without breaking undo history, cursor position, or internal state.
 • Instagram Stories Support — Injects a shortcut button directly into the Story reply composer. Accurately extracts story context, detects shared Reels/Posts, pauses story playback while drafting, and automatically excludes emoji trays or navigation buttons.
 • Post & Reel Comments — Injects an inline shortcut button next to "Post" and "✨ AI Reply" chips next to individual comment replies. Automatically distinguishes whether you are the post creator or an engaging visitor.
 • Fullscreen & Floating PIP DMs — Works in both fullscreen Direct Messages and floating mini-windows, with instant reply chips on received messages.
@@ -39,7 +42,7 @@ SUPPORTED AI PROVIDERS
 HOW TO USE
 1. Click the InstaReply AI icon in your Chrome toolbar to open Settings.
 2. Select your AI provider and paste your API key (or configure local Ollama).
-3. Open any Instagram post, reel, DM thread, or Story on instagram.com.
+3. Open any supported platform (Instagram, Threads, X, LinkedIn, Facebook, or Meta Business Suite).
 4. Click the InstaReply AI shortcut button or inline "✨ AI Reply" chip.
 5. Select your desired stance or tone, review the AI draft, and click "Insert Reply" to populate the text box.
 
@@ -57,13 +60,13 @@ Questions, feedback, or bug reports?
 • Email: fung@androidfung.com
 • GitHub: https://github.com/seventhmoon/insta-reply-extension/issues
 
-Version 1.2.0 — Resizable Toolbar Settings Popup with dimension persistence; fully resizable in-page Assistant Card with automatic vertical textarea expansion; desktop tone navigation with chevrons, mouse-wheel scroll, and 16-tone grid view toggle; GitHub Sponsors support buttons; Story composer capsule alignment fix.
+Version 1.4.0 — Multi-Platform character limit enforcement (strict 280-char boundaries for X, 500-char for Threads), live counter badge with over-limit highlight, 1-click Auto-Trim button, and Chrome Web Store manifest optimization.
 
 **Category** [REQUIRED]
 Social & Communication
 
 **Single Purpose** [REQUIRED]
-Drafts contextual, tone-customized responses to Instagram comments, Direct Messages, Reels, and Stories.
+Drafts contextual, tone-customized responses and posts across Instagram, Threads, X, LinkedIn, Facebook, and Meta Business Suite.
 
 **Primary Language** [REQUIRED]
 English
@@ -102,6 +105,7 @@ English
 | `https://*.x.com/*`, `https://*.twitter.com/*` | `host_permissions` / `content_scripts` | Required to inject the reply button into X/Twitter tweet composers and inline reply toolbars, and to extract tweet context when triggered by the user. |
 | `https://*.linkedin.com/*` | `host_permissions` / `content_scripts` | Required to inject into LinkedIn feed post comment boxes and InMail messages, and to extract post/comment context when triggered by the user. |
 | `https://*.facebook.com/*` | `host_permissions` / `content_scripts` | Required to inject into Facebook feed comments and discussion threads, and to extract post/comment context when triggered by the user. |
+| `https://*.meta.com/*` | `host_permissions` / `content_scripts` | Required to inject into Meta Business Suite inbox and unified comment feeds, and to extract customer inquiries when triggered by the user. |
 | `https://*/*` | `host_permissions` | Required to dispatch AI generation requests to user-configured third-party AI endpoints (including Google Gemini, Groq, OpenRouter, or custom OpenAI-compatible server URLs), and to fetch public image thumbnails from social media CDNs for AI vision analysis. |
 | `http://localhost:*/*`, `http://127.0.0.1:*/*` | `host_permissions` | Required to allow users who select "Local LLM" to send prompt generation requests directly to locally hosted Ollama or LM Studio servers. |
 
@@ -123,7 +127,7 @@ English
 | Location | No | No | N/A | No |
 | Web history | No | No | N/A | No |
 | User activity | No | No | N/A | No |
-| Website content | Yes (Only on user click) | Yes (Sent to selected AI API) | Post caption, image alt text, and comment text on the active Instagram interaction are read to provide context for AI generation. | Sent only to the AI provider chosen by the user. |
+| Website content | Yes (Only on user click) | Yes (Sent to selected AI API) | Post caption, image alt text, and comment text on the active social media interaction (Instagram, Threads, X, LinkedIn, Facebook, or Meta Business Suite) are read to provide context for AI generation. | Sent only to the AI provider chosen by the user. |
 
 ### Data Use Certification
 - [x] Data is NOT sold to third parties.
@@ -165,4 +169,5 @@ https://github.com/seventhmoon/insta-reply-extension/blob/main/PRIVACY.md
 | 1.0.0 | 2026-09-14 | Initial public release with full support for Instagram Comments, Reels, Direct Messages, and Stories. Integrated Google Gemini, Groq, OpenRouter, Custom OpenAI, and Local LLM endpoints. | Complete |
 | 1.1.0 | 2026-09-17 | 1-Click Quick Reply (zero-dialog direct insertion into input field), Few-Shot Style Mimicry ("Learn My Voice"), Anti-Troll & Spam Shield, Draggable & Minimizable Card, and ultra-compact composer layout preserving maximum typing space. | Complete |
 | 1.2.0 | 2026-09-19 | Resizable Settings Popup with storage persistence; fully resizable in-page Assistant Card with vertical textarea auto-expansion; desktop tone navigation with chevrons, mouse-wheel scroll, and 16-tone grid view toggle; GitHub Sponsors integration; Story composer capsule alignment fix. | Complete |
-| 1.3.0 | 2026-09-21 | Multi-Platform Expansion: Added comprehensive support for X (Twitter), LinkedIn, and Facebook with modular platform adapters, Draft.js/Lexical rich-text editor insertion, 280-character boundary limits for tweets, and professional networking tone bias for LinkedIn. | Ready for Submission |
+| 1.3.0 | 2026-09-21 | Multi-Platform Expansion: Added comprehensive support for X (Twitter), LinkedIn, and Facebook with modular platform adapters, Draft.js/Lexical rich-text editor insertion, 280-character boundary limits for tweets, and professional networking tone bias for LinkedIn. | Complete |
+| 1.4.0 | 2026-09-26 | Character Limit Engine: Real-time character counter badge, over-limit warnings, 1-click Auto-Trim button, strict 280-char enforcement on X and 500-char on Threads, Meta Business Suite support, and Chrome Web Store manifest optimization. | Ready for Submission |
