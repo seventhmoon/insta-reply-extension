@@ -7,5 +7,5 @@
     "package": "bash scripts/package.sh"
   },
   "author": "Fung Lam <fung@androidfung.com>",
-  "license": "MIT"
+  "license": "GPL-3.0-or-later"
 }
