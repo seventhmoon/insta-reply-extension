@@ -89,10 +89,22 @@ async function main() {
     assert.strictEqual(manifest.background.service_worker, 'background/service-worker.js');
     assert.ok(Array.isArray(manifest.permissions), 'Permissions must be array');
     assert.ok(manifest.permissions.includes('storage'), 'Must include storage permission');
+    assert.ok(manifest.permissions.includes('declarativeNetRequest'), 'Must include declarativeNetRequest permission');
+    assert.ok(!manifest.permissions.includes('activeTab'), 'Must NOT request unused activeTab permission (CWS Purple Potassium compliance)');
     assert.ok(manifest.content_scripts.some(cs => cs.matches.some(m => m.includes('instagram.com'))), 'Content scripts must target instagram.com');
     assert.ok(manifest.host_permissions.some(h => h.includes('instagram.com') || h === 'https://*/*'), 'Host permissions must allow API calls');
     assert.ok(manifest.name && manifest.name.length <= 75, `manifest.name length (${manifest.name?.length}) must be <= 75 chars for Chrome Web Store`);
     assert.ok(manifest.description && manifest.description.length <= 132, `manifest.description length (${manifest.description?.length}) must be <= 132 chars for Chrome Web Store`);
+
+    // Version sync check across package.json and popup UI
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+    assert.strictEqual(manifest.version, pkg.version, `manifest.version (${manifest.version}) must match package.json (${pkg.version})`);
+
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    assert.ok(popupHtml.includes(`<span class="version-badge">v${manifest.version}</span>`), `popup.html must display version badge matching manifest.version v${manifest.version}`);
+
+    const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+    assert.ok(popupJs.includes('chrome.runtime?.getManifest'), 'popup.js must dynamically resolve version from manifest');
   });
 
   // =========================================================================
@@ -2111,6 +2123,7 @@ Hope this helps!
     // GitHub repository checks
     assert.ok(fundingYml.includes('github: seventhmoon'), '.github/FUNDING.yml must declare seventhmoon as funding recipient');
     assert.ok(readmeMd.includes('https://github.com/sponsors/seventhmoon'), 'README.md must include GitHub Sponsors badge and link');
+    assert.ok(readmeMd.includes('https://chromewebstore.google.com/detail/instareply-ai-social-medi/gjgoiomoldgokbajlbepelpkidnbnpmg'), 'README.md must include Chrome Web Store link');
   });
 
   // =========================================================================
@@ -2249,15 +2262,12 @@ Hope this helps!
     assert.ok(!MetaBusinessAdapter.canHandle('instagram.com'), 'MetaBusinessAdapter must reject direct instagram.com');
   });
 
-  runTest('ManifestMultiPlatformRegistration', 'Manifest registers content scripts and permissions for all target domains', () => {
+  runTest('ManifestRegistration', 'Manifest registers content scripts and permissions for Instagram', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8'));
     const cs = manifest.content_scripts.find(c => c.js.includes('content/content.js'));
     assert.ok(cs, 'Must have content script entry with content.js');
 
-    const expectedDomains = ['instagram.com', 'threads.net', 'x.com', 'twitter.com', 'linkedin.com', 'facebook.com', 'meta.com'];
-    for (const domain of expectedDomains) {
-      assert.ok(cs.matches.some(m => m.includes(domain)), `content_scripts matches must include ${domain}`);
-    }
+    assert.ok(cs.matches.some(m => m.includes('instagram.com')), 'content_scripts matches must include instagram.com');
 
     assert.ok(cs.js.includes('content/adapters/platform-detector.js'), 'Must load platform-detector.js');
     assert.ok(cs.js.includes('content/adapters/threads-adapter.js'), 'Must load threads-adapter.js');

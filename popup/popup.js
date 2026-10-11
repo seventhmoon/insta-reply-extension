@@ -98,6 +98,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // Populate version badge dynamically from extension manifest
+  try {
+    const versionBadge = document.querySelector('.version-badge');
+    if (versionBadge && typeof chrome !== 'undefined' && chrome.runtime?.getManifest) {
+      const manifest = chrome.runtime.getManifest();
+      if (manifest?.version) {
+        versionBadge.textContent = `v${manifest.version}`;
+      }
+    }
+  } catch (_) {}
+
   // Load saved configuration
   const config = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
   applyConfigToUI(config || {});

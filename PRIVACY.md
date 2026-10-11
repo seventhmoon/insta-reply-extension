@@ -1,6 +1,6 @@
 # Privacy Policy for InstaReply AI
 
-**Last updated:** September 14, 2026
+**Last updated:** October 3, 2026
 
 InstaReply AI ("we", "our", or "the extension") is committed to protecting your privacy. This Privacy Policy explains how information is handled when you use the InstaReply AI Google Chrome Extension.
 
@@ -54,7 +54,6 @@ We encourage you to review the privacy policy of your selected AI provider.
 ## 4. Permissions & Justifications
 
 - **`storage`**: Used to save your API keys, default tones, and user preferences locally in your browser.
-- **`activeTab`**: Used to identify the active tab when opening the extension popup settings.
 - **`declarativeNetRequest`**: Used strictly to strip the `Origin` header when sending requests to local offline endpoints (`http://localhost:*` and `http://127.0.0.1:*`) so that Ollama and LM Studio CORS policies succeed.
 - **Host Permissions (`https://*.instagram.com/*`)**: Required to inject shortcut buttons and read context on Instagram pages when requested by the user.
 - **Host Permissions (`https://*/*`)**: Required to communicate with your chosen AI API endpoints (Google, Groq, OpenRouter, or custom self-hosted endpoints) and to load post media thumbnails for visual analysis.

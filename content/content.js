@@ -6768,31 +6768,35 @@
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
     } else if (element.isContentEditable || element.getAttribute('contenteditable') === 'true') {
-      // React, Draft.js (X/Twitter), Lexical (Facebook, LinkedIn) ContentEditable
+      // ContentEditable insertion (React, Draft.js, Lexical)
       let execSuccess = false;
       try {
         execSuccess = document.execCommand('insertText', false, textToInsert);
       } catch (_) {}
 
-      if (!execSuccess || !element.innerText.includes(textToInsert.slice(0, 10))) {
-        element.innerText = textToInsert;
+      // Only fall back to innerText if execCommand explicitly failed/returned false
+      // to avoid duplicating text in Lexical / Draft.js editors
+      if (!execSuccess) {
+        try {
+          element.innerText = textToInsert;
 
-        // Dispatch input events
-        const inputEvent = new InputEvent('input', {
-          bubbles: true,
-          cancelable: true,
-          inputType: 'insertText',
-          data: textToInsert
-        });
-        element.dispatchEvent(inputEvent);
+          // Dispatch input events
+          const inputEvent = new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'insertText',
+            data: textToInsert
+          });
+          element.dispatchEvent(inputEvent);
 
-        // Move cursor to end
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.selectNodeContents(element);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
+          // Move cursor to end
+          const range = document.createRange();
+          const sel = window.getSelection();
+          range.selectNodeContents(element);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } catch (_) {}
       }
     }
 

@@ -1,14 +1,16 @@
 # InstaReply AI - Smart Assistant for Instagram, Threads, X (Twitter), LinkedIn & Facebook
 
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-InstaReply%20AI-4285F4?style=flat&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/instareply-ai-social-medi/gjgoiomoldgokbajlbepelpkidnbnpmg)
 [![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa?style=flat&logo=github&logoColor=white)](https://github.com/sponsors/seventhmoon)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram** (Comments, Reels, DMs, Stories), **Threads** (Post Replies, Thread Conversations), **X / Twitter** (Tweets, Replies, DMs), **LinkedIn** (Feed, Comments, InMail), and **Facebook**.
+A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram** (Comments, Reels, DMs, Stories), **Threads** (Post Replies, Thread Conversations), **X / Twitter** (Tweets, Replies, DMs), **LinkedIn** (Feed, Comments, InMail), and **Facebook**. Available on the [Chrome Web Store](https://chromewebstore.google.com/detail/instareply-ai-social-medi/gjgoiomoldgokbajlbepelpkidnbnpmg).
 
 ---
 
 ## ✨ Core Features
 
+<a id="supported-platforms"></a>
 ### 🌐 Multi-Platform Social Media Support
 - **Meta Threads**: Injects into Threads post reply boxes and composers with 500-character boundary limits, thread context extraction, and conversation starter assistance.
 - **X (Twitter)**: Directly injects into tweet composers (`div[data-testid="tweetTextarea_0"]`) and reply toolbars, with strict 280-character boundary enforcement, tweet context parsing, and thread author detection.
@@ -68,7 +70,15 @@ A high-performance Google Chrome Extension (Manifest V3) that injects an intelli
 
 ## 🚀 Installation Guide
 
-### 1. Load into Google Chrome
+### Option 1: Install from Chrome Web Store (Recommended)
+
+Install the latest official release directly from the Chrome Web Store:
+
+👉 **[Install InstaReply AI on Chrome Web Store](https://chromewebstore.google.com/detail/instareply-ai-social-medi/gjgoiomoldgokbajlbepelpkidnbnpmg)**
+
+---
+
+### Option 2: Load Unpacked from Source (Developer Mode)
 
 1. Clone or download this repository.
 2. Open Google Chrome and navigate to `chrome://extensions`.

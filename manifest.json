@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "InstaReply AI - Social Media Assistant for Instagram, X & LinkedIn",
-  "version": "1.4.0",
-  "description": "Draft smart, context-aware replies and posts on Instagram, Threads, X, LinkedIn, Facebook, and Meta Business Suite with AI.",
+  "name": "InstaReply AI - Social Media Assistant for Instagram",
+  "version": "1.4.2",
+  "description": "Draft smart, context-aware replies and posts on Instagram with AI.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -23,7 +23,6 @@
   },
   "permissions": [
     "storage",
-    "activeTab",
     "declarativeNetRequest"
   ],
   "declarative_net_request": {
@@ -54,7 +53,9 @@
         "http://localhost:*/*",
         "http://127.0.0.1:*/*"
       ],
-      "js": ["content/page-bridge.js"],
+      "js": [
+        "content/page-bridge.js"
+      ],
       "world": "MAIN",
       "run_at": "document_start"
     },
@@ -80,7 +81,9 @@
         "content/adapters/meta-business-adapter.js",
         "content/content.js"
       ],
-      "css": ["content/content.css"],
+      "css": [
+        "content/content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
