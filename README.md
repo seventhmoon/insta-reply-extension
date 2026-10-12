@@ -164,4 +164,4 @@ If InstaReply AI saves you time and enhances your Instagram workflow, consider s
 
 ## 📄 License
 
-MIT License. See [package.json](package.json) for details.
+This project is licensed under the terms of the GNU General Public License v3.0 (GPLv3). See LICENSE.md for the full license text.
