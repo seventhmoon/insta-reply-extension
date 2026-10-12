@@ -1,8 +1,5 @@
 # InstaReply AI - Smart Assistant for Instagram, Threads, X (Twitter), LinkedIn & Facebook
 
-[![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa?style=flat&logo=github&logoColor=white)](https://github.com/sponsors/seventhmoon)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
 A high-performance Google Chrome Extension (Manifest V3) that injects an intelligent, contextual AI assistant directly into **Instagram** (Comments, Reels, DMs, Stories), **Threads** (Post Replies, Thread Conversations), **X / Twitter** (Tweets, Replies, DMs), **LinkedIn** (Feed, Comments, InMail), and **Facebook**.
 
 ---
