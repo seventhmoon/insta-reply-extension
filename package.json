@@ -1,11 +1,34 @@
 {
   "name": "insta-reply-ai",
   "version": "1.4.2",
-  "description": "AI-powered reply assistant Chrome extension for Instagram",
+  "description": "AI-powered reply assistant Chrome extension for Instagram, Threads, X, LinkedIn, Facebook & Meta Business",
   "scripts": {
     "test": "node test/automated-tests.js",
     "package": "bash scripts/package.sh"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seventhmoon/insta-reply-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seventhmoon/insta-reply-extension/issues"
+  },
+  "homepage": "https://github.com/seventhmoon/insta-reply-extension#readme",
+  "keywords": [
+    "chrome-extension",
+    "manifest-v3",
+    "ai",
+    "gemini",
+    "groq",
+    "openrouter",
+    "instagram",
+    "threads",
+    "twitter",
+    "x",
+    "linkedin",
+    "facebook",
+    "ollama"
+  ],
   "author": "Fung Lam <fung@androidfung.com>",
   "license": "GPL-3.0-or-later"
 }

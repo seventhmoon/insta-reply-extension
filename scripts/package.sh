@@ -7,7 +7,9 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 cd "$DIR"
 
 VERSION=$(node -p "require('./manifest.json').version")
-OUTPUT="insta-reply-ai-v${VERSION}.zip"
+OUTPUT_DIR="dist"
+OUTPUT="${OUTPUT_DIR}/insta-reply-ai-v${VERSION}.zip"
+mkdir -p "$OUTPUT_DIR"
 
 echo "📦 Packaging InstaReply AI v${VERSION} for Chrome Web Store..."
 
@@ -17,6 +19,7 @@ rm -f "$OUTPUT"
 # Create clean ZIP excluding dev, test, and git files
 zip -r "$OUTPUT" . \
   -x ".git/*" \
+  -x ".github/*" \
   -x ".gitignore" \
   -x "node_modules/*" \
   -x ".env*" \
@@ -28,7 +31,11 @@ zip -r "$OUTPUT" . \
   -x "CHROMEWEBSTORE.md" \
   -x "README.md" \
   -x "PRIVACY.md" \
+  -x "CONTRIBUTING.md" \
+  -x "CHANGELOG.md" \
+  -x "SECURITY.md" \
   -x "promo/*" \
+  -x "dist/*" \
   -x ".DS_Store" \
   -x "*/.DS_Store" \
   -x "Thumbs.db" \

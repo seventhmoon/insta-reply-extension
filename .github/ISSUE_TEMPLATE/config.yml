@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Chrome Web Store Support
+    url: https://chromewebstore.google.com/detail/instareply-ai-social-medi/gjgoiomoldgokbajlbepelpkidnbnpmg
+    about: Rate, review, or submit feedback via the official Web Store page.
+  - name: GitHub Discussions / Community
+    url: https://github.com/seventhmoon/insta-reply-extension/discussions
+    about: Ask questions, share ideas, or discuss prompts and workflows.

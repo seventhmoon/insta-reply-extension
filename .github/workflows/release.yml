@@ -1,0 +1,38 @@
+name: Package & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    name: Package & Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Test Verification
+        run: node test/automated-tests.js
+
+      - name: Build Clean Chrome Extension ZIP
+        run: bash scripts/package.sh
+
+      - name: Create GitHub Release & Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            insta-reply-ai-*.zip
+          generate_release_notes: true
