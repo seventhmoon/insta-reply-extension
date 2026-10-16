@@ -1,0 +1,26 @@
+{
+  "appName": {
+    "message": "InstaReply AI - Social Media Assistant for Instagram",
+    "description": "The title of the extension"
+  },
+  "appDesc": {
+    "message": "Draft smart, context-aware replies and posts on Instagram with AI.",
+    "description": "The description of the extension"
+  },
+  "actionReply": {
+    "message": "✨ AI Reply",
+    "description": "Inline button label for quick AI reply"
+  },
+  "settingsTitle": {
+    "message": "InstaReply AI Settings",
+    "description": "Popup header title"
+  },
+  "saveSuccess": {
+    "message": "Settings saved successfully!",
+    "description": "Save settings success message"
+  },
+  "historyTitle": {
+    "message": "Recent Reply History",
+    "description": "Title for recent reply drafts"
+  }
+}

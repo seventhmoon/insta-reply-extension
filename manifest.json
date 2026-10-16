@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "InstaReply AI - Social Media Assistant for Instagram",
   "version": "1.4.2",
+  "default_locale": "en",
   "description": "Draft smart, context-aware replies and posts on Instagram with AI.",
   "icons": {
     "16": "icons/icon16.png",
@@ -35,9 +36,15 @@
     ]
   },
   "host_permissions": [
-    "https://*/*",
+    "https://*.instagram.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.groq.com/*",
+    "https://openrouter.ai/*",
     "http://localhost:*/*",
     "http://127.0.0.1:*/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
   ],
   "content_scripts": [
     {

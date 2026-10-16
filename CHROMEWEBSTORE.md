@@ -50,7 +50,7 @@ InstaReply AI is built with a direct client-to-API architecture. Your data and A
 PERMISSIONS EXPLAINED
 • "storage" — Saves your API keys, preferences, and custom tone instructions locally in Chrome.
 • "declarativeNetRequest" — Strips origin headers strictly for requests to local offline endpoints (localhost / 127.0.0.1) so local LLMs (Ollama / LM Studio) work seamlessly.
-• Host Permissions — Communicates with your chosen AI API endpoints (Google, Groq, OpenRouter, or your custom endpoint) and fetches public post thumbnails for visual analysis.
+• Host Permissions — Scoped strictly to communicate with your chosen AI API endpoints (Google Gemini, Groq, OpenRouter) and Instagram assets for visual analysis, with optional on-demand permissions for custom OpenAI-compatible endpoints.
 
 DOCUMENTATION
 For usage guides, setup instructions, and feature roadmap, please visit:

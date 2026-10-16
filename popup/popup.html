@@ -34,6 +34,9 @@
     <button type="button" class="tab-btn" data-tab="tab-preferences" role="tab" aria-selected="false">
       <span class="tab-icon">⚙️</span> Preferences
     </button>
+    <button type="button" class="tab-btn" data-tab="tab-history" role="tab" aria-selected="false">
+      <span class="tab-icon">📜</span> History
+    </button>
   </nav>
 
   <main class="content">
@@ -415,6 +418,21 @@
         <a href="https://github.com/sponsors/seventhmoon" target="_blank" rel="noopener noreferrer" class="btn btn-sponsor">
           <span class="heart-icon">💖</span> Sponsor on GitHub
         </a>
+      </section>
+    </div>
+
+    <!-- TAB 4: 📜 History (Recent Generations) -->
+    <div id="tab-history" class="tab-pane" role="tabpanel">
+      <section class="card">
+        <div class="label-with-action">
+          <label class="section-label">Recent Reply Drafts</label>
+          <button type="button" id="clearHistoryBtn" class="link-button" title="Clear saved history">
+            🗑️ Clear
+          </button>
+        </div>
+        <div id="historyListContainer" class="history-list-container">
+          <p class="hint-text">No reply history yet. Generate a reply to see your recent drafts here!</p>
+        </div>
       </section>
     </div>
   </main>

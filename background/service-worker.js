@@ -30,22 +30,69 @@ const DEFAULT_CONFIG = {
   customInstructions: ''
 };
 
-// Initialize configuration on install and migrate outdated model names
+const SENSITIVE_CONFIG_KEYS = ['geminiApiKey', 'groqApiKey', 'openrouterApiKey', 'customOpenAiKey'];
+
+async function getEffectiveConfig() {
+  if (typeof chrome === 'undefined' || !chrome.storage) {
+    return { ...DEFAULT_CONFIG };
+  }
+  const syncData = await chrome.storage.sync.get(DEFAULT_CONFIG).catch(() => ({ ...DEFAULT_CONFIG }));
+  const localData = chrome.storage.local ? await chrome.storage.local.get(SENSITIVE_CONFIG_KEYS).catch(() => ({})) : {};
+  return { ...DEFAULT_CONFIG, ...syncData, ...localData };
+}
+
+async function saveEffectiveConfig(newConfig) {
+  if (typeof chrome === 'undefined' || !chrome.storage) return;
+  const syncObj = { ...newConfig };
+  const localObj = {};
+  for (const k of SENSITIVE_CONFIG_KEYS) {
+    if (k in syncObj) {
+      localObj[k] = syncObj[k];
+      delete syncObj[k];
+    }
+  }
+  if (chrome.storage.local && Object.keys(localObj).length > 0) {
+    await chrome.storage.local.set(localObj);
+  }
+  if (chrome.storage.sync) {
+    await chrome.storage.sync.set(syncObj);
+    await chrome.storage.sync.remove(SENSITIVE_CONFIG_KEYS).catch(() => {});
+  }
+}
+
+// Initialize configuration on install, migrate credentials to chrome.storage.local
 if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(async () => {
-    const existing = await chrome.storage.sync.get(null);
-    const updated = { ...DEFAULT_CONFIG, ...existing };
-    if (updated.geminiModel === 'gemini-2.5-flash') {
-      updated.geminiModel = 'gemini-1.5-flash';
+    const syncExisting = await chrome.storage.sync.get(null).catch(() => ({}));
+    const localExisting = await chrome.storage.local.get(null).catch(() => ({}));
+
+    // Migrate sensitive API keys from sync to local
+    const keysToMigrate = {};
+    const keysToRemove = [];
+    for (const k of SENSITIVE_CONFIG_KEYS) {
+      if (syncExisting[k] && !localExisting[k]) {
+        keysToMigrate[k] = syncExisting[k];
+        keysToRemove.push(k);
+      } else if (syncExisting[k]) {
+        keysToRemove.push(k);
+      }
     }
-    await chrome.storage.sync.set(updated);
-    console.log('[InstaReply AI] Service worker initialized with settings:', updated);
+    if (Object.keys(keysToMigrate).length > 0 && chrome.storage.local) {
+      await chrome.storage.local.set(keysToMigrate);
+    }
+    if (keysToRemove.length > 0 && chrome.storage.sync) {
+      await chrome.storage.sync.remove(keysToRemove).catch(() => {});
+    }
+
+    const updated = { ...DEFAULT_CONFIG, ...syncExisting, ...localExisting, ...keysToMigrate };
+    await saveEffectiveConfig(updated);
+    console.log('[InstaReply AI] Service worker initialized with secure local credential storage.');
   });
 }
 
 // Helper to resolve and normalize Gemini model names
 function resolveGeminiModel(rawModel) {
-  if (!rawModel || rawModel === 'gemini-2.5-flash') {
+  if (!rawModel) {
     return 'gemini-1.5-flash';
   }
   return rawModel.replace(/^models\//, '').trim();
@@ -112,31 +159,47 @@ function setSwReplyCacheEntry(key, value) {
     if (oldestKey) serviceWorkerReplyCache.delete(oldestKey);
   }
   serviceWorkerReplyCache.set(key, value);
+  if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+    chrome.storage.session.set({ [key]: value }).catch(() => {});
+  }
 }
 
 // Listener for messages from content scripts and popup
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'GET_CONFIG') {
-      chrome.storage.sync.get(DEFAULT_CONFIG).then(cfg => {
-        if (cfg.geminiModel === 'gemini-2.5-flash') {
-          cfg.geminiModel = 'gemini-1.5-flash';
-          chrome.storage.sync.set({ geminiModel: 'gemini-1.5-flash' });
-        }
-        sendResponse(cfg);
-      });
+      getEffectiveConfig().then(sendResponse);
       return true;
     }
 
     if (request.action === 'SAVE_CONFIG') {
-      if (request.config && request.config.geminiModel === 'gemini-2.5-flash') {
-        request.config.geminiModel = 'gemini-1.5-flash';
-      }
-      chrome.storage.sync.set(request.config).then(() => {
+      saveEffectiveConfig(request.config).then(() => {
         sendResponse({ success: true });
       }).catch(err => {
         sendResponse({ success: false, error: err.message });
       });
+      return true;
+    }
+
+    if (request.action === 'GET_REPLY_HISTORY') {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.get('instareply_history').then(data => {
+          sendResponse({ success: true, history: data.instareply_history || [] });
+        });
+      } else {
+        sendResponse({ success: true, history: [] });
+      }
+      return true;
+    }
+
+    if (request.action === 'CLEAR_REPLY_HISTORY') {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.set({ instareply_history: [] }).then(() => {
+          sendResponse({ success: true });
+        });
+      } else {
+        sendResponse({ success: true });
+      }
       return true;
     }
 
@@ -180,8 +243,10 @@ async function handleFetchGeminiModels(apiKey) {
     if (!apiKey || apiKey.trim() === '') {
       return { success: false, error: 'API key is required to fetch available models.' };
     }
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey.trim())}`;
-    const res = await fetch(url);
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models';
+    const res = await fetch(url, {
+      headers: { 'x-goog-api-key': apiKey.trim() }
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       return { success: false, error: err.error?.message || `HTTP ${res.status}: Failed to fetch models.` };
@@ -526,7 +591,7 @@ function enforcePlatformLengthLimit(text, limit) {
  */
 async function handleGenerateReply(payload) {
   try {
-    const config = await chrome.storage.sync.get(DEFAULT_CONFIG);
+    const config = await getEffectiveConfig();
     const provider = config.provider || 'gemini';
 
     let {
@@ -583,9 +648,18 @@ async function handleGenerateReply(payload) {
       replyLanguage
     }) : null;
 
-    if (isCacheEligible && cacheKey && serviceWorkerReplyCache.has(cacheKey)) {
-      console.log(`[InstaReply AI] ⚡ Service worker serving cached reply for @${author || postAuthor} (${stance} / ${tone})`);
-      return { ...serviceWorkerReplyCache.get(cacheKey), fromCache: true };
+    if (isCacheEligible && cacheKey) {
+      if (serviceWorkerReplyCache.has(cacheKey)) {
+        console.log(`[InstaReply AI] ⚡ Service worker serving cached reply for @${author || postAuthor} (${stance} / ${tone})`);
+        return { ...serviceWorkerReplyCache.get(cacheKey), fromCache: true };
+      }
+      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+        const sessionData = await chrome.storage.session.get(cacheKey).catch(() => ({}));
+        if (sessionData && sessionData[cacheKey]) {
+          serviceWorkerReplyCache.set(cacheKey, sessionData[cacheKey]);
+          return { ...sessionData[cacheKey], fromCache: true };
+        }
+      }
     }
 
     let result;
@@ -681,10 +755,76 @@ async function handleGenerateReply(payload) {
       }
     }
 
+    if (result && result.success && result.reply) {
+      recordReplyToHistory({
+        platform,
+        author,
+        postAuthor,
+        replyText: result.reply,
+        tone: result.toneUsed || tone,
+        stance
+      });
+    }
+
     return result;
   } catch (err) {
     console.error('[InstaReply AI] Generation error:', err);
     return { success: false, error: err.message || 'Failed to generate reply.' };
+  }
+}
+
+/**
+ * Records generated replies to local history capped at 30 items
+ */
+async function recordReplyToHistory(entry) {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+    const { instareply_history = [] } = await chrome.storage.local.get('instareply_history').catch(() => ({}));
+    const newHistory = [
+      {
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        platform: entry.platform || 'instagram',
+        author: entry.author || '',
+        postAuthor: entry.postAuthor || '',
+        replyText: entry.replyText || '',
+        tone: entry.tone || 'friendly',
+        stance: entry.stance || 'positive'
+      },
+      ...instareply_history
+    ].slice(0, 30);
+    await chrome.storage.local.set({ instareply_history: newHistory });
+  } catch (err) {
+    console.warn('[InstaReply AI] Failed to record reply history:', err);
+  }
+}
+
+/**
+ * Resilient fetch wrapper with exponential backoff & jitter for transient 429/503 errors
+ */
+async function fetchWithRetry(url, options = {}, maxRetries = 2) {
+  let attempt = 0;
+  while (true) {
+    try {
+      const res = await fetch(url, options);
+      if ((res.status === 429 || res.status === 503 || res.status === 502) && attempt < maxRetries) {
+        attempt++;
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 400, 4500);
+        console.warn(`[InstaReply AI] Endpoint returned HTTP ${res.status}. Retrying in ${Math.round(backoffMs)}ms (attempt ${attempt}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+      return res;
+    } catch (networkErr) {
+      if (attempt < maxRetries) {
+        attempt++;
+        const backoffMs = 1000 * attempt;
+        console.warn(`[InstaReply AI] Network error calling endpoint. Retrying in ${backoffMs}ms...`, networkErr);
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+      throw networkErr;
+    }
   }
 }
 
@@ -870,7 +1010,11 @@ async function generateWithGemini({
   }
 
   const model = resolveGeminiModel(config.geminiModel);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.geminiApiKey.trim())}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const geminiHeaders = {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': config.geminiApiKey.trim()
+  };
 
   // Check if Multimodal Image analysis is enabled and available
   const canUseMultimodal = config.enableMultimodalVision !== false && Boolean(postVisuals?.thumbnailUrl);
@@ -936,9 +1080,9 @@ async function generateWithGemini({
   };
 
   console.log('[InstaReply AI] Sending prompt to Gemini model:', model);
-  let res = await fetch(url, {
+  let res = await fetchWithRetry(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: geminiHeaders,
     body: JSON.stringify(body)
   });
 
@@ -946,9 +1090,9 @@ async function generateWithGemini({
   if (!res.ok && res.status === 400) {
     console.warn('[InstaReply AI] Gemini returned 400 with responseMimeType, retrying with standard text mode...');
     delete body.generationConfig.responseMimeType;
-    res = await fetch(url, {
+    res = await fetchWithRetry(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: geminiHeaders,
       body: JSON.stringify(body)
     });
   }
@@ -1123,7 +1267,7 @@ async function generateWithOpenAiCompatible({
   }
 
   // 1. Send to standard OpenAI-compatible endpoint
-  let res = await fetch(openAiUrl, {
+  let res = await fetchWithRetry(openAiUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify(requestBody)
@@ -1139,7 +1283,7 @@ async function generateWithOpenAiCompatible({
       inlineImagePart = null;
       prompt = getPrompt(false);
       requestBody.messages[1].content = prompt;
-      res = await fetch(openAiUrl, {
+      res = await fetchWithRetry(openAiUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody)

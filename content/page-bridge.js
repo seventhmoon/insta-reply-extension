@@ -3,9 +3,29 @@
 (function () {
   'use strict';
 
+  let bridgeSecurityToken = null;
+
   // Listen for requests from the content script (isolated world)
   window.addEventListener('message', async (event) => {
-    if (event.source !== window || !event.data || event.data.type !== 'INSTAREPLY_RUN_PROMPT_API') {
+    if (event.source !== window || !event.data) {
+      return;
+    }
+
+    // Secure token handshake from isolated content script
+    if (event.data.type === 'INSTAREPLY_INIT_BRIDGE_AUTH') {
+      if (!bridgeSecurityToken && event.data.token) {
+        bridgeSecurityToken = event.data.token;
+      }
+      return;
+    }
+
+    if (event.data.type !== 'INSTAREPLY_RUN_PROMPT_API') {
+      return;
+    }
+
+    // Guard against cross-context message spoofing: reject unauthorized callers
+    if (bridgeSecurityToken && event.data.token !== bridgeSecurityToken) {
+      console.warn('[InstaReply AI] Unauthorized Prompt API execution attempt blocked.');
       return;
     }
 

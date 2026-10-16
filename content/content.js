@@ -21,6 +21,7 @@
   let stancePrefetchTimer = null;
   let currentGenerationId = 0;
   let activeGenerationContext = null;
+  const BRIDGE_AUTH_TOKEN = 'ir_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
 
   function setReplyCacheEntry(key, value) {
     if (replyCache.size >= 250) {
@@ -284,6 +285,7 @@
    * Injects the main world bridge script so Edge AI Prompt API can be called
    */
   function ensurePageBridgeInjected() {
+    window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
     if (document.getElementById('instareply-page-bridge') || window.__INSTAREPLY_BRIDGE_ACTIVE__) {
       return;
     }
@@ -292,6 +294,7 @@
       script.id = 'instareply-page-bridge';
       script.src = chrome.runtime.getURL('content/page-bridge.js');
       (document.head || document.documentElement).appendChild(script);
+      window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
     } catch (_) {}
   }
 
@@ -1319,8 +1322,9 @@
       : 'instagram';
     if (activePlat !== 'instagram') return;
 
-    // Find reply buttons/links under individual comments
-    const replyElements = document.querySelectorAll('button, span[role="button"], div[role="button"], span');
+    // Performance optimization: Target interactive button or role="button" elements,
+    // strictly avoiding expensive scans of thousands of text spans on infinite feeds
+    const replyElements = document.querySelectorAll('button, [role="button"]');
 
     replyElements.forEach((el) => {
       if (
@@ -5207,7 +5211,8 @@
       window.postMessage({
         type: 'INSTAREPLY_RUN_PROMPT_API',
         requestId,
-        payload
+        payload,
+        token: BRIDGE_AUTH_TOKEN
       }, '*');
     });
   }
@@ -5465,7 +5470,8 @@
       window.postMessage({
         type: 'INSTAREPLY_RUN_PROMPT_API',
         requestId,
-        payload
+        payload,
+        token: BRIDGE_AUTH_TOKEN
       }, '*');
     });
   }

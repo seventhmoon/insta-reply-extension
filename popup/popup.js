@@ -95,6 +95,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.setAttribute('aria-selected', 'true');
       const targetPane = document.getElementById(targetTab);
       if (targetPane) targetPane.classList.add('active');
+      if (targetTab === 'tab-history') {
+        loadHistory();
+      }
     });
   });
 
@@ -386,6 +389,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   saveSettingsBtn.addEventListener('click', async () => {
     const newConfig = getUIConfig();
     try {
+      if (newConfig.provider === 'custom_openai' && newConfig.customOpenAiUrl && chrome.permissions?.request) {
+        try {
+          const origin = new URL(newConfig.customOpenAiUrl).origin + '/*';
+          const hasPerm = await chrome.permissions.contains({ origins: [origin] });
+          if (!hasPerm) {
+            await chrome.permissions.request({ origins: [origin] }).catch(() => {});
+          }
+        } catch (_) {}
+      }
+
       const res = await chrome.runtime.sendMessage({
         action: 'SAVE_CONFIG',
         config: newConfig
@@ -418,7 +431,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Gemini
     geminiApiKey.value = cfg.geminiApiKey || '';
     let selectedGeminiModel = cfg.geminiModel || 'gemini-1.5-flash';
-    if (selectedGeminiModel === 'gemini-2.5-flash') selectedGeminiModel = 'gemini-1.5-flash';
     setSelectOrCustom(geminiModel, selectedGeminiModel, customModelWrapper, customModelInput);
 
     // Groq
@@ -630,6 +642,54 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.addEventListener('pointerup', onPointerUp, { once: true });
       e.preventDefault();
       e.stopPropagation();
+    });
+  }
+
+  // History tab controller
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  const historyListContainer = document.getElementById('historyListContainer');
+
+  async function loadHistory() {
+    if (!historyListContainer) return;
+    try {
+      const res = await chrome.runtime.sendMessage({ action: 'GET_REPLY_HISTORY' });
+      if (res && res.success && res.history && res.history.length > 0) {
+        historyListContainer.innerHTML = '';
+        res.history.forEach(item => {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'history-item';
+          const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          itemEl.innerHTML = `
+            <div class="history-item-header">
+              <span class="history-meta">${escapeHtml(item.platform || 'instagram')} • ${escapeHtml(item.tone || 'friendly')} • ${time}</span>
+              <button type="button" class="history-copy-btn">📋 Copy</button>
+            </div>
+            <div class="history-item-text"></div>
+          `;
+          itemEl.querySelector('.history-item-text').textContent = item.replyText;
+          itemEl.querySelector('.history-copy-btn').addEventListener('click', async (e) => {
+            await navigator.clipboard.writeText(item.replyText);
+            e.target.textContent = '✓ Copied!';
+            setTimeout(() => { e.target.textContent = '📋 Copy'; }, 1500);
+          });
+          historyListContainer.appendChild(itemEl);
+        });
+      } else {
+        historyListContainer.innerHTML = '<p class="hint-text">No reply history yet. Generate a reply to see your recent drafts here!</p>';
+      }
+    } catch (_) {}
+  }
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
+
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', async () => {
+      await chrome.runtime.sendMessage({ action: 'CLEAR_REPLY_HISTORY' });
+      if (historyListContainer) {
+        historyListContainer.innerHTML = '<p class="hint-text">History cleared.</p>';
+      }
     });
   }
 });
