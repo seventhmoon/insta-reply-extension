@@ -1,6 +1,6 @@
 {
   "name": "insta-reply-ai",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "AI-powered reply assistant Chrome extension for Instagram, Threads, X, LinkedIn, Facebook & Meta Business",
   "scripts": {
     "test": "node test/automated-tests.js",

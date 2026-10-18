@@ -27,6 +27,7 @@ const DEFAULT_CONFIG = {
   commentButtonMode: 'auto',
   myVoiceSamples: '',
   replyLanguage: 'auto',
+  launchMode: 'popup', // 'popup' | 'sidepanel'
   customInstructions: ''
 };
 
@@ -38,55 +39,135 @@ async function getEffectiveConfig() {
   }
   const syncData = await chrome.storage.sync.get(DEFAULT_CONFIG).catch(() => ({ ...DEFAULT_CONFIG }));
   const localData = chrome.storage.local ? await chrome.storage.local.get(SENSITIVE_CONFIG_KEYS).catch(() => ({})) : {};
-  return { ...DEFAULT_CONFIG, ...syncData, ...localData };
+  const localFallback = chrome.storage.local ? await chrome.storage.local.get(Object.keys(DEFAULT_CONFIG)).catch(() => ({})) : {};
+  return { ...DEFAULT_CONFIG, ...localFallback, ...syncData, ...localData };
 }
 
 async function saveEffectiveConfig(newConfig) {
   if (typeof chrome === 'undefined' || !chrome.storage) return;
-  const syncObj = { ...newConfig };
+
+  const syncObj = {};
   const localObj = {};
-  for (const k of SENSITIVE_CONFIG_KEYS) {
-    if (k in syncObj) {
-      localObj[k] = syncObj[k];
-      delete syncObj[k];
+  const VALID_CONFIG_KEYS = Object.keys(DEFAULT_CONFIG);
+
+  // Strictly filter keys to prevent non-config data (e.g. history, large blobs) from entering sync storage
+  for (const k of VALID_CONFIG_KEYS) {
+    if (k in newConfig) {
+      if (SENSITIVE_CONFIG_KEYS.includes(k)) {
+        localObj[k] = newConfig[k];
+      } else {
+        syncObj[k] = newConfig[k];
+      }
     }
   }
+
   if (chrome.storage.local && Object.keys(localObj).length > 0) {
-    await chrome.storage.local.set(localObj);
+    await chrome.storage.local.set(localObj).catch(err => {
+      console.warn('[InstaReply AI] Failed to save credentials to local storage:', err);
+    });
   }
-  if (chrome.storage.sync) {
-    await chrome.storage.sync.set(syncObj);
-    await chrome.storage.sync.remove(SENSITIVE_CONFIG_KEYS).catch(() => {});
+
+  if (chrome.storage.sync && Object.keys(syncObj).length > 0) {
+    try {
+      await chrome.storage.sync.set(syncObj);
+      await chrome.storage.sync.remove(SENSITIVE_CONFIG_KEYS).catch(() => {});
+    } catch (syncErr) {
+      console.warn('[InstaReply AI] chrome.storage.sync quota exceeded, falling back to local storage:', syncErr);
+      if (chrome.storage.local) {
+        await chrome.storage.local.set(syncObj).catch(() => {});
+      }
+    }
   }
+}
+
+// Helper to apply user-selected launch mode (Popup vs Side Panel)
+async function applyLaunchMode(mode) {
+  if (typeof chrome === 'undefined') return;
+  try {
+    if (mode === 'sidepanel') {
+      if (chrome.sidePanel?.setPanelBehavior) {
+        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+      }
+      if (chrome.action?.setPopup) {
+        await chrome.action.setPopup({ popup: '' });
+      }
+    } else {
+      if (chrome.sidePanel?.setPanelBehavior) {
+        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+      }
+      if (chrome.action?.setPopup) {
+        await chrome.action.setPopup({ popup: 'popup/popup.html' });
+      }
+    }
+  } catch (err) {
+    console.warn('[InstaReply AI] Could not apply launchMode:', err);
+  }
+}
+
+// Action click fallback when popup is empty
+if (typeof chrome !== 'undefined' && chrome.action?.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    const cfg = await getEffectiveConfig();
+    if (cfg.launchMode === 'sidepanel' && chrome.sidePanel?.open && tab?.windowId) {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+    }
+  });
 }
 
 // Initialize configuration on install, migrate credentials to chrome.storage.local
 if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(async () => {
-    const syncExisting = await chrome.storage.sync.get(null).catch(() => ({}));
-    const localExisting = await chrome.storage.local.get(null).catch(() => ({}));
+    try {
+      const syncExisting = await chrome.storage.sync?.get(null).catch(() => ({})) || {};
+      const localExisting = await chrome.storage.local?.get(SENSITIVE_CONFIG_KEYS).catch(() => ({})) || {};
 
-    // Migrate sensitive API keys from sync to local
-    const keysToMigrate = {};
-    const keysToRemove = [];
-    for (const k of SENSITIVE_CONFIG_KEYS) {
-      if (syncExisting[k] && !localExisting[k]) {
-        keysToMigrate[k] = syncExisting[k];
-        keysToRemove.push(k);
-      } else if (syncExisting[k]) {
-        keysToRemove.push(k);
+      // Migrate sensitive API keys from sync to local
+      const keysToMigrate = {};
+      const keysToRemove = [];
+      for (const k of SENSITIVE_CONFIG_KEYS) {
+        if (syncExisting[k] && !localExisting[k]) {
+          keysToMigrate[k] = syncExisting[k];
+          keysToRemove.push(k);
+        } else if (syncExisting[k]) {
+          keysToRemove.push(k);
+        }
       }
-    }
-    if (Object.keys(keysToMigrate).length > 0 && chrome.storage.local) {
-      await chrome.storage.local.set(keysToMigrate);
-    }
-    if (keysToRemove.length > 0 && chrome.storage.sync) {
-      await chrome.storage.sync.remove(keysToRemove).catch(() => {});
-    }
+      if (Object.keys(keysToMigrate).length > 0 && chrome.storage.local) {
+        await chrome.storage.local.set(keysToMigrate).catch(() => {});
+      }
+      if (keysToRemove.length > 0 && chrome.storage.sync) {
+        await chrome.storage.sync.remove(keysToRemove).catch(() => {});
+      }
 
-    const updated = { ...DEFAULT_CONFIG, ...syncExisting, ...localExisting, ...keysToMigrate };
-    await saveEffectiveConfig(updated);
-    console.log('[InstaReply AI] Service worker initialized with secure local credential storage.');
+      // Purge any bloated non-config keys (e.g. history) that may have leaked into sync storage
+      if (chrome.storage.sync) {
+        const syncKeys = Object.keys(syncExisting);
+        const validConfigKeySet = new Set(Object.keys(DEFAULT_CONFIG));
+        const bloatedSyncKeys = syncKeys.filter(k => !validConfigKeySet.has(k) || SENSITIVE_CONFIG_KEYS.includes(k));
+        if (bloatedSyncKeys.length > 0) {
+          await chrome.storage.sync.remove(bloatedSyncKeys).catch(() => {});
+        }
+      }
+
+      const updated = { ...DEFAULT_CONFIG, ...syncExisting, ...localExisting, ...keysToMigrate };
+      await saveEffectiveConfig(updated);
+      if (updated.launchMode) {
+        await applyLaunchMode(updated.launchMode);
+      }
+      console.log('[InstaReply AI] Service worker initialized with secure local credential storage.');
+    } catch (initErr) {
+      console.warn('[InstaReply AI] Service worker initialization error:', initErr);
+    }
+  });
+}
+
+// Restore launch mode on browser startup
+if (typeof chrome !== 'undefined' && chrome.runtime?.onStartup) {
+  chrome.runtime.onStartup.addListener(async () => {
+    const cfg = await getEffectiveConfig();
+    if (cfg.launchMode) {
+      await applyLaunchMode(cfg.launchMode);
+    }
   });
 }
 
@@ -164,6 +245,9 @@ function setSwReplyCacheEntry(key, value) {
   }
 }
 
+// Active target reply context for Side Panel Live Mode
+let activeReplyContext = null;
+
 // Listener for messages from content scripts and popup
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -173,11 +257,80 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
     }
 
     if (request.action === 'SAVE_CONFIG') {
-      saveEffectiveConfig(request.config).then(() => {
+      saveEffectiveConfig(request.config).then(async () => {
+        if (request.config?.launchMode) {
+          await applyLaunchMode(request.config.launchMode);
+        }
         sendResponse({ success: true });
       }).catch(err => {
         sendResponse({ success: false, error: err.message });
       });
+      return true;
+    }
+
+    if (request.action === 'SET_LAUNCH_MODE') {
+      const mode = request.mode === 'sidepanel' ? 'sidepanel' : 'popup';
+      applyLaunchMode(mode).then(() => {
+        return saveEffectiveConfig({ launchMode: mode });
+      }).then(() => {
+        sendResponse({ success: true, mode });
+      }).catch(err => {
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+    }
+
+    if (request.action === 'OPEN_SIDE_PANEL_FOR_REPLY') {
+      const tabId = sender.tab?.id;
+      const windowId = sender.tab?.windowId;
+      if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && (tabId || windowId)) {
+        chrome.sidePanel.open({ tabId: tabId || undefined, windowId: !tabId ? windowId : undefined }).catch(err => {
+          console.warn('[InstaReply AI] Could not open side panel:', err);
+        });
+      }
+      activeReplyContext = request.context || null;
+      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+        chrome.storage.session.set({ activeReplyContext: request.context || null }).catch(() => {});
+      }
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: 'ACTIVE_REPLY_CONTEXT_UPDATED',
+          context: request.context
+        }).catch(() => {});
+      }
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (request.action === 'UPDATE_ACTIVE_REPLY_CONTEXT') {
+      activeReplyContext = request.context || null;
+      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+        chrome.storage.session.set({ activeReplyContext: request.context || null }).catch(() => {});
+      }
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: 'ACTIVE_REPLY_CONTEXT_UPDATED',
+          context: request.context
+        }).catch(() => {});
+      }
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (request.action === 'GET_ACTIVE_REPLY_CONTEXT') {
+      if (activeReplyContext) {
+        sendResponse({ success: true, context: activeReplyContext });
+        return true;
+      }
+      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+        chrome.storage.session.get('activeReplyContext').then(data => {
+          sendResponse({ success: true, context: data.activeReplyContext || null });
+        }).catch(() => {
+          sendResponse({ success: true, context: null });
+        });
+        return true;
+      }
+      sendResponse({ success: true, context: null });
       return true;
     }
 

@@ -16,16 +16,22 @@
       </div>
     </div>
     <div class="header-badges">
+      <button type="button" class="sidepanel-badge-btn" id="openSidePanelBtn" title="Switch to persistent Side Panel mode (stays open while typing)">
+        <span class="dock-icon">⧉</span> Side Panel
+      </button>
       <a href="https://github.com/sponsors/seventhmoon" target="_blank" rel="noopener noreferrer" class="sponsor-badge-btn" id="sponsorHeaderBtn" title="Sponsor InstaReply AI on GitHub">
         <span class="heart-icon">💖</span> Sponsor
       </a>
-      <span class="version-badge">v1.4.2</span>
+      <span class="version-badge">v1.4.3</span>
     </div>
   </header>
 
   <!-- Segmented Tab Navigation -->
   <nav class="popup-tabs" role="tablist">
-    <button type="button" class="tab-btn active" data-tab="tab-provider" role="tab" aria-selected="true">
+    <button type="button" class="tab-btn" data-tab="tab-reply" role="tab" aria-selected="false" id="tabBtnReply">
+      <span class="tab-icon">✨</span> Reply
+    </button>
+    <button type="button" class="tab-btn active" data-tab="tab-provider" role="tab" aria-selected="true" id="tabBtnProvider">
       <span class="tab-icon">⚡</span> Quick Start
     </button>
     <button type="button" class="tab-btn" data-tab="tab-voice" role="tab" aria-selected="false">
@@ -40,6 +46,87 @@
   </nav>
 
   <main class="content">
+    <!-- TAB 0: ✨ Live Reply Assistant -->
+    <div id="tab-reply" class="tab-pane" role="tabpanel">
+      <!-- Active Target Context Card -->
+      <section class="card reply-context-card" id="replyContextCard">
+        <div class="reply-context-header">
+          <span class="reply-context-badge" id="replyTargetBadge">💬 Replying to Comment</span>
+          <span class="reply-platform-tag" id="replyPlatformTag">Instagram</span>
+        </div>
+        <div class="reply-context-text" id="replyContextText">
+          Click &quot;✨ AI Reply&quot; on any Instagram, Threads, X, or LinkedIn comment or DM to load and draft here.
+        </div>
+        <div class="reply-extra-context hidden" id="replyExtraContext">
+          <small id="replyExtraCaption"></small>
+        </div>
+      </section>
+
+      <!-- Reply Controls: Stance & Tone -->
+      <section class="card" id="replyControlsCard">
+        <div class="reply-controls-row">
+          <div class="form-group flex-1">
+            <label for="liveReplyStance">Reply Stance</label>
+            <select id="liveReplyStance" class="select-input">
+              <option value="positive" selected>🟢 Positive (Supportive)</option>
+              <option value="neutral">⚪ Neutral (Objective)</option>
+              <option value="negative">🔴 Negative (Firm/Decline)</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="liveReplyTone">Tone Style</label>
+            <select id="liveReplyTone" class="select-input">
+              <option value="friendly" selected>😊 Friendly</option>
+              <option value="humorous">😄 Witty</option>
+              <option value="playful">😈 Playful</option>
+              <option value="flirting">😘 Flirting</option>
+              <option value="sexy">💋 Sexy</option>
+              <option value="seductive">🥀 Seductive</option>
+              <option value="savage">😏 Savage</option>
+              <option value="spicy">🌶️ Spicy</option>
+              <option value="professional">💼 Professional</option>
+              <option value="empathetic">❤️ Empathetic</option>
+              <option value="concise">⚡ Short</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group mt-8">
+          <label for="liveReplyHint">Draft Hint or Instruction (Optional)</label>
+          <input type="text" id="liveReplyHint" class="text-input" placeholder="e.g. ask them to DM me, mention discount...">
+        </div>
+      </section>
+
+      <!-- Generated Draft & Insertion Card -->
+      <section class="card" id="replyDraftCard">
+        <div class="draft-header-row">
+          <label class="section-label" for="liveDraftText">AI Reply Draft</label>
+          <span class="draft-char-counter" id="liveCharCounter">0 / 2200</span>
+        </div>
+
+        <div class="draft-textarea-wrapper">
+          <textarea id="liveDraftText" class="live-draft-textarea" rows="4" placeholder="AI-generated reply will appear here..."></textarea>
+          <div class="draft-loading-overlay hidden" id="draftLoadingOverlay">
+            <div class="spinner"></div>
+            <span>Drafting smart reply...</span>
+          </div>
+        </div>
+
+        <div class="reply-action-buttons mt-12">
+          <button type="button" class="btn btn-primary flex-2" id="insertReplyBtn">
+            <span class="btn-icon">🚀</span> Insert into Comment
+          </button>
+          <button type="button" class="btn btn-secondary" id="regenerateReplyBtn" title="Regenerate reply">
+            <span class="btn-icon">🔄</span>
+          </button>
+          <button type="button" class="btn btn-secondary" id="copyLiveReplyBtn" title="Copy to clipboard">
+            <span class="btn-icon">📋</span>
+          </button>
+        </div>
+        <div id="liveReplyFeedback" class="save-feedback hidden"></div>
+      </section>
+    </div>
+
     <!-- TAB 1: ⚡ Quick Start (AI Provider & Connection) -->
     <div id="tab-provider" class="tab-pane active" role="tabpanel">
       <section class="card">
@@ -319,6 +406,20 @@
 
     <!-- TAB 3: ⚙️ Preferences & Behavior -->
     <div id="tab-preferences" class="tab-pane" role="tabpanel">
+      <section class="card">
+        <label class="section-label">Display & Window Mode</label>
+        <div class="form-group" id="launchModeGroup">
+          <label for="launchMode">Toolbar Click Mode</label>
+          <select id="launchMode" class="select-input">
+            <option value="popup" selected>🪟 Popup Window (Quick settings overlay)</option>
+            <option value="sidepanel">📑 Chrome Side Panel (Stays open while browsing)</option>
+          </select>
+          <div class="hint-text">
+            Side panel stays docked alongside Instagram without auto-closing when you click into comments or DM inputs.
+          </div>
+        </div>
+      </section>
+
       <section class="card">
         <label class="section-label">Composer & Shortcuts</label>
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "InstaReply AI - Social Media Assistant for Instagram",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "default_locale": "en",
   "description": "Draft smart, context-aware replies and posts on Instagram with AI.",
   "icons": {
@@ -24,8 +24,12 @@
   },
   "permissions": [
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  },
   "declarative_net_request": {
     "rule_resources": [
       {

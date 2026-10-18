@@ -61,7 +61,7 @@ Questions, feedback, or bug reports?
 • Email: fung@androidfung.com
 • GitHub: https://github.com/seventhmoon/insta-reply-extension/issues
 
-Version 1.4.2 — Dedicated Instagram reply assistant release featuring complete support for Stories, Reels, Feed Comments, and Direct Messages with zero-latency multi-tone bundling and client-side privacy architecture.
+Version 1.4.3 — Enhanced security, resilience, and performance release featuring scoped host permissions, local credential isolation, exponential backoff retries, header authentication, session caching, and History tab.
 
 **Category** [REQUIRED]
 Social & Communication
@@ -167,4 +167,5 @@ https://github.com/seventhmoon/insta-reply-extension/blob/main/PRIVACY.md
 | 1.3.0 | 2026-09-21 | Multi-Platform Expansion: Added comprehensive support for X (Twitter), LinkedIn, and Facebook with modular platform adapters, Draft.js/Lexical rich-text editor insertion, 280-character boundary limits for tweets, and professional networking tone bias for LinkedIn. | Complete |
 | 1.4.0 | 2026-09-26 | Character Limit Engine: Real-time character counter badge, over-limit warnings, 1-click Auto-Trim button, strict 280-char enforcement on X and 500-char on Threads, Meta Business Suite support, and Chrome Web Store manifest optimization. | Complete |
 | 1.4.1 | 2026-09-28 | Policy Compliance Update: Reduced social media brand mentions in store description to 4 platforms (Instagram, Threads, X, LinkedIn) and added external documentation link to comply with CWS Keyword Stuffing policy. | Complete |
-| 1.4.2 | 2026-10-03 | Permissions Audit (Purple Potassium Fix): Removed unused `activeTab` permission from `manifest.json`. The extension uses declarative content scripts and a dedicated action popup, which do not require `activeTab`. Verified that all remaining permissions (`storage`, `declarativeNetRequest`) are actively used. | Ready for Submission |
+| 1.4.2 | 2026-10-03 | Permissions Audit (Purple Potassium Fix): Removed unused `activeTab` permission from `manifest.json`. The extension uses declarative content scripts and a dedicated action popup, which do not require `activeTab`. Verified that all remaining permissions (`storage`, `declarativeNetRequest`) are actively used. | Complete |
+| 1.4.3 | 2026-10-17 | Security & Resilience Hardening: Scoped host permissions and isolated API credentials in local storage. Added exponential backoff retry logic, x-goog-api-key header authentication, Prompt API bridge handshake token, session caching, DOM comment selector performance optimization, and Settings History tab. | Ready for Submission |

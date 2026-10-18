@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.3] - 2026-10-17
+
+### Security
+- **Scoped Host Permissions**: Hardened `host_permissions` to trusted endpoints (`generativelanguage.googleapis.com`, `api.groq.com`, `openrouter.ai`) and added dynamic `optional_host_permissions` for custom user endpoints.
+- **Local Credential Storage**: Segregated sensitive API keys into `chrome.storage.local` with automatic migration to prevent plain-text profile synchronization.
+- **Header-Based Authentication**: Migrated Gemini API authentication to standard `x-goog-api-key` request headers, removing API keys from query strings and network logs.
+- **Prompt API Bridge Handshake**: Protected `window.postMessage` bridge communication with a randomized session handshake token (`BRIDGE_AUTH_TOKEN`).
+
+### Performance & Reliability
+- **DOM Selector Optimization**: Replaced greedy universal `span` queries in comment action scanner with targeted selector lookups to eliminate scroll stutters.
+- **Transient Error Resilience**: Added exponential backoff retry logic (`fetchWithRetry`) for API calls encountering HTTP 429 rate limits and 5xx gateway errors.
+- **Session Caching**: Cached prompt responses in `chrome.storage.session` to reduce redundant network round trips during active browsing sessions.
+
+### Added
+- **Reply History Tab**: Added dedicated History tab in settings popup with 1-click clipboard copy for previous drafts.
+- **Internationalization (i18n)**: Added foundational `_locales/en/messages.json` manifest support.
+
+---
+
 ## [1.4.2] - 2026-10-11
 
 ### Added

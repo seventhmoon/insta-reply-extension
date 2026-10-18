@@ -4712,6 +4712,27 @@
 
     lastContextData = { ...context, contextType, postId: context.postId || postId };
 
+    // If launchMode is sidepanel, open or update Chrome Side Panel instead of in-page card
+    if (config.launchMode === 'sidepanel') {
+      try {
+        chrome.runtime.sendMessage({
+          action: 'OPEN_SIDE_PANEL_FOR_REPLY',
+          context: lastContextData
+        });
+        return;
+      } catch (err) {
+        console.warn('[InstaReply AI] Failed to dispatch to side panel, falling back to card:', err);
+      }
+    }
+
+    // Broadcast context to side panel if already open side-by-side
+    try {
+      chrome.runtime.sendMessage({
+        action: 'UPDATE_ACTIVE_REPLY_CONTEXT',
+        context: lastContextData
+      });
+    } catch (_) {}
+
     // Create & Position Card
     activeCard = createCardDOM(context);
     document.body.appendChild(activeCard);
@@ -7182,5 +7203,27 @@
       });
     }
   } catch (_) {}
+
+  // Listener for messages from Side Panel or Popup
+  if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'INSERT_REPLY_FROM_SIDEPANEL') {
+        const target = activeInputTarget || document.querySelector('form textarea, div[role="textbox"][contenteditable="true"]');
+        if (target) {
+          insertTextIntoInstagramInput(target, message.text, message.context || lastContextData);
+          if (typeof target.focus === 'function') target.focus();
+          sendResponse({ success: true });
+        } else {
+          sendResponse({ success: false, error: 'Target input field not found on page' });
+        }
+        return true;
+      }
+
+      if (message.action === 'GET_PAGE_REPLY_CONTEXT') {
+        sendResponse({ success: true, context: lastContextData || null });
+        return true;
+      }
+    });
+  }
 
 })();

@@ -70,6 +70,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const quickReplyTone = document.getElementById('quickReplyTone');
   const composerButtonMode = document.getElementById('composerButtonMode');
   const commentButtonMode = document.getElementById('commentButtonMode');
+  const launchMode = document.getElementById('launchMode');
+  const openSidePanelBtn = document.getElementById('openSidePanelBtn');
   const myVoiceSamples = document.getElementById('myVoiceSamples');
   const customInstructions = document.getElementById('customInstructions');
 
@@ -98,6 +100,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (targetTab === 'tab-history') {
         loadHistory();
       }
+      if (targetTab === 'tab-reply' || targetTab === 'tab-history') {
+        document.querySelector('.app-footer')?.classList.add('hidden');
+      } else {
+        document.querySelector('.app-footer')?.classList.remove('hidden');
+      }
     });
   });
 
@@ -111,6 +118,69 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   } catch (_) {}
+
+  // Detect Side Panel Mode and adapt styling
+  initSidePanelMode();
+
+  function initSidePanelMode() {
+    let isSidePanel = false;
+    try {
+      if (chrome.extension?.getViews) {
+        const popups = chrome.extension.getViews({ type: 'popup' });
+        if (popups && popups.length > 0 && !popups.includes(window)) {
+          isSidePanel = true;
+        }
+      }
+      if (window.location.search.includes('sidepanel')) {
+        isSidePanel = true;
+      }
+    } catch (_) {}
+
+    if (isSidePanel) {
+      document.body.classList.add('is-sidepanel');
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getContexts) {
+      chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }).then(contexts => {
+        if (contexts && contexts.length > 0) {
+          if (contexts.some(c => c.documentUrl?.includes('popup.html'))) {
+            document.body.classList.add('is-sidepanel');
+          }
+        }
+      }).catch(() => {});
+    }
+  }
+
+  // Open Side Panel button
+  if (openSidePanelBtn) {
+    openSidePanelBtn.addEventListener('click', async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && tab?.windowId) {
+          await chrome.sidePanel.open({ windowId: tab.windowId });
+          window.close();
+        } else {
+          alert('Chrome Side Panel is available in Chrome 114+ and can also be opened via the Side Panel icon in Chrome toolbar.');
+        }
+      } catch (err) {
+        console.warn('[InstaReply AI] Could not open side panel:', err);
+      }
+    });
+  }
+
+  // Immediate launchMode change listener
+  if (launchMode) {
+    launchMode.addEventListener('change', async () => {
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'SET_LAUNCH_MODE',
+          mode: launchMode.value
+        });
+      } catch (err) {
+        console.warn('[InstaReply AI] Failed to set launch mode:', err);
+      }
+    });
+  }
 
   // Load saved configuration
   const config = await chrome.runtime.sendMessage({ action: 'GET_CONFIG' });
@@ -474,6 +544,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (quickReplyTone) quickReplyTone.value = cfg.quickReplyTone || cfg.defaultTone || 'friendly';
     if (composerButtonMode) composerButtonMode.value = cfg.composerButtonMode || 'smart';
     if (commentButtonMode) commentButtonMode.value = cfg.commentButtonMode || 'auto';
+    if (launchMode && cfg.launchMode) launchMode.value = cfg.launchMode;
     if (myVoiceSamples) myVoiceSamples.value = cfg.myVoiceSamples || '';
     customInstructions.value = cfg.customInstructions || '';
   }
@@ -526,6 +597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       quickReplyTone: quickReplyTone ? quickReplyTone.value : 'friendly',
       composerButtonMode: composerButtonMode ? composerButtonMode.value : 'smart',
       commentButtonMode: commentButtonMode ? commentButtonMode.value : 'auto',
+      launchMode: launchMode ? launchMode.value : 'popup',
       myVoiceSamples: myVoiceSamples ? myVoiceSamples.value.trim() : '',
       customInstructions: customInstructions.value.trim()
     };
@@ -584,10 +656,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   function setupPopupResize() {
     const resizeHandle = document.getElementById('popupResizeHandle');
     if (!resizeHandle) return;
+    if (document.body.classList.contains('is-sidepanel')) return;
 
     // Load saved dimensions
     try {
       chrome.storage?.local?.get(['popupWidth', 'popupHeight'], (res) => {
+        if (document.body.classList.contains('is-sidepanel')) return;
         if (res?.popupWidth) {
           const w = Math.min(Math.max(res.popupWidth, 360), 780);
           document.body.style.width = `${w}px`;
@@ -691,5 +765,256 @@ document.addEventListener('DOMContentLoaded', async () => {
         historyListContainer.innerHTML = '<p class="hint-text">History cleared.</p>';
       }
     });
+  }
+
+  // =========================================================================
+  // Live Reply Assistant (Side Panel & Popup Integration)
+  // =========================================================================
+  const replyTargetBadge = document.getElementById('replyTargetBadge');
+  const replyPlatformTag = document.getElementById('replyPlatformTag');
+  const replyContextText = document.getElementById('replyContextText');
+  const replyExtraContext = document.getElementById('replyExtraContext');
+  const replyExtraCaption = document.getElementById('replyExtraCaption');
+  const liveReplyStance = document.getElementById('liveReplyStance');
+  const liveReplyTone = document.getElementById('liveReplyTone');
+  const liveReplyHint = document.getElementById('liveReplyHint');
+  const liveDraftText = document.getElementById('liveDraftText');
+  const liveCharCounter = document.getElementById('liveCharCounter');
+  const draftLoadingOverlay = document.getElementById('draftLoadingOverlay');
+  const insertReplyBtn = document.getElementById('insertReplyBtn');
+  const regenerateReplyBtn = document.getElementById('regenerateReplyBtn');
+  const copyLiveReplyBtn = document.getElementById('copyLiveReplyBtn');
+  const liveReplyFeedback = document.getElementById('liveReplyFeedback');
+
+  let activeLiveContext = null;
+  let activeBundledTones = {};
+
+  initLiveReplyWorkflow();
+
+  function initLiveReplyWorkflow() {
+    if (!liveDraftText) return;
+
+    // Character counter listener
+    liveDraftText.addEventListener('input', updateLiveCharCount);
+
+    // Stance change listener -> triggers regeneration
+    if (liveReplyStance) {
+      liveReplyStance.addEventListener('change', () => {
+        executeLiveDraftGeneration();
+      });
+    }
+
+    // Tone change listener -> uses bundled tone if available, else regenerates
+    if (liveReplyTone) {
+      liveReplyTone.addEventListener('change', () => {
+        const selectedTone = liveReplyTone.value;
+        if (activeBundledTones && activeBundledTones[selectedTone]) {
+          liveDraftText.value = activeBundledTones[selectedTone];
+          updateLiveCharCount();
+        } else {
+          executeLiveDraftGeneration();
+        }
+      });
+    }
+
+    // Regenerate button
+    if (regenerateReplyBtn) {
+      regenerateReplyBtn.addEventListener('click', () => {
+        executeLiveDraftGeneration();
+      });
+    }
+
+    // Copy button
+    if (copyLiveReplyBtn) {
+      copyLiveReplyBtn.addEventListener('click', async () => {
+        const text = liveDraftText.value.trim();
+        if (!text) return;
+        await navigator.clipboard.writeText(text);
+        showLiveFeedback('✓ Copied to clipboard!', 'success');
+      });
+    }
+
+    // Insert into Comment button
+    if (insertReplyBtn) {
+      insertReplyBtn.addEventListener('click', async () => {
+        const text = liveDraftText.value.trim();
+        if (!text) {
+          showLiveFeedback('Please generate or enter a reply first.', 'error');
+          return;
+        }
+
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab?.id) {
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'INSERT_REPLY_FROM_SIDEPANEL',
+              text: text,
+              context: activeLiveContext
+            }, (response) => {
+              if (chrome.runtime.lastError || !response?.success) {
+                showLiveFeedback('Could not insert: input not found or page reloaded.', 'error');
+              } else {
+                showLiveFeedback('✓ Inserted into comment! 🚀', 'success');
+              }
+            });
+          }
+        } catch (err) {
+          showLiveFeedback('Failed to insert reply into page.', 'error');
+        }
+      });
+    }
+
+    // Listen for live reply context update messages
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener((message) => {
+        if (message.action === 'ACTIVE_REPLY_CONTEXT_UPDATED' && message.context) {
+          applyLiveContext(message.context);
+        }
+      });
+    }
+
+    // Check for cached reply context on mount
+    fetchInitialLiveContext();
+  }
+
+  async function fetchInitialLiveContext() {
+    try {
+      const res = await chrome.runtime.sendMessage({ action: 'GET_ACTIVE_REPLY_CONTEXT' });
+      if (res && res.success && res.context) {
+        applyLiveContext(res.context);
+        return;
+      }
+
+      // Fallback: query active tab for lastContextData
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { action: 'GET_PAGE_REPLY_CONTEXT' }, (pageRes) => {
+          if (!chrome.runtime.lastError && pageRes?.success && pageRes?.context) {
+            applyLiveContext(pageRes.context);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  function applyLiveContext(ctx) {
+    if (!ctx) return;
+    activeLiveContext = ctx;
+
+    // Switch to Reply tab
+    switchToReplyTab();
+
+    // Update target context display
+    const author = ctx.author ? `@${ctx.author.replace(/^@/, '')}` : 'Post';
+    const cType = ctx.contextType === 'story' ? '📸 Instagram Story' :
+                  ctx.contextType === 'dm' ? `✉️ DM with ${author}` :
+                  `💬 Replying to ${author}`;
+
+    if (replyTargetBadge) replyTargetBadge.textContent = cType;
+    if (replyPlatformTag) replyPlatformTag.textContent = (ctx.platform || 'instagram').toUpperCase();
+
+    const snippet = ctx.incomingText || ctx.postCaption || 'Post context loaded';
+    if (replyContextText) replyContextText.textContent = `"${snippet}"`;
+
+    if (ctx.postVisuals?.description && replyExtraContext && replyExtraCaption) {
+      replyExtraCaption.textContent = `Visual scene: ${ctx.postVisuals.description}`;
+      replyExtraContext.classList.remove('hidden');
+    }
+
+    if (ctx.userDraftHint && liveReplyHint) {
+      liveReplyHint.value = ctx.userDraftHint;
+    }
+
+    // Auto-generate reply for loaded context
+    executeLiveDraftGeneration();
+  }
+
+  function switchToReplyTab() {
+    tabBtns.forEach(b => {
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
+    tabPanes.forEach(p => p.classList.remove('active'));
+
+    const replyBtn = document.getElementById('tabBtnReply');
+    const replyPane = document.getElementById('tab-reply');
+    if (replyBtn) {
+      replyBtn.classList.add('active');
+      replyBtn.setAttribute('aria-selected', 'true');
+    }
+    if (replyPane) {
+      replyPane.classList.add('active');
+    }
+    document.querySelector('.app-footer')?.classList.add('hidden');
+  }
+
+  async function executeLiveDraftGeneration() {
+    if (!liveDraftText) return;
+
+    if (draftLoadingOverlay) draftLoadingOverlay.classList.remove('hidden');
+    if (liveReplyFeedback) liveReplyFeedback.classList.add('hidden');
+
+    const stance = liveReplyStance ? liveReplyStance.value : 'positive';
+    const tone = liveReplyTone ? liveReplyTone.value : 'friendly';
+    const hint = liveReplyHint ? liveReplyHint.value.trim() : '';
+
+    const payload = {
+      platform: activeLiveContext?.platform || 'instagram',
+      contextType: activeLiveContext?.contextType || 'comment',
+      incomingText: activeLiveContext?.incomingText || '',
+      postCaption: activeLiveContext?.postCaption || '',
+      postAuthor: activeLiveContext?.postAuthor || '',
+      postVisuals: activeLiveContext?.postVisuals || null,
+      author: activeLiveContext?.author || '',
+      isSpecificCommentReply: activeLiveContext?.isSpecificCommentReply || false,
+      userDraftHint: hint || activeLiveContext?.userDraftHint || '',
+      stance,
+      tone,
+      variationIndex: 0
+    };
+
+    try {
+      const res = await chrome.runtime.sendMessage({
+        action: 'GENERATE_REPLY',
+        payload
+      });
+
+      if (res && res.success && res.reply) {
+        liveDraftText.value = res.reply;
+        activeBundledTones = res.toneReplies || {};
+        updateLiveCharCount();
+      } else {
+        liveDraftText.value = '';
+        showLiveFeedback(res?.error || 'Failed to generate reply.', 'error');
+      }
+    } catch (err) {
+      showLiveFeedback('Generation request failed.', 'error');
+    } finally {
+      if (draftLoadingOverlay) draftLoadingOverlay.classList.add('hidden');
+    }
+  }
+
+  function updateLiveCharCount() {
+    if (!liveDraftText || !liveCharCounter) return;
+    const len = liveDraftText.value.length;
+    const limit = activeLiveContext?.charLimit || (activeLiveContext?.platform === 'x' ? 280 : activeLiveContext?.platform === 'threads' ? 500 : 2200);
+
+    liveCharCounter.textContent = `${len} / ${limit}`;
+    liveCharCounter.classList.remove('warning', 'overlimit');
+    if (len > limit) {
+      liveCharCounter.classList.add('overlimit');
+    } else if (len > limit * 0.85) {
+      liveCharCounter.classList.add('warning');
+    }
+  }
+
+  function showLiveFeedback(msg, type = 'success') {
+    if (!liveReplyFeedback) return;
+    liveReplyFeedback.textContent = msg;
+    liveReplyFeedback.className = `save-feedback ${type}`;
+    liveReplyFeedback.classList.remove('hidden');
+    setTimeout(() => {
+      liveReplyFeedback.classList.add('hidden');
+    }, 2500);
   }
 });

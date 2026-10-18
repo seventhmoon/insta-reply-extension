@@ -2666,6 +2666,70 @@ Hope this helps!
     assert.ok(!trimmed.endsWith(' '), 'Trimmed text must not have trailing spaces');
   });
 
+  // =========================================================================
+  // SUITE 16: Chrome Side Panel & Window Mode Switching Suite
+  // =========================================================================
+  console.log('\n📑 Suite 16: Chrome Side Panel & Window Mode Switching');
+
+  runTest('SidePanelManifestRegistration', 'Manifest registers sidePanel permission and default_path', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8'));
+    assert.ok(manifest.permissions.includes('sidePanel'), 'manifest.permissions must include sidePanel');
+    assert.ok(manifest.side_panel, 'manifest.json must define side_panel field');
+    assert.strictEqual(manifest.side_panel.default_path, 'popup/popup.html', 'side_panel.default_path must point to popup/popup.html');
+  });
+
+  runTest('SidePanelUIControls', 'Popup UI provides side panel dock button and launch mode setting', () => {
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    assert.ok(popupHtml.includes('id="openSidePanelBtn"'), 'popup.html must include openSidePanelBtn dock button');
+    assert.ok(popupHtml.includes('id="launchMode"'), 'popup.html must include launchMode select dropdown');
+    assert.ok(popupHtml.includes('value="sidepanel"'), 'launchMode select must include sidepanel option');
+
+    const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+    assert.ok(popupJs.includes('chrome.sidePanel?.open'), 'popup.js must call chrome.sidePanel.open');
+    assert.ok(popupJs.includes('initSidePanelMode'), 'popup.js must implement initSidePanelMode');
+    assert.ok(popupJs.includes('is-sidepanel'), 'popup.js must support is-sidepanel body class');
+  });
+
+  runTest('SidePanelServiceWorkerConfig', 'Service worker handles launchMode in DEFAULT_CONFIG and applies panel behavior', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes("launchMode: 'popup'"), 'DEFAULT_CONFIG must include launchMode');
+    assert.ok(swCode.includes('function applyLaunchMode('), 'service-worker.js must define applyLaunchMode');
+    assert.ok(swCode.includes('openPanelOnActionClick'), 'applyLaunchMode must use openPanelOnActionClick');
+    assert.ok(swCode.includes("action === 'SET_LAUNCH_MODE'"), 'service-worker.js must handle SET_LAUNCH_MODE message');
+  });
+
+  runTest('SidePanelAdaptationCSS', 'Popup CSS provides side panel badge and full-bleed layout classes', () => {
+    const cssCode = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.css'), 'utf8');
+    assert.ok(cssCode.includes('.sidepanel-badge-btn'), 'popup.css must style sidepanel-badge-btn');
+    assert.ok(cssCode.includes('body.is-sidepanel'), 'popup.css must define body.is-sidepanel');
+    assert.ok(cssCode.includes('height: 100vh !important'), 'body.is-sidepanel must expand to full viewport height');
+  });
+
+  runTest('SidePanelLiveReplyWorkflow', 'End-to-end Live Reply workflow is wired across content, background, and popup UI', () => {
+    // 1. Popup HTML elements
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    assert.ok(popupHtml.includes('id="tab-reply"'), 'popup.html must have tab-reply pane');
+    assert.ok(popupHtml.includes('id="liveDraftText"'), 'popup.html must have liveDraftText textarea');
+    assert.ok(popupHtml.includes('id="insertReplyBtn"'), 'popup.html must have insertReplyBtn button');
+    assert.ok(popupHtml.includes('id="liveReplyStance"'), 'popup.html must have liveReplyStance select');
+    assert.ok(popupHtml.includes('id="liveReplyTone"'), 'popup.html must have liveReplyTone select');
+
+    // 2. Content script dispatch & insertion
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    assert.ok(contentJs.includes('OPEN_SIDE_PANEL_FOR_REPLY'), 'content.js must dispatch OPEN_SIDE_PANEL_FOR_REPLY in sidepanel mode');
+    assert.ok(contentJs.includes('INSERT_REPLY_FROM_SIDEPANEL'), 'content.js must handle INSERT_REPLY_FROM_SIDEPANEL message');
+
+    // 3. Service worker handling
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes("request.action === 'OPEN_SIDE_PANEL_FOR_REPLY'"), 'service-worker.js must handle OPEN_SIDE_PANEL_FOR_REPLY');
+    assert.ok(swCode.includes("request.action === 'UPDATE_ACTIVE_REPLY_CONTEXT'"), 'service-worker.js must handle UPDATE_ACTIVE_REPLY_CONTEXT');
+
+    // 4. Popup JS workflow logic
+    const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+    assert.ok(popupJs.includes('initLiveReplyWorkflow'), 'popup.js must implement initLiveReplyWorkflow');
+    assert.ok(popupJs.includes('INSERT_REPLY_FROM_SIDEPANEL'), 'popup.js must send INSERT_REPLY_FROM_SIDEPANEL to active tab');
+  });
+
   console.log('=================================================');
 
   if (failedTests > 0) {
