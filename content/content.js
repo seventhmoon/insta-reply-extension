@@ -6,6 +6,7 @@
   // State
   let activeCard = null;
   let activeInputTarget = null;
+  let lastContextMenuTarget = null;
   let currentTone = 'friendly';
   let currentStance = 'positive';
   let currentLanguage = 'auto';
@@ -144,12 +145,23 @@
   }
 
   function init() {
-    ensurePageBridgeInjected();
-    scanAndInjectShortcuts();
-    setupMutationObserver();
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+
     setupGlobalClickListener();
     setupFocusListener();
     setupKeyboardShortcuts();
+
+    // On generic websites, run in zero-clutter passive mode:
+    // listen for right-click context menu & Alt+Q shortcut without running DOM observers
+    if (activePlat === 'generic') {
+      return;
+    }
+
+    ensurePageBridgeInjected();
+    scanAndInjectShortcuts();
+    setupMutationObserver();
     setupNavigationListener();
 
     // Staggered retries to guarantee button injection on cold direct post loads (React client hydration)
@@ -211,6 +223,18 @@
         document.querySelectorAll('.instareply-chip-menu:not(.hidden)').forEach(m => m.classList.add('hidden'));
       }
     });
+
+    // Track right-clicked editable element for Universal Context Menu fallback
+    document.addEventListener('contextmenu', (e) => {
+      const el = e.target;
+      if (!el) return;
+      const editable = el.closest
+        ? el.closest('textarea, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable="true"], [role="textbox"]')
+        : null;
+      if (editable && !editable.closest('.instareply-card-overlay') && !editable.closest('.instareply-card')) {
+        lastContextMenuTarget = editable;
+      }
+    }, true);
   }
 
   /**
@@ -218,6 +242,12 @@
    */
   function detectContextType(inputEl) {
     if (!inputEl) return 'comment';
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+    if (activePlat !== 'instagram') {
+      return activePlat === 'meta_business' ? 'dm' : 'comment';
+    }
     if (window.location.pathname.includes('/direct') || (inputEl.closest && inputEl.closest('.ig-dm-composer, div[role="main"] form[action=""]'))) {
       return 'dm';
     }
@@ -465,74 +495,35 @@
       return;
     }
 
-    // 4. Multi-Platform Composers (X/Twitter, LinkedIn, Threads, Facebook)
-    if (activePlatform === 'x' && typeof window.XAdapter !== 'undefined') {
-      const xInputs = window.XAdapter.findComposerElements();
-      xInputs.forEach((el) => {
-        if (
-          el.closest('.instareply-card-overlay') ||
-          el.closest('.instareply-card') ||
-          el.classList.contains('instareply-textarea') ||
-          el.id === 'instareply-output-text'
-        ) return;
-        const ctx = window.XAdapter.extractContext(el);
-        injectShortcutButton(el, ctx.contextType || 'comment');
-      });
-    } else if (activePlatform === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
-      const liInputs = window.LinkedInAdapter.findComposerElements();
-      liInputs.forEach((el) => {
-        if (
-          el.closest('.instareply-card-overlay') ||
-          el.closest('.instareply-card') ||
-          el.classList.contains('instareply-textarea') ||
-          el.id === 'instareply-output-text'
-        ) return;
-        const ctx = window.LinkedInAdapter.extractContext(el);
-        injectShortcutButton(el, ctx.contextType || 'comment');
+    // 4. Multi-Platform Composers via Unified PlatformRegistry / SocialPlatformDetector
+    // Skip auto-injecting buttons on generic websites (triggered via right-click context menu or Alt+Q)
+    if (activePlatform === 'generic') {
+      return;
+    }
 
-        // Continuous focus/click listener for LinkedIn dynamic React/Ember re-renders
+    const activeAdapter = (typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+      ? SocialPlatformDetector.getAdapter(activePlatform)
+      : null;
+
+    if (activeAdapter && typeof activeAdapter.findComposerElements === 'function') {
+      const defaultCtxType = activePlatform === 'meta_business' ? 'dm' : 'comment';
+      const platformInputs = activeAdapter.findComposerElements();
+      platformInputs.forEach((el) => {
+        if (
+          el.closest('.instareply-card-overlay') ||
+          el.closest('.instareply-card') ||
+          el.classList.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) return;
+        const ctx = activeAdapter.extractContext ? activeAdapter.extractContext(el) : {};
+        injectShortcutButton(el, ctx.contextType || defaultCtxType);
+
         if (!el.dataset.instareplyListenerBound) {
           el.dataset.instareplyListenerBound = 'true';
           const triggerScan = () => setTimeout(scanAndInjectShortcuts, 80);
           el.addEventListener('focus', triggerScan);
           el.addEventListener('click', triggerScan);
         }
-      });
-    } else if (activePlatform === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
-      const thInputs = window.ThreadsAdapter.findComposerElements();
-      thInputs.forEach((el) => {
-        if (
-          el.closest('.instareply-card-overlay') ||
-          el.closest('.instareply-card') ||
-          el.classList.contains('instareply-textarea') ||
-          el.id === 'instareply-output-text'
-        ) return;
-        const ctx = window.ThreadsAdapter.extractContext(el);
-        injectShortcutButton(el, ctx.contextType || 'comment');
-      });
-    } else if (activePlatform === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
-      const fbInputs = window.FacebookAdapter.findComposerElements();
-      fbInputs.forEach((el) => {
-        if (
-          el.closest('.instareply-card-overlay') ||
-          el.closest('.instareply-card') ||
-          el.classList.contains('instareply-textarea') ||
-          el.id === 'instareply-output-text'
-        ) return;
-        const ctx = window.FacebookAdapter.extractContext(el);
-        injectShortcutButton(el, ctx.contextType || 'comment');
-      });
-    } else if (activePlatform === 'meta_business' && typeof window.MetaBusinessAdapter !== 'undefined') {
-      const mbInputs = window.MetaBusinessAdapter.findComposerElements();
-      mbInputs.forEach((el) => {
-        if (
-          el.closest('.instareply-card-overlay') ||
-          el.closest('.instareply-card') ||
-          el.classList.contains('instareply-textarea') ||
-          el.id === 'instareply-output-text'
-        ) return;
-        const ctx = window.MetaBusinessAdapter.extractContext(el);
-        injectShortcutButton(el, ctx.contextType || 'dm');
       });
     }
   }
@@ -1705,46 +1696,20 @@
   function insertShortcutIntoComment(btn, inputEl) {
     if (!inputEl || inputEl.closest('.instareply-card-overlay') || inputEl.closest('.instareply-card')) return;
 
-    // Platform-specific toolbar injection for X, LinkedIn, Threads, and Facebook
+    // Platform-specific toolbar injection via Unified PlatformRegistry
     const activePlat = typeof SocialPlatformDetector !== 'undefined'
       ? SocialPlatformDetector.detectPlatform()
       : 'instagram';
 
-    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
-      if (window.XAdapter.attachToToolbar) {
-        window.XAdapter.attachToToolbar(btn, inputEl);
-      } else {
-        const tb = window.XAdapter.findToolbarContainer(inputEl);
-        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
-          tb.appendChild(btn);
-        }
-      }
-      return;
-    } else if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
-      if (window.LinkedInAdapter.attachToToolbar) {
-        window.LinkedInAdapter.attachToToolbar(btn, inputEl);
-      } else {
-        const tb = window.LinkedInAdapter.findToolbarContainer(inputEl);
-        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
-          tb.appendChild(btn);
-        }
-      }
-      return;
-    } else if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
-      if (window.ThreadsAdapter.attachToToolbar) {
-        window.ThreadsAdapter.attachToToolbar(btn, inputEl);
-      } else {
-        const tb = window.ThreadsAdapter.findToolbarContainer(inputEl);
-        if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
-          tb.appendChild(btn);
-        }
-      }
-      return;
-    } else if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
-      if (window.FacebookAdapter.attachToToolbar) {
-        window.FacebookAdapter.attachToToolbar(btn, inputEl);
-      } else {
-        const tb = window.FacebookAdapter.findToolbarContainer(inputEl);
+    const activeAdapter = (activePlat !== 'instagram' && typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+      ? SocialPlatformDetector.getAdapter(activePlat)
+      : null;
+
+    if (activeAdapter) {
+      if (activeAdapter.attachToToolbar) {
+        activeAdapter.attachToToolbar(btn, inputEl);
+      } else if (activeAdapter.findToolbarContainer) {
+        const tb = activeAdapter.findToolbarContainer(inputEl);
         if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
           tb.appendChild(btn);
         }
@@ -2724,13 +2689,11 @@
         delete inputEl.dataset.instareplyInjected;
       }
     } else {
-      // Multi-Platform (X, LinkedIn, Threads, Facebook):
+      // Multi-Platform via Unified PlatformRegistry:
       // Check if this input's toolbar already has an InstaReply button
-      const adapter = activePlat === 'x' ? window.XAdapter :
-                      activePlat === 'linkedin' ? window.LinkedInAdapter :
-                      activePlat === 'threads' ? window.ThreadsAdapter :
-                      activePlat === 'facebook' ? window.FacebookAdapter :
-                      activePlat === 'meta_business' ? window.MetaBusinessAdapter : null;
+      const adapter = (typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+        ? SocialPlatformDetector.getAdapter(activePlat)
+        : null;
       if (adapter && adapter.findToolbarContainer) {
         const tb = adapter.findToolbarContainer(inputEl);
         if (tb && tb.querySelector('.instareply-shortcut-btn')) {
@@ -2839,40 +2802,16 @@
     actionsWrapper.appendChild(quickBtn);
     actionsWrapper.appendChild(btn);
 
-    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
-      const ok = window.XAdapter.attachToToolbar(actionsWrapper, inputEl);
+    const activeAdapter = (activePlat !== 'instagram' && typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+      ? SocialPlatformDetector.getAdapter(activePlat)
+      : null;
+
+    if (activeAdapter && typeof activeAdapter.attachToToolbar === 'function') {
+      const ok = activeAdapter.attachToToolbar(actionsWrapper, inputEl);
       if (!ok) {
         delete inputEl.dataset.instareplyInjected;
       }
-      bindDynamicActivation(inputEl, 'x', contextType);
-      return;
-    } else if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
-      const ok = window.LinkedInAdapter.attachToToolbar(actionsWrapper, inputEl);
-      if (!ok) {
-        delete inputEl.dataset.instareplyInjected;
-      }
-      bindDynamicActivation(inputEl, 'linkedin', contextType);
-      return;
-    } else if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
-      const ok = window.ThreadsAdapter.attachToToolbar(actionsWrapper, inputEl);
-      if (!ok) {
-        delete inputEl.dataset.instareplyInjected;
-      }
-      bindDynamicActivation(inputEl, 'threads', contextType);
-      return;
-    } else if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
-      const ok = window.FacebookAdapter.attachToToolbar(actionsWrapper, inputEl);
-      if (!ok) {
-        delete inputEl.dataset.instareplyInjected;
-      }
-      bindDynamicActivation(inputEl, 'facebook', contextType);
-      return;
-    } else if (activePlat === 'meta_business' && typeof window.MetaBusinessAdapter !== 'undefined') {
-      const ok = window.MetaBusinessAdapter.attachToToolbar(actionsWrapper, inputEl);
-      if (!ok) {
-        delete inputEl.dataset.instareplyInjected;
-      }
-      bindDynamicActivation(inputEl, 'meta_business', contextType);
+      bindDynamicActivation(inputEl, activePlat, contextType);
       return;
     }
 
@@ -2898,11 +2837,9 @@
       [80, 250, 600].forEach(delay => {
         setTimeout(() => {
           if (!document.body.contains(inputEl)) return;
-          const adapter = platform === 'x' ? window.XAdapter :
-                          platform === 'linkedin' ? window.LinkedInAdapter :
-                          platform === 'facebook' ? window.FacebookAdapter :
-                          platform === 'threads' ? window.ThreadsAdapter :
-                          platform === 'meta_business' ? window.MetaBusinessAdapter : null;
+          const adapter = (typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+            ? SocialPlatformDetector.getAdapter(platform)
+            : null;
           if (adapter) {
             const tb = adapter.findToolbarContainer ? adapter.findToolbarContainer(inputEl) : null;
             if (tb && !tb.querySelector('.instareply-shortcut-btn')) {
@@ -4551,11 +4488,15 @@
     activeInputTarget = inputEl;
     currentVariation = 0;
 
+    const activePlat = typeof SocialPlatformDetector !== 'undefined'
+      ? SocialPlatformDetector.detectPlatform()
+      : 'instagram';
+
     // Auto-detect and correct contextType if interacting with an Instagram Story
     const ariaLabel = (inputEl?.getAttribute?.('aria-label') || '').toLowerCase();
     const placeholder = (inputEl?.getAttribute?.('placeholder') || '').toLowerCase();
     const ariaPlaceholder = (inputEl?.getAttribute?.('aria-placeholder') || '').toLowerCase();
-    const isStoryContext =
+    const isStoryContext = activePlat === 'instagram' && (
       contextType === 'story' ||
       triggerBtn?.dataset?.contextType === 'story' ||
       triggerBtn?.classList?.contains('instareply-story-shortcut-btn') ||
@@ -4566,7 +4507,8 @@
       placeholder.includes('reply to') ||
       ariaPlaceholder.includes('reply to') ||
       ariaLabel.includes('responder a') ||
-      placeholder.includes('responder a');
+      placeholder.includes('responder a')
+    );
 
     if (isStoryContext) {
       contextType = 'story';
@@ -4585,7 +4527,14 @@
     let postCaption = '';
     let postVisuals = { description: '', thumbnailUrl: '', mediaType: 'image' };
 
-    if (contextType === 'story') {
+    if (activePlat !== 'instagram') {
+      const adapter = (typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+        ? SocialPlatformDetector.getAdapter(activePlat)
+        : null;
+      postContainer = (shouldIncludeCaption && adapter && typeof adapter.findPostContainer === 'function')
+        ? adapter.findPostContainer(inputEl || triggerBtn)
+        : null;
+    } else if (contextType === 'story') {
       const storyContainer = findActiveStoryContainer(inputEl || triggerBtn);
       postAuthor = extractStoryAuthor(storyContainer, inputEl || triggerBtn);
       postCaption = extractStoryCaption(storyContainer, postAuthor);
@@ -4693,10 +4642,10 @@
       };
     } else {
       context = extractContext(inputEl, contextType, postContainer);
-      context.contextType = contextType;
-      context.postId = (contextType === 'dm')
+      context.contextType = context.contextType || contextType;
+      context.postId = (contextType === 'dm' && activePlat === 'instagram')
         ? extractDmIdentifier(inputEl || triggerBtn, context.author)
-        : (postId || context.postId || extractPostIdentifier(postContainer, context.postAuthor, context.postCaption));
+        : (context.postId || postId || extractPostIdentifier(postContainer, context.postAuthor, context.postCaption));
       if (!context.postCaption) context.postCaption = postCaption;
       if (!context.postAuthor) context.postAuthor = postAuthor || context.author;
       if (!context.postVisuals) context.postVisuals = postVisuals;
@@ -4754,69 +4703,28 @@
     // Read user's existing draft text in the input
     const userDraftHint = getElementValue(inputEl).trim();
 
-    // Multi-platform Context Extraction (X/Twitter, LinkedIn, Facebook)
+    // Multi-platform Context Extraction via Unified PlatformRegistry
     const activePlat = typeof SocialPlatformDetector !== 'undefined'
       ? SocialPlatformDetector.detectPlatform()
       : 'instagram';
 
-    if (activePlat === 'x' && typeof window.XAdapter !== 'undefined') {
-      const xContext = window.XAdapter.extractContext(inputEl, postContainer);
+    const activeAdapter = (activePlat !== 'instagram' && typeof SocialPlatformDetector !== 'undefined' && typeof SocialPlatformDetector.getAdapter === 'function')
+      ? SocialPlatformDetector.getAdapter(activePlat)
+      : null;
+
+    if (activeAdapter && typeof activeAdapter.extractContext === 'function') {
+      const platContext = activeAdapter.extractContext(inputEl, postContainer);
       return {
-        ...xContext,
-        contextType: xContext.contextType || contextType || 'comment',
-        author: xContext.author || '',
-        incomingText: xContext.incomingText || '',
-        postCaption: xContext.postCaption || '',
-        postAuthor: xContext.postAuthor || '',
-        postVisuals: xContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
-        isSpecificCommentReply: Boolean(xContext.incomingText && xContext.author),
+        ...platContext,
+        contextType: platContext.contextType || contextType || 'comment',
+        author: platContext.author || '',
+        incomingText: platContext.incomingText || '',
+        postCaption: platContext.postCaption || '',
+        postAuthor: platContext.postAuthor || '',
+        postVisuals: platContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
+        isSpecificCommentReply: Boolean(platContext.incomingText && platContext.author),
         userDraftHint: userDraftHint,
-        platform: 'x'
-      };
-    }
-    if (activePlat === 'linkedin' && typeof window.LinkedInAdapter !== 'undefined') {
-      const liContext = window.LinkedInAdapter.extractContext(inputEl, postContainer);
-      return {
-        ...liContext,
-        contextType: liContext.contextType || contextType || 'comment',
-        author: liContext.author || '',
-        incomingText: liContext.incomingText || '',
-        postCaption: liContext.postCaption || '',
-        postAuthor: liContext.postAuthor || '',
-        postVisuals: liContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
-        isSpecificCommentReply: Boolean(liContext.incomingText && liContext.author),
-        userDraftHint: userDraftHint,
-        platform: 'linkedin'
-      };
-    }
-    if (activePlat === 'threads' && typeof window.ThreadsAdapter !== 'undefined') {
-      const thContext = window.ThreadsAdapter.extractContext(inputEl, postContainer);
-      return {
-        ...thContext,
-        contextType: thContext.contextType || contextType || 'comment',
-        author: thContext.author || '',
-        incomingText: thContext.incomingText || '',
-        postCaption: thContext.postCaption || '',
-        postAuthor: thContext.postAuthor || '',
-        postVisuals: thContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
-        isSpecificCommentReply: Boolean(thContext.incomingText && thContext.author),
-        userDraftHint: userDraftHint,
-        platform: 'threads'
-      };
-    }
-    if (activePlat === 'facebook' && typeof window.FacebookAdapter !== 'undefined') {
-      const fbContext = window.FacebookAdapter.extractContext(inputEl, postContainer);
-      return {
-        ...fbContext,
-        contextType: fbContext.contextType || contextType || 'comment',
-        author: fbContext.author || '',
-        incomingText: fbContext.incomingText || '',
-        postCaption: fbContext.postCaption || '',
-        postAuthor: fbContext.postAuthor || '',
-        postVisuals: fbContext.postVisuals || { description: '', thumbnailUrl: '', mediaType: 'image' },
-        isSpecificCommentReply: Boolean(fbContext.incomingText && fbContext.author),
-        userDraftHint: userDraftHint,
-        platform: 'facebook'
+        platform: activePlat
       };
     }
 
@@ -5085,7 +4993,7 @@
         console.log('[InstaReply AI] ⚡ Quick Reply served from instant cache!');
       } else {
         const activePlat = contextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-        const effectiveLimit = contextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : undefined);
+        const effectiveLimit = contextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : undefined);
 
         const payload = {
           platform: activePlat,
@@ -5136,9 +5044,9 @@
       }
 
       if (replyText) {
-        // Enforce strict limit for X (280) and Threads (500)
+        // Enforce strict limit for X (280), Google Play (350), and Threads (500)
         const activePlat = contextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-        const effectiveLimit = contextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+        const effectiveLimit = contextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : null);
         if (effectiveLimit && replyText.length > effectiveLimit) {
           replyText = enforcePlatformLengthLimit(replyText, effectiveLimit);
         }
@@ -5251,14 +5159,16 @@
     if (topicInput && topicInput.value.trim()) {
       lastContextData.draftNotes = topicInput.value.trim();
       lastContextData.userDraftHint = topicInput.value.trim();
-      lastContextData.incomingText = topicInput.value.trim();
+      if (lastContextData.contextType === 'post_draft' || lastContextData.replyMode === 'post_draft') {
+        lastContextData.incomingText = topicInput.value.trim();
+      }
     }
 
     const normalizedTone = normalizeToneName(currentTone);
     const normalizedStance = (currentStance || 'positive').toLowerCase().trim();
 
     const activePlat = lastContextData.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-    const effectiveLimit = lastContextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : undefined);
+    const effectiveLimit = lastContextData.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : undefined);
 
     const payload = {
       platform: activePlat,
@@ -5752,7 +5662,7 @@
       outputArea.classList.remove('hidden');
       let text = data.reply || '';
       const activePlat = lastContextData?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-      const limit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+      const limit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : null);
       if (limit && text.length > limit) {
         text = enforcePlatformLengthLimit(text, limit);
       }
@@ -6107,14 +6017,14 @@
           </div>
         </div>
 
-        ${isPostDraft ? `
-          <!-- Topic / Ideas Input for Post Drafting -->
+        ${(isPostDraft || context.platform === 'generic') ? `
+          <!-- Topic / Ideas or Draft Refine Input -->
           <div class="instareply-draft-topic-wrapper">
             <div class="instareply-control-header">
-              <span class="instareply-control-label">💡 Topic / Rough Ideas</span>
-              <span class="instareply-topic-hint">Press Cmd+Enter to draft</span>
+              <span class="instareply-control-label">${isPostDraft ? '💡 Topic / Rough Ideas' : '✍️ Your Draft / Message to Refine'}</span>
+              <span class="instareply-topic-hint">Press Cmd+Enter to ${isPostDraft ? 'draft' : 'refine'}</span>
             </div>
-            <textarea class="instareply-topic-input" placeholder="e.g. Share 3 actionable prompt engineering techniques for AI creators...">${escapeHTML(context.draftNotes || context.incomingText || context.userDraftHint || '')}</textarea>
+            <textarea class="instareply-topic-input" placeholder="${isPostDraft ? 'e.g. Share 3 actionable prompt engineering techniques for AI creators...' : 'Type your rough message or instructions to refine with full page context...'}">${escapeHTML(isPostDraft ? (context.draftNotes || context.incomingText || context.userDraftHint || '') : (context.userDraftHint || context.draftNotes || ''))}</textarea>
           </div>
         ` : ''}
 
@@ -6303,7 +6213,7 @@
       });
     }
 
-    // Connect Topic Input listeners for post drafting
+    // Connect Topic Input listeners for post drafting / generic message refinement
     const topicInput = card.querySelector('.instareply-topic-input');
     if (topicInput) {
       topicInput.addEventListener('keydown', (e) => {
@@ -6312,7 +6222,9 @@
           if (lastContextData) {
             lastContextData.draftNotes = topicInput.value.trim();
             lastContextData.userDraftHint = topicInput.value.trim();
-            lastContextData.incomingText = topicInput.value.trim();
+            if (lastContextData.contextType === 'post_draft' || lastContextData.replyMode === 'post_draft') {
+              lastContextData.incomingText = topicInput.value.trim();
+            }
           }
           currentVariation = 0;
           executeReplyGeneration();
@@ -6322,7 +6234,9 @@
         if (lastContextData) {
           lastContextData.draftNotes = topicInput.value.trim();
           lastContextData.userDraftHint = topicInput.value.trim();
-          lastContextData.incomingText = topicInput.value.trim();
+          if (lastContextData.contextType === 'post_draft' || lastContextData.replyMode === 'post_draft') {
+            lastContextData.incomingText = topicInput.value.trim();
+          }
         }
       });
     }
@@ -6558,7 +6472,7 @@
         const textarea = card.querySelector('.instareply-output-textarea');
         if (!textarea) return;
         const activePlat = lastContextData?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-        const limit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : 280);
+        const limit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : 280);
         textarea.value = enforcePlatformLengthLimit(textarea.value, limit);
         updateCardCharCount(card);
       });
@@ -6589,7 +6503,7 @@
     const text = textarea.value || '';
     const charCount = text.length;
     const activePlat = lastContextData?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-    const charLimit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+    const charLimit = lastContextData?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : null);
 
     badge.classList.remove('is-near-limit', 'is-over-limit');
 
@@ -6724,21 +6638,22 @@
 
     const ctx = contextOverride || lastContextData;
 
-    // Prepend or correct @author mention if replying to an individual comment
+    // Prepend or correct @author mention if replying to an individual comment (skip on Google Play reviews where reviewer mentions are not @handles)
+    const activePlat = ctx?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
     let textToInsert = text;
-    if (ctx?.author && ctx.contextType === 'comment') {
+    if (ctx?.author && ctx.contextType === 'comment' && activePlat !== 'google_play' && activePlat !== 'generic') {
       const targetAuthor = ctx.author.trim().replace(/^@/, '');
       const authorMention = `@${targetAuthor}`;
-      const shouldPrepend = ctx.isSpecificCommentReply ||
-        (ctx.postAuthor && targetAuthor.toLowerCase() !== ctx.postAuthor.toLowerCase());
+      const shouldPrepend = (ctx.isSpecificCommentReply && activePlat !== 'github') ||
+        (ctx.postAuthor && targetAuthor.toLowerCase() !== ctx.postAuthor.toLowerCase() && activePlat === 'instagram');
 
       if (shouldPrepend) {
         // If text already begins with an @mention, ensure it matches targetAuthor
-        const leadingMentionMatch = textToInsert.match(/^@([a-zA-Z0-9._]+)\s*/);
+        const leadingMentionMatch = textToInsert.match(/^@([a-zA-Z0-9._-]+)\s*/);
         if (leadingMentionMatch) {
           if (leadingMentionMatch[1].toLowerCase() !== targetAuthor.toLowerCase()) {
             // Replace mismatched handle with the correct target author
-            textToInsert = textToInsert.replace(/^@[a-zA-Z0-9._]+\s*/, `${authorMention} `);
+            textToInsert = textToInsert.replace(/^@[a-zA-Z0-9._-]+\s*/, `${authorMention} `);
           }
         } else {
           textToInsert = `${authorMention} ${textToInsert}`;
@@ -6746,9 +6661,8 @@
       }
     }
 
-    // Strictly enforce platform character limit on insertion (e.g. 280 on X, 500 on Threads)
-    const activePlat = ctx?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
-    const effectiveLimit = ctx?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : null);
+    // Strictly enforce platform character limit on insertion (e.g. 280 on X, 350 on Google Play, 500 on Threads)
+    const effectiveLimit = ctx?.charLimit || (activePlat === 'x' ? 280 : activePlat === 'threads' ? 500 : activePlat === 'google_play' ? 350 : null);
     if (effectiveLimit && textToInsert.length > effectiveLimit) {
       textToInsert = enforcePlatformLengthLimit(textToInsert, effectiveLimit);
     }
@@ -6798,6 +6712,13 @@
       // ContentEditable insertion (React, Draft.js, Lexical)
       let execSuccess = false;
       try {
+        if (window.getSelection && document.createRange && (element.textContent || '').trim().length > 0) {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
         execSuccess = document.execCommand('insertText', false, textToInsert);
       } catch (_) {}
 
@@ -7221,6 +7142,44 @@
 
       if (message.action === 'GET_PAGE_REPLY_CONTEXT') {
         sendResponse({ success: true, context: lastContextData || null });
+        return true;
+      }
+
+      if (message.action === 'CONTEXT_MENU_TRIGGER') {
+        const activeEl = document.activeElement;
+        const isEditableActive = activeEl && (
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'INPUT' ||
+          activeEl.isContentEditable ||
+          activeEl.getAttribute?.('contenteditable') === 'true' ||
+          activeEl.getAttribute?.('role') === 'textbox'
+        ) && !activeEl.closest?.('.instareply-card-overlay');
+
+        const targetInput = (lastContextMenuTarget && document.body.contains(lastContextMenuTarget))
+          ? lastContextMenuTarget
+          : (isEditableActive ? activeEl : document.querySelector('textarea, [contenteditable="true"], div[role="textbox"], input[type="text"]'));
+
+        if (targetInput) {
+          if (message.selectionText && !getElementValue(targetInput).trim()) {
+            insertTextIntoInstagramInput(targetInput, message.selectionText);
+          }
+          const ctxType = detectContextType(targetInput);
+          if (message.mode === 'quick') {
+            showQuickReplyToast('✨ InstaReply AI: Refining your message with page context...');
+            generateQuickReply({
+              targetInput,
+              contextType: ctxType,
+              triggerBtn: null,
+              explicitTone: message.tone || null
+            });
+          } else {
+            openAssistantCard(targetInput, ctxType, targetInput);
+          }
+          sendResponse({ success: true });
+        } else {
+          showQuickReplyToast('⚠️ Click inside a text field first, then right-click to use InstaReply AI.');
+          sendResponse({ success: false, error: 'No editable input found' });
+        }
         return true;
       }
     });

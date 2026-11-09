@@ -320,5 +320,8 @@
   }
   if (typeof window !== 'undefined') {
     window.MetaBusinessAdapter = MetaBusinessAdapter;
+    if (window.SocialPlatformDetector && typeof window.SocialPlatformDetector.registerAdapter === 'function') {
+      window.SocialPlatformDetector.registerAdapter(MetaBusinessAdapter);
+    }
   }
 })();

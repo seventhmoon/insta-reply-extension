@@ -997,7 +997,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateLiveCharCount() {
     if (!liveDraftText || !liveCharCounter) return;
     const len = liveDraftText.value.length;
-    const limit = activeLiveContext?.charLimit || (activeLiveContext?.platform === 'x' ? 280 : activeLiveContext?.platform === 'threads' ? 500 : 2200);
+    const limit = activeLiveContext?.charLimit || (activeLiveContext?.platform === 'x' ? 280 : activeLiveContext?.platform === 'threads' ? 500 : activeLiveContext?.platform === 'google_play' ? 350 : 2200);
 
     liveCharCounter.textContent = `${len} / ${limit}`;
     liveCharCounter.classList.remove('warning', 'overlimit');

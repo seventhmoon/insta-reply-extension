@@ -154,9 +154,113 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
       if (updated.launchMode) {
         await applyLaunchMode(updated.launchMode);
       }
+      registerContextMenus();
       console.log('[InstaReply AI] Service worker initialized with secure local credential storage.');
     } catch (initErr) {
       console.warn('[InstaReply AI] Service worker initialization error:', initErr);
+    }
+  });
+}
+
+// Register Right-Click Context Menu for Universal Editable Fields & Selected Text
+function registerContextMenus() {
+  if (typeof chrome === 'undefined' || !chrome.contextMenus) return;
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'instareply-root',
+        title: '✨ InstaReply AI',
+        contexts: ['editable', 'selection']
+      });
+      chrome.contextMenus.create({
+        id: 'instareply-open-dialog',
+        parentId: 'instareply-root',
+        title: '✨ Refine / Reply with Page Context (Open Assistant)',
+        contexts: ['editable', 'selection']
+      });
+      chrome.contextMenus.create({
+        id: 'instareply-quick-refine',
+        parentId: 'instareply-root',
+        title: '⚡ 1-Click Quick Refine & Insert',
+        contexts: ['editable', 'selection']
+      });
+      chrome.contextMenus.create({
+        id: 'instareply-sep-tones',
+        parentId: 'instareply-root',
+        type: 'separator',
+        contexts: ['editable', 'selection']
+      });
+      const quickTones = [
+        { id: 'friendly', label: '😊 Refine: Friendly & Casual' },
+        { id: 'professional', label: '💼 Refine: Professional & Polished' },
+        { id: 'humorous', label: '😄 Refine: Funny & Witty' },
+        { id: 'concise', label: '⚡ Refine: Short & Concise' },
+        { id: 'playful', label: '😈 Refine: Playful & Cheeky' },
+        { id: 'savage', label: '😏 Refine: Savage & Roast' }
+      ];
+      for (const t of quickTones) {
+        chrome.contextMenus.create({
+          id: `instareply-tone-${t.id}`,
+          parentId: 'instareply-root',
+          title: t.label,
+          contexts: ['editable', 'selection']
+        });
+      }
+    });
+  } catch (err) {
+    console.warn('[InstaReply AI] Could not register context menus:', err);
+  }
+}
+
+// Ensure context menus are registered when service worker wakes up
+registerContextMenus();
+
+if (typeof chrome !== 'undefined' && chrome.contextMenus?.onClicked) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (!tab?.id) return;
+    const menuId = String(info.menuItemId || '');
+    const isTonePick = menuId.startsWith('instareply-tone-');
+    const selectedTone = isTonePick ? menuId.replace('instareply-tone-', '') : null;
+    const isQuick = menuId === 'instareply-quick-refine' || isTonePick;
+    const mode = isQuick ? 'quick' : 'dialog';
+    const payload = {
+      action: 'CONTEXT_MENU_TRIGGER',
+      mode,
+      tone: selectedTone,
+      selectionText: info.selectionText || ''
+    };
+
+    const sendTrigger = () => new Promise((resolve) => {
+      chrome.tabs.sendMessage(tab.id, payload, (res) => {
+        if (chrome.runtime.lastError || !res) {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+
+    const delivered = await sendTrigger();
+    if (!delivered) {
+      // Fallback for arbitrary websites without content script loaded:
+      // Open the Chrome Side Panel (or Popup) with the user's selected/typed text
+      const fallbackContext = {
+        platform: 'generic',
+        contextType: 'comment',
+        postId: `generic_${Date.now()}`,
+        author: tab.title || 'Web Page',
+        postAuthor: tab.title || 'Web Page',
+        postCaption: tab.title ? `Page Title: ${tab.title}\nURL: ${tab.url || ''}` : '',
+        incomingText: info.selectionText || tab.title || '',
+        userDraftHint: info.selectionText || ''
+      };
+      activeReplyContext = fallbackContext;
+      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+        chrome.storage.session.set({ activeReplyContext: fallbackContext }).catch(() => {});
+      }
+      if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && (tab.id || tab.windowId)) {
+        chrome.sidePanel.open({ tabId: tab.id || undefined, windowId: !tab.id ? tab.windowId : undefined }).catch(() => {});
+      }
     }
   });
 }
@@ -771,6 +875,10 @@ async function handleGenerateReply(payload) {
                      platform === 'threads' ? 'Meta Threads post. Draft a witty, engaging, conversational thread reply.' :
                      platform === 'linkedin' ? 'LinkedIn post. Draft an insightful, professional comment.' :
                      platform === 'facebook' ? 'Facebook post. Draft a friendly, community-oriented comment.' :
+                     platform === 'github' ? 'GitHub Issue or Pull Request thread. Draft a clear, constructive, and helpful developer response.' :
+                     platform === 'google_play' ? 'Google Play app review. Draft a courteous, helpful developer reply under 350 characters.' :
+                     platform === 'youtube' ? 'YouTube video or comment thread. Draft an engaging, friendly creator or viewer comment.' :
+                     platform === 'generic' ? 'Web page input field. Refine the user draft or craft a context-aware reply grounded in the page content.' :
                      'Instagram post or reel. Draft a warm, engaging, and friendly creator comment or question for this post.';
     }
 
@@ -867,8 +975,8 @@ async function handleGenerateReply(payload) {
       return { success: false, error: `Unsupported provider: ${provider}` };
     }
 
-    // Strictly enforce platform character limits (e.g. 280 for X, 500 for Threads)
-    const effectiveCharLimit = payload.charLimit || (platform === 'x' ? 280 : platform === 'threads' ? 500 : null);
+    // Strictly enforce platform character limits (e.g. 280 for X, 350 for Google Play, 500 for Threads)
+    const effectiveCharLimit = payload.charLimit || (platform === 'x' ? 280 : platform === 'threads' ? 500 : platform === 'google_play' ? 350 : null);
     if (result && result.success && effectiveCharLimit) {
       if (result.reply) {
         result.reply = enforcePlatformLengthLimit(result.reply, effectiveCharLimit);
@@ -1598,6 +1706,36 @@ function buildStructuredPrompt({
     platformLengthConstraint = isPostDraft
       ? 'Warm storytelling, natural tone, relatable takeaway, and engaging closing prompt.'
       : '1 to 3 natural, conversational sentences authentic to Facebook.';
+  } else if (platform === 'github') {
+    platformIntro = isPostDraft
+      ? 'You are an expert software engineer and open-source maintainer drafting a GitHub Issue or Pull Request.'
+      : 'You are an expert open-source maintainer and software developer replying to a GitHub Issue, Pull Request, or Discussion.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft a clear, well-structured GitHub Issue or Pull Request description using clean Markdown.'
+      : 'Your goal is to craft a constructive, technically accurate, collaborative, and helpful GitHub comment or issue reply.';
+    platformLengthConstraint = isPostDraft
+      ? 'Well-structured GitHub Markdown with clear summary, context/steps, and actionable details.'
+      : '2 to 4 clear, constructive sentences (using clean GitHub Markdown or inline code backticks if referencing technical terms). Acknowledge the reporter/contributor, address the bug/feature/question directly, and state next steps.';
+  } else if (platform === 'google_play') {
+    platformIntro = 'You are an expert mobile app developer and customer support lead replying to a user review on Google Play.';
+    platformGoal = 'Your goal is to craft an empathetic, appreciative, and solution-oriented developer reply to a Google Play Store review.';
+    platformLengthConstraint = 'CRITICAL HARD LIMIT FOR GOOGLE PLAY: The entire developer reply MUST be strictly under 350 characters total (including spaces and punctuation). Google Play Console rejects replies over 350 characters. Aim for 150 to 320 characters. Thank the reviewer, directly address their star rating or feedback/bug report, and provide a helpful next step or support contact if needed.';
+  } else if (platform === 'youtube') {
+    platformIntro = isPostDraft
+      ? 'You are an expert YouTube creator drafting a Community post.'
+      : 'You are an expert YouTube creator and community engagement assistant replying to a video or Shorts comment.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft an engaging YouTube Community post that sparks subscriber comments and interaction.'
+      : 'Your goal is to craft a warm, authentic, and high-engagement YouTube comment or creator reply.';
+    platformLengthConstraint = isPostDraft
+      ? 'Hook subscribers immediately, keep paragraphs punchy, and end with a question for the comments.'
+      : '1 to 3 enthusiastic, conversational, and authentic sentences suitable for YouTube comments.';
+  } else if (platform === 'generic') {
+    platformIntro = 'You are an expert AI writing & communication assistant embedded directly in the user\'s web browser.';
+    platformGoal = userDraftHint
+      ? 'Your goal is to refine, polish, and elevate the user\'s draft message while grounding it naturally in the surrounding web page context.'
+      : 'Your goal is to craft a clear, relevant, and context-aware response or message based on the surrounding web page content.';
+    platformLengthConstraint = 'Match the natural length and formality of the web page context (typically 1 to 4 concise, well-crafted sentences). Preserve the user\'s core intent and key facts while making the writing clear, persuasive, and natural.';
   }
 
   const primaryTone = normalizeToneName(tone);

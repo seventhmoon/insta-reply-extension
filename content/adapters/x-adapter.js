@@ -8,6 +8,7 @@
 
   const XAdapter = {
     platform: 'x',
+    charLimit: 280,
 
     /**
      * Checks if this adapter can handle the given URL or document
@@ -340,5 +341,8 @@
   }
   if (typeof window !== 'undefined') {
     window.XAdapter = XAdapter;
+    if (window.SocialPlatformDetector && typeof window.SocialPlatformDetector.registerAdapter === 'function') {
+      window.SocialPlatformDetector.registerAdapter(XAdapter);
+    }
   }
 })();

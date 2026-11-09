@@ -393,5 +393,8 @@
   }
   if (typeof window !== 'undefined') {
     window.LinkedInAdapter = LinkedInAdapter;
+    if (window.SocialPlatformDetector && typeof window.SocialPlatformDetector.registerAdapter === 'function') {
+      window.SocialPlatformDetector.registerAdapter(LinkedInAdapter);
+    }
   }
 })();

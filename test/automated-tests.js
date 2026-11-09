@@ -68,6 +68,22 @@ async function main() {
     execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/meta-business-adapter.js')}"`, { stdio: 'pipe' });
   });
 
+  runTest('Syntax', 'content/adapters/github-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/github-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/google-play-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/google-play-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/youtube-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/youtube-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/generic-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/generic-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
   runTest('Scope', 'content/content.js scopes requestPromise before try-finally block', () => {
     const code = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
     const execReplyDef = code.indexOf('async function executeReplyGeneration()');
@@ -2228,6 +2244,10 @@ Hope this helps!
   const LinkedInAdapter = require('../content/adapters/linkedin-adapter.js');
   const FacebookAdapter = require('../content/adapters/facebook-adapter.js');
   const MetaBusinessAdapter = require('../content/adapters/meta-business-adapter.js');
+  const GitHubAdapter = require('../content/adapters/github-adapter.js');
+  const GooglePlayAdapter = require('../content/adapters/google-play-adapter.js');
+  const YouTubeAdapter = require('../content/adapters/youtube-adapter.js');
+  const GenericPageAdapter = require('../content/adapters/generic-adapter.js');
 
   runTest('PlatformDetection', 'Correctly resolves platform from various URLs and hostnames', () => {
     assert.strictEqual(PlatformDetector.detectPlatform('https://www.instagram.com/p/DdQLLRDAUN5/'), 'instagram');
@@ -2239,7 +2259,28 @@ Hope this helps!
     assert.strictEqual(PlatformDetector.detectPlatform('https://business.meta.com/latest/inbox/all'), 'meta_business');
     assert.strictEqual(PlatformDetector.detectPlatform('https://www.facebook.com/groups/12345/posts/6789/'), 'facebook');
     assert.strictEqual(PlatformDetector.detectPlatform('https://web.facebook.com/story.php'), 'facebook');
+    assert.strictEqual(PlatformDetector.detectPlatform('https://github.com/facebook/react/issues/1234'), 'github');
+    assert.strictEqual(PlatformDetector.detectPlatform('https://play.google.com/console/u/0/developers/reviews'), 'google_play');
+    assert.strictEqual(PlatformDetector.detectPlatform('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), 'youtube');
+    assert.strictEqual(PlatformDetector.detectPlatform('https://studio.youtube.com/channel/UC123/comments'), 'youtube');
     assert.strictEqual(PlatformDetector.detectPlatform('https://example.com/'), 'generic');
+  });
+
+  runTest('PlatformRegistry', 'PlatformDetector provides unified adapter registry and metadata lookup', () => {
+    assert.strictEqual(typeof PlatformDetector.registerAdapter, 'function', 'Must export registerAdapter');
+    assert.strictEqual(typeof PlatformDetector.getAdapter, 'function', 'Must export getAdapter');
+    assert.strictEqual(typeof PlatformDetector.getPlatformCharLimit, 'function', 'Must export getPlatformCharLimit');
+
+    PlatformDetector.registerAdapter(XAdapter);
+    PlatformDetector.registerAdapter(GooglePlayAdapter);
+    PlatformDetector.registerAdapter(YouTubeAdapter);
+
+    assert.strictEqual(PlatformDetector.getAdapter('x'), XAdapter);
+    assert.strictEqual(PlatformDetector.getAdapter('google_play'), GooglePlayAdapter);
+    assert.strictEqual(PlatformDetector.getAdapter('youtube'), YouTubeAdapter);
+    assert.strictEqual(PlatformDetector.getPlatformCharLimit('x'), 280);
+    assert.strictEqual(PlatformDetector.getPlatformCharLimit('google_play'), 350);
+    assert.strictEqual(PlatformDetector.getPlatformCharLimit('threads'), 500);
   });
 
   runTest('AdapterCanHandle', 'Adapters correctly declare support for their domains', () => {
@@ -2260,14 +2301,27 @@ Hope this helps!
     assert.ok(MetaBusinessAdapter.canHandle('business.facebook.com'), 'MetaBusinessAdapter must handle business.facebook.com');
     assert.ok(MetaBusinessAdapter.canHandle('business.meta.com'), 'MetaBusinessAdapter must handle business.meta.com');
     assert.ok(!MetaBusinessAdapter.canHandle('instagram.com'), 'MetaBusinessAdapter must reject direct instagram.com');
+
+    assert.ok(GitHubAdapter.canHandle('github.com'), 'GitHubAdapter must handle github.com');
+    assert.ok(!GitHubAdapter.canHandle('gitlab.com'), 'GitHubAdapter must reject gitlab.com');
+
+    assert.ok(GooglePlayAdapter.canHandle('play.google.com'), 'GooglePlayAdapter must handle play.google.com');
+    assert.ok(!GooglePlayAdapter.canHandle('instagram.com'), 'GooglePlayAdapter must reject instagram.com');
+
+    assert.ok(YouTubeAdapter.canHandle('www.youtube.com'), 'YouTubeAdapter must handle www.youtube.com');
+    assert.ok(YouTubeAdapter.canHandle('studio.youtube.com'), 'YouTubeAdapter must handle studio.youtube.com');
+    assert.ok(!YouTubeAdapter.canHandle('vimeo.com'), 'YouTubeAdapter must reject vimeo.com');
   });
 
-  runTest('ManifestRegistration', 'Manifest registers content scripts and permissions for Instagram', () => {
+  runTest('ManifestRegistration', 'Manifest registers content scripts and permissions for Instagram, GitHub, Google Play, and YouTube', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8'));
     const cs = manifest.content_scripts.find(c => c.js.includes('content/content.js'));
     assert.ok(cs, 'Must have content script entry with content.js');
 
     assert.ok(cs.matches.some(m => m.includes('instagram.com')), 'content_scripts matches must include instagram.com');
+    assert.ok(cs.matches.some(m => m.includes('github.com')), 'content_scripts matches must include github.com');
+    assert.ok(cs.matches.some(m => m.includes('play.google.com')), 'content_scripts matches must include play.google.com');
+    assert.ok(cs.matches.some(m => m.includes('youtube.com')), 'content_scripts matches must include youtube.com');
 
     assert.ok(cs.js.includes('content/adapters/platform-detector.js'), 'Must load platform-detector.js');
     assert.ok(cs.js.includes('content/adapters/threads-adapter.js'), 'Must load threads-adapter.js');
@@ -2275,6 +2329,9 @@ Hope this helps!
     assert.ok(cs.js.includes('content/adapters/linkedin-adapter.js'), 'Must load linkedin-adapter.js');
     assert.ok(cs.js.includes('content/adapters/facebook-adapter.js'), 'Must load facebook-adapter.js');
     assert.ok(cs.js.includes('content/adapters/meta-business-adapter.js'), 'Must load meta-business-adapter.js');
+    assert.ok(cs.js.includes('content/adapters/github-adapter.js'), 'Must load github-adapter.js');
+    assert.ok(cs.js.includes('content/adapters/google-play-adapter.js'), 'Must load google-play-adapter.js');
+    assert.ok(cs.js.includes('content/adapters/youtube-adapter.js'), 'Must load youtube-adapter.js');
   });
 
   // =========================================================================
@@ -2394,6 +2451,192 @@ Hope this helps!
     assert.strictEqual(ctx.toneBias, 'friendly');
   });
 
+  runTest('GitHubAdapterContextExtraction', 'Extracts GitHub issue title, body, labels, and latest comment context', () => {
+    const mockDoc = {
+      body: {},
+      querySelector: (selector) => {
+        if (selector.includes('issue-title')) {
+          return { textContent: 'Memory leak when switching tabs rapidly' };
+        }
+        if (selector.includes('issue-body-header-author')) {
+          return { textContent: 'octocat' };
+        }
+        if (selector.includes('issue-body')) {
+          return { textContent: 'Steps to reproduce: open 10 tabs and toggle dark mode.' };
+        }
+        return null;
+      },
+      querySelectorAll: (selector) => {
+        if (selector.includes('IssueLabel')) {
+          return [{ textContent: 'bug' }, { textContent: 'high-priority' }];
+        }
+        if (selector.includes('comment-body')) {
+          return [{
+            textContent: 'I can reproduce this on Chrome 134 macOS.',
+            closest: (s) => {
+              if (s.includes('preview')) return null;
+              return {
+                querySelector: () => ({ textContent: 'contributor_jane' })
+              };
+            }
+          }];
+        }
+        return [];
+      }
+    };
+    const mockInput = {
+      ownerDocument: mockDoc,
+      value: '',
+      getAttribute: () => 'comment[body]',
+      closest: () => null
+    };
+
+    const ctx = GitHubAdapter.extractContext(mockInput, mockDoc);
+    assert.strictEqual(ctx.platform, 'github');
+    assert.strictEqual(ctx.postAuthor, 'octocat');
+    assert.strictEqual(ctx.author, 'contributor_jane');
+    assert.ok(ctx.postCaption.includes('Issue: Memory leak when switching tabs rapidly'), 'postCaption must include issue title');
+    assert.ok(ctx.postCaption.includes('[Labels: bug, high-priority]'), 'postCaption must include issue labels');
+    assert.strictEqual(ctx.incomingText, 'I can reproduce this on Chrome 134 macOS.');
+    assert.strictEqual(ctx.toneBias, 'professional');
+  });
+
+  runTest('GooglePlayAdapterContextExtraction', 'Extracts Google Play review author, star rating, text, and 350-char limit', () => {
+    const mockReviewCard = {
+      getAttribute: (attr) => attr === 'data-review-id' ? 'gp_rev_42' : null,
+      querySelector: (selector) => {
+        if (selector.includes('reviewer-name')) {
+          return { textContent: 'David Kim' };
+        }
+        if (selector.includes('star')) {
+          return { getAttribute: () => 'Rated 2 stars out of five stars', textContent: '' };
+        }
+        if (selector.includes('review-text')) {
+          return { textContent: 'App crashes after the latest v2.4 update when exporting PDF.' };
+        }
+        if (selector.includes('review-metadata')) {
+          return { textContent: 'v2.4.1 • Pixel 8 Pro • Android 15' };
+        }
+        return null;
+      },
+      querySelectorAll: () => []
+    };
+
+    const ctx = GooglePlayAdapter.extractContext(null, mockReviewCard);
+    assert.strictEqual(ctx.platform, 'google_play');
+    assert.strictEqual(ctx.author, 'David Kim');
+    assert.strictEqual(ctx.starRating, 2);
+    assert.strictEqual(ctx.charLimit, 350);
+    assert.ok(ctx.incomingText.includes('[Rating: 2/5 stars]'), 'incomingText must include star rating tag');
+    assert.ok(ctx.incomingText.includes('App crashes after the latest v2.4 update'), 'incomingText must include review body');
+    assert.strictEqual(ctx.toneBias, 'professional');
+  });
+
+  runTest('YouTubeAdapterContextExtraction', 'Extracts YouTube video title, channel author, and comment thread context', () => {
+    const mockDoc = {
+      querySelector: (selector) => {
+        if (selector.includes('watch-metadata')) {
+          return { textContent: 'Building Autonomous AI Agents in 2026' };
+        }
+        if (selector.includes('channel-name')) {
+          return { textContent: '@AIChannel' };
+        }
+        if (selector.includes('snippet-text')) {
+          return { textContent: 'Full tutorial on agentic workflows and Chrome extensions.' };
+        }
+        return null;
+      }
+    };
+    const mockCommentThread = {
+      querySelector: (selector) => {
+        if (selector.includes('#video-title')) return null;
+        if (selector.includes('#author-text')) {
+          return { textContent: '@viewer_sam' };
+        }
+        if (selector.includes('#content-text')) {
+          return { textContent: 'Timestamp 04:20 explained the registry pattern so clearly!' };
+        }
+        return null;
+      }
+    };
+    const mockInput = {
+      ownerDocument: mockDoc,
+      textContent: '',
+      closest: () => null
+    };
+
+    const ctx = YouTubeAdapter.extractContext(mockInput, mockCommentThread);
+    assert.strictEqual(ctx.platform, 'youtube');
+    assert.strictEqual(ctx.author, 'viewer_sam');
+    assert.strictEqual(ctx.postAuthor, 'AIChannel');
+    assert.ok(ctx.postCaption.includes('Video: Building Autonomous AI Agents in 2026'), 'postCaption must include video title');
+    assert.strictEqual(ctx.incomingText, 'Timestamp 04:20 explained the registry pattern so clearly!');
+    assert.strictEqual(ctx.toneBias, 'friendly');
+  });
+
+  runTest('GenericPageAdapterContextExtraction', 'Extracts whole-page title, meta description, local section, and user draft hint', () => {
+    const mockDoc = {
+      title: 'Hacker News: Show HN - Local-First AI Assistant',
+      body: { innerText: 'Full page fallback text' },
+      querySelector: (selector) => {
+        if (selector.includes('meta[property="og:description"]')) {
+          return { getAttribute: () => 'Discussion thread on local-first AI tools.' };
+        }
+        if (selector.includes('h1')) {
+          return { textContent: 'Show HN: Local-First AI Assistant' };
+        }
+        if (selector.includes('article, main')) {
+          return {
+            cloneNode: () => ({
+              querySelectorAll: () => [],
+              innerText: 'Main discussion: How do you handle context extraction on arbitrary websites?'
+            })
+          };
+        }
+        return null;
+      }
+    };
+    const mockInput = {
+      ownerDocument: mockDoc,
+      value: 'We use a generic DOM reader fallback with right-click context menu.',
+      getAttribute: (attr) => attr === 'placeholder' ? 'Add your comment...' : '',
+      closest: () => ({
+        cloneNode: () => ({
+          querySelectorAll: () => [],
+          innerText: 'Parent comment: Curious how this works on unsupported forums?'
+        })
+      })
+    };
+
+    const ctx = GenericPageAdapter.extractContext(mockInput);
+    assert.strictEqual(ctx.platform, 'generic');
+    assert.ok(ctx.postCaption.includes('Page Title: Hacker News: Show HN - Local-First AI Assistant'), 'postCaption must include page title');
+    assert.ok(ctx.postCaption.includes('Summary: Discussion thread on local-first AI tools.'), 'postCaption must include meta description');
+    assert.strictEqual(ctx.incomingText, 'Parent comment: Curious how this works on unsupported forums?');
+    assert.strictEqual(ctx.userDraftHint, 'We use a generic DOM reader fallback with right-click context menu.');
+  });
+
+  runTest('RightClickContextMenuFallback', 'Registers contextMenus in manifest, service-worker, and content script for any website', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8'));
+    assert.ok(manifest.permissions.includes('contextMenus'), 'manifest.permissions must include contextMenus');
+    assert.ok(!manifest.permissions.includes('activeTab'), 'manifest.permissions must remain CWS Purple Potassium compliant');
+    assert.ok(
+      manifest.content_scripts.some(cs => cs.matches.includes('https://*/*') && cs.js.includes('content/adapters/generic-adapter.js')),
+      'manifest.content_scripts must match https://*/* with generic-adapter.js so right-click works on any website'
+    );
+
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes('function registerContextMenus()'), 'service-worker.js must define registerContextMenus');
+    assert.ok(swCode.includes("id: 'instareply-open-dialog'"), 'service-worker.js must create instareply-open-dialog menu item');
+    assert.ok(swCode.includes("id: 'instareply-quick-refine'"), 'service-worker.js must create instareply-quick-refine menu item');
+    assert.ok(swCode.includes("action: 'CONTEXT_MENU_TRIGGER'"), 'service-worker.js must dispatch CONTEXT_MENU_TRIGGER');
+
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    assert.ok(contentJs.includes("message.action === 'CONTEXT_MENU_TRIGGER'"), 'content.js must handle CONTEXT_MENU_TRIGGER');
+    assert.ok(contentJs.includes("document.addEventListener('contextmenu'"), 'content.js must track right-clicked editable element');
+    assert.ok(contentJs.includes("if (activePlat === 'generic')"), 'content.js must run in passive zero-clutter mode on generic websites');
+  });
+
   runTest('PromptPlatformConstraints', 'Builds platform-specific prompt constraints and lengths', () => {
     const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
     const swNormBody = swCode.slice(swCode.indexOf('function normalizeToneName'), swCode.indexOf('function getBundledTonesFor'));
@@ -2453,6 +2696,40 @@ Hope this helps!
       tone: 'friendly'
     });
     assert.ok(fbPrompt.includes('Facebook engagement assistant'), 'Facebook prompt must address Facebook');
+
+    // GitHub Issues constraint check
+    const ghPrompt = evalBuilder({
+      platform: 'github',
+      contextType: 'comment',
+      incomingText: 'Steps to reproduce the crash on Node 22',
+      postAuthor: 'octocat',
+      tone: 'professional'
+    });
+    assert.ok(ghPrompt.includes('GitHub Issue, Pull Request, or Discussion'), 'GitHub prompt must address GitHub Issue/PR');
+    assert.ok(ghPrompt.includes('GitHub Markdown'), 'GitHub prompt must mention GitHub Markdown');
+
+    // Google Play Reviews constraint check
+    const gpPrompt = evalBuilder({
+      platform: 'google_play',
+      contextType: 'comment',
+      incomingText: '[Rating: 2/5 stars] Syncing fails on Wi-Fi.',
+      postAuthor: 'Reviewer',
+      tone: 'empathetic'
+    });
+    assert.ok(gpPrompt.includes('user review on Google Play'), 'Google Play prompt must address Google Play reviews');
+    assert.ok(gpPrompt.includes('CRITICAL HARD LIMIT FOR GOOGLE PLAY'), 'Google Play prompt must enforce CRITICAL HARD LIMIT FOR GOOGLE PLAY');
+    assert.ok(gpPrompt.includes('350 characters'), 'Google Play prompt must enforce 350 characters limit');
+
+    // YouTube constraint check
+    const ytPrompt = evalBuilder({
+      platform: 'youtube',
+      contextType: 'comment',
+      incomingText: 'Great breakdown on Chrome MV3!',
+      postAuthor: 'CreatorChannel',
+      tone: 'friendly'
+    });
+    assert.ok(ytPrompt.includes('YouTube creator and community engagement assistant'), 'YouTube prompt must address YouTube creator/community');
+    assert.ok(ytPrompt.includes('YouTube comment or creator reply'), 'YouTube prompt must target YouTube comment/reply');
 
     // Instagram default backward-compatibility check
     const igPrompt = evalBuilder({
@@ -2564,16 +2841,31 @@ Hope this helps!
     const fbCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/facebook-adapter.js'), 'utf8');
     const thCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/threads-adapter.js'), 'utf8');
     const mbCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/meta-business-adapter.js'), 'utf8');
+    const ghCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/github-adapter.js'), 'utf8');
+    const gpCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/google-play-adapter.js'), 'utf8');
+    const ytCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/youtube-adapter.js'), 'utf8');
 
     assert.ok(xCode.includes('attachToToolbar(btn, inputEl)'), 'XAdapter must implement attachToToolbar');
     assert.ok(liCode.includes('attachToToolbar(btn, inputEl)'), 'LinkedInAdapter must implement attachToToolbar');
     assert.ok(fbCode.includes('attachToToolbar(btn, inputEl)'), 'FacebookAdapter must implement attachToToolbar');
     assert.ok(thCode.includes('attachToToolbar(btn, inputEl)'), 'ThreadsAdapter must implement attachToToolbar');
     assert.ok(mbCode.includes('attachToToolbar(btn, inputEl)'), 'MetaBusinessAdapter must implement attachToToolbar');
+    assert.ok(ghCode.includes('attachToToolbar(btn, inputEl)'), 'GitHubAdapter must implement attachToToolbar');
+    assert.ok(gpCode.includes('attachToToolbar(btn, inputEl)'), 'GooglePlayAdapter must implement attachToToolbar');
+    assert.ok(ytCode.includes('attachToToolbar(btn, inputEl)'), 'YouTubeAdapter must implement attachToToolbar');
   });
 
   runTest('NoInvalidCssSelectorStrings', 'Adapters contain no broken selector queries with question-mark dot in querySelector', () => {
-    const adapterFiles = ['x-adapter.js', 'linkedin-adapter.js', 'facebook-adapter.js', 'threads-adapter.js', 'meta-business-adapter.js'];
+    const adapterFiles = [
+      'x-adapter.js',
+      'linkedin-adapter.js',
+      'facebook-adapter.js',
+      'threads-adapter.js',
+      'meta-business-adapter.js',
+      'github-adapter.js',
+      'google-play-adapter.js',
+      'youtube-adapter.js'
+    ];
     for (const f of adapterFiles) {
       const code = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters', f), 'utf8');
       const matches = code.match(/querySelector(All)?\([^)]*\?\.[^)]*\)/g);

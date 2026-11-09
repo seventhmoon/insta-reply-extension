@@ -9,6 +9,7 @@
 
   const ThreadsAdapter = {
     platform: 'threads',
+    charLimit: 500,
 
     /**
      * Checks if this adapter can handle the given URL or document
@@ -291,5 +292,8 @@
   }
   if (typeof window !== 'undefined') {
     window.ThreadsAdapter = ThreadsAdapter;
+    if (window.SocialPlatformDetector && typeof window.SocialPlatformDetector.registerAdapter === 'function') {
+      window.SocialPlatformDetector.registerAdapter(ThreadsAdapter);
+    }
   }
 })();

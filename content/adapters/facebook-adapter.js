@@ -211,5 +211,8 @@
   }
   if (typeof window !== 'undefined') {
     window.FacebookAdapter = FacebookAdapter;
+    if (window.SocialPlatformDetector && typeof window.SocialPlatformDetector.registerAdapter === 'function') {
+      window.SocialPlatformDetector.registerAdapter(FacebookAdapter);
+    }
   }
 })();

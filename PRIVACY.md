@@ -55,6 +55,8 @@ We encourage you to review the privacy policy of your selected AI provider.
 
 - **`storage`**: Used to save your API keys, default tones, and user preferences locally in your browser.
 - **`declarativeNetRequest`**: Used strictly to strip the `Origin` header when sending requests to local offline endpoints (`http://localhost:*` and `http://127.0.0.1:*`) so that Ollama and LM Studio CORS policies succeed.
+- **`sidePanel`**: Used to optionally dock the InstaReply AI assistant in Chrome's Side Panel when chosen by the user.
+- **`contextMenus`**: Used to provide the right-click "✨ InstaReply AI" menu inside editable text fields and on selected text so you can refine messages or draft replies on any webpage.
 - **Host Permissions (`https://*.instagram.com/*`)**: Required to inject shortcut buttons and read context on Instagram pages when requested by the user.
 - **Host Permissions (`https://*/*`)**: Required to communicate with your chosen AI API endpoints (Google, Groq, OpenRouter, or custom self-hosted endpoints) and to load post media thumbnails for visual analysis.
 

@@ -100,6 +100,8 @@ English
 | :--- | :--- | :--- |
 | `storage` | `permissions` | Required to securely persist the user's API keys (Gemini, Groq, OpenRouter), default tone and stance preferences, custom persona rules, and locally cached reply drafts. |
 | `declarativeNetRequest` | `permissions` | Required strictly to modify the `Origin` header on requests to `http://localhost:*` and `http://127.0.0.1:*`, allowing users to connect to local offline LLMs (such as Ollama or LM Studio) without encountering CORS origin rejections. |
+| `sidePanel` | `permissions` | Required to let users dock InstaReply AI in Chrome's persistent Side Panel to draft and refine replies side-by-side while browsing. |
+| `contextMenus` | `permissions` | Required to provide the right-click "✨ InstaReply AI" context menu on editable text fields and selected text, enabling users to refine drafts or generate replies using page context on any website. |
 | `https://*.instagram.com/*` | `host_permissions` / `content_scripts` | Required to inject the assistant shortcut button, inline comment reply chips, and floating assistant card into Instagram's web interface, and to read comment/DM/story context when triggered by the user. |
 | `https://*/*` | `host_permissions` | Required to dispatch AI generation requests to user-configured third-party AI endpoints (including Google Gemini, Groq, OpenRouter, or custom OpenAI-compatible server URLs), and to fetch public image thumbnails from Instagram CDNs for AI vision analysis. |
 | `http://localhost:*/*`, `http://127.0.0.1:*/*` | `host_permissions` | Required to allow users who select "Local LLM" to send prompt generation requests directly to locally hosted Ollama or LM Studio servers. |
