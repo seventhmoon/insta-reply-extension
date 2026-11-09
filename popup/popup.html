@@ -125,6 +125,24 @@
         </div>
         <div id="liveReplyFeedback" class="save-feedback hidden"></div>
       </section>
+
+      <!-- Inbox Zero Batch Triage Queue Card -->
+      <section class="card" id="inboxTriageCard">
+        <div class="label-with-action">
+          <label class="section-label">📥 Inbox Zero Triage Queue</label>
+          <button type="button" id="scanPageQueueBtn" class="link-button" title="Scan active page for visible comments/reviews">
+            🔍 Scan Page Unanswered
+          </button>
+        </div>
+        <div class="triage-nav-row hidden" id="triageNavRow">
+          <button type="button" class="btn btn-secondary btn-xs" id="triagePrevBtn">‹ Prev</button>
+          <span class="hint-text" id="triageQueueCount">0 / 0</span>
+          <button type="button" class="btn btn-secondary btn-xs" id="triageNextBtn">Next ›</button>
+        </div>
+        <div id="triageQueueList" class="history-list-container mt-8">
+          <p class="hint-text">Click &quot;Scan Page Unanswered&quot; to queue visible comments, reviews, or issues on the current tab.</p>
+        </div>
+      </section>
     </div>
 
     <!-- TAB 1: ⚡ Quick Start (AI Provider & Connection) -->
@@ -330,6 +348,17 @@
         <label class="section-label">Personality & Tone</label>
 
         <div class="form-group">
+          <label for="activePersona">🎭 Active Persona Profile</label>
+          <select id="activePersona" class="select-input">
+            <option value="auto" selected>🤖 Smart Auto-Match by Platform (IG=Creator, LinkedIn=Founder, GitHub=Maintainer, Play=Support)</option>
+            <option value="creator">🎨 Creator Casual & Authentic</option>
+            <option value="founder">🚀 Founder / Executive / Thought Leader</option>
+            <option value="maintainer">🛠️ Open-Source Maintainer / Developer</option>
+            <option value="support">🎧 Customer Support & Success Lead</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label for="defaultStance">Default Reply Stance</label>
           <select id="defaultStance" class="select-input">
             <option value="positive" selected>🟢 Positive (Warm & Encouraging)</option>
@@ -364,6 +393,12 @@
           <label for="myVoiceSamples">🎙️ Learn My Voice (Few-Shot Style Mimicry)</label>
           <textarea id="myVoiceSamples" rows="3" placeholder="Paste 2–5 examples of how you typically reply (one per line). The AI will mimic your exact slang, punctuation quirks, and rhythm!"></textarea>
           <div class="hint-text">Teaches the AI your unique writing habits, slang, and signature emojis.</div>
+        </div>
+
+        <div class="form-group mt-8">
+          <label for="knowledgeBase">📚 Knowledge Base &amp; /slash Snippet Macros</label>
+          <textarea id="knowledgeBase" rows="3" placeholder="/discord = Join our Discord at https://discord.gg/example&#10;/pricing = Check our Pro plan at https://example.com/pricing&#10;Fact: Free 14-day trial available with no credit card required."></textarea>
+          <div class="hint-text">Type <code>/trigger = text</code> for instant slash macros in drafts, or add key facts/FAQs for automatic AI grounding.</div>
         </div>
 
         <div class="form-group mt-8">

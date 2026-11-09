@@ -10,7 +10,9 @@
   let currentTone = 'friendly';
   let currentStance = 'positive';
   let currentLanguage = 'auto';
+  let currentPersona = 'auto';
   let currentVariation = 0;
+  let triageCandidateNodes = [];
   let lastContextData = null;
   let lastActiveCommentContext = null;
   let cachedConfig = null;
@@ -51,7 +53,7 @@
     try {
       const activeReel = findActiveReelContainer();
       if (activeReel && !searchRoots.includes(activeReel)) searchRoots.push(activeReel);
-    } catch (_) {}
+    } catch (_) { }
 
     for (const root of searchRoots) {
       if (!root) continue;
@@ -325,7 +327,7 @@
       script.src = chrome.runtime.getURL('content/page-bridge.js');
       (document.head || document.documentElement).appendChild(script);
       window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /**
@@ -373,9 +375,9 @@
     const activePlatform = typeof SocialPlatformDetector !== 'undefined'
       ? SocialPlatformDetector.detectPlatform()
       : (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com') ? 'x' :
-         window.location.hostname.includes('linkedin.com') ? 'linkedin' :
-         window.location.hostname.includes('threads.net') ? 'threads' :
-         window.location.hostname.includes('facebook.com') || window.location.hostname.includes('fb.com') ? 'facebook' : 'instagram');
+        window.location.hostname.includes('linkedin.com') ? 'linkedin' :
+          window.location.hostname.includes('threads.net') ? 'threads' :
+            window.location.hostname.includes('facebook.com') || window.location.hostname.includes('fb.com') ? 'facebook' : 'instagram');
 
     if (activePlatform === 'instagram') {
       // 1. Instagram Stories Reply Inputs
@@ -956,7 +958,7 @@
       if (cloneText && !isCommentMetadata(cloneText, cleanAuthor) && cloneText.length > 1) {
         return cleanCommentString(cloneText, cleanAuthor);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 3. Fallback: Search all spans for valid candidate texts and pick the richest/longest
     const candidates = [];
@@ -1059,8 +1061,8 @@
         const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
         if (!aria) continue;
         const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-                      aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
-                      aria.match(/@([a-zA-Z0-9._]+)/);
+          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+          aria.match(/@([a-zA-Z0-9._]+)/);
         if (match && match[1] && !banned.has(match[1].toLowerCase())) {
           return match[1];
         }
@@ -1077,9 +1079,9 @@
         }
         const alt = img.getAttribute('alt') || '';
         const match = alt.match(/^([a-zA-Z0-9._]+)['’]s profile picture/i) ||
-                      alt.match(/^([a-zA-Z0-9._]+) 的大頭貼照/i) ||
-                      alt.match(/^([a-zA-Z0-9._]+) 的头像/i) ||
-                      alt.match(/^([a-zA-Z0-9._]+)のプロフィール写真/i);
+          alt.match(/^([a-zA-Z0-9._]+) 的大頭貼照/i) ||
+          alt.match(/^([a-zA-Z0-9._]+) 的头像/i) ||
+          alt.match(/^([a-zA-Z0-9._]+)のプロフィール写真/i);
         if (match && match[1] && !banned.has(match[1].toLowerCase())) {
           return match[1];
         }
@@ -1210,7 +1212,7 @@
       const aria = el.getAttribute('aria-label') || '';
       if (aria) {
         const ariaMatch = aria.match(/(?:replying to|reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-                          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
+          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
         if (ariaMatch && ariaMatch[1] && !banned.has(ariaMatch[1].toLowerCase())) {
           return ariaMatch[1];
         }
@@ -1220,7 +1222,7 @@
         const txt = el.textContent?.trim() || '';
         if (txt.length > 0 && txt.length < 60) {
           const txtMatch = txt.match(/(?:replying to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-                           txt.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
+            txt.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
           if (txtMatch && txtMatch[1] && !banned.has(txtMatch[1].toLowerCase())) {
             return txtMatch[1];
           }
@@ -1274,15 +1276,15 @@
       const text = el.textContent?.trim().replace(/^@/, '') || '';
       const href = el.getAttribute('href') || '';
       const matchesAuthor = text.toLowerCase() === clean.toLowerCase() ||
-                            href.toLowerCase().includes(`/${clean.toLowerCase()}`);
+        href.toLowerCase().includes(`/${clean.toLowerCase()}`);
 
       if (!matchesAuthor) continue;
 
       // Ensure this is a comment and NOT the post author header
       const commentItem = findCommentContainer(el) ||
-                          el.closest('li') ||
-                          el.closest('.ig-comment') ||
-                          el.closest('ul > div');
+        el.closest('li') ||
+        el.closest('.ig-comment') ||
+        el.closest('ul > div');
 
       if (!commentItem) continue;
 
@@ -1404,7 +1406,7 @@
             postId,
             timestamp: Date.now()
           };
-        } catch (_) {}
+        } catch (_) { }
       });
 
       async function resolveCommentContext() {
@@ -1413,7 +1415,7 @@
 
         try {
           targetReplyBtn.click();
-        } catch (_) {}
+        } catch (_) { }
 
         await new Promise(r => setTimeout(r, 60));
 
@@ -2797,7 +2799,7 @@
           btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly (Shift+Click for Assistant Dialog)`;
         }
       }
-    }).catch(() => {});
+    }).catch(() => { });
 
     actionsWrapper.appendChild(quickBtn);
     actionsWrapper.appendChild(btn);
@@ -2865,8 +2867,8 @@
       const form = btn.closest('form');
       if (form) {
         return form.querySelector('div[role="textbox"][contenteditable="true"]') ||
-               form.querySelector('textarea:not([aria-hidden="true"])') ||
-               form.querySelector('textarea');
+          form.querySelector('textarea:not([aria-hidden="true"])') ||
+          form.querySelector('textarea');
       }
       const container = btn.closest('article') || btn.closest('div[role="dialog"]');
       if (container) {
@@ -2874,27 +2876,27 @@
       }
     } else if (contextType === 'story') {
       const storyContainer = btn.closest('.ig-story-composer') ||
-                             findStoryPillContainer(btn) ||
-                             findActiveStoryContainer(btn) ||
-                             btn.parentElement;
+        findStoryPillContainer(btn) ||
+        findActiveStoryContainer(btn) ||
+        btn.parentElement;
       if (storyContainer) {
         return storyContainer.querySelector('textarea:not([aria-hidden="true"])') ||
-               storyContainer.querySelector('input[type="text"]') ||
-               storyContainer.querySelector('input:not([type])') ||
-               storyContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
-               storyContainer.querySelector('div[contenteditable="true"]') ||
-               storyContainer.querySelector('textarea') ||
-               storyContainer.querySelector('input');
+          storyContainer.querySelector('input[type="text"]') ||
+          storyContainer.querySelector('input:not([type])') ||
+          storyContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
+          storyContainer.querySelector('div[contenteditable="true"]') ||
+          storyContainer.querySelector('textarea') ||
+          storyContainer.querySelector('input');
       }
     } else if (contextType === 'dm') {
       const dmContainer = btn.closest('.ig-dm-composer') ||
-                          findDmPillContainer(btn) ||
-                          findChatContainerForElement(btn) ||
-                          btn.parentElement;
+        findDmPillContainer(btn) ||
+        findChatContainerForElement(btn) ||
+        btn.parentElement;
       if (dmContainer) {
         return dmContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
-               dmContainer.querySelector('div[contenteditable="true"]') ||
-               dmContainer.querySelector('textarea');
+          dmContainer.querySelector('div[contenteditable="true"]') ||
+          dmContainer.querySelector('textarea');
       }
     }
     return null;
@@ -2957,7 +2959,7 @@
           return `dm_t_${hrefMatch[1]}`;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 3. Floating PIP chat window or thread partner fallback
     const cleanAuthor = (partnerAuthor || '').trim().toLowerCase().replace(/^@/, '');
@@ -3080,7 +3082,7 @@
           return name;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 5. Check document.title: e.g. "Jane Doe (@janedoe) • Direct" or "janedoe • Direct"
     if (document.title && document.title.includes('Direct')) {
@@ -3483,7 +3485,7 @@
           maxVisibleArea = visibleArea;
           bestVideo = v;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     return bestVideo || candidateList[0] || videos[0];
@@ -3538,7 +3540,7 @@
   function extractReelAuthor(reelContainer) {
     // 1. If on dedicated /reel/ or /reels/ URL, check canonical title/og/JSON-LD first
     const isDedicatedRoute = window.location.pathname.startsWith('/reel/') ||
-                             (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
+      (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
     if (isDedicatedRoute) {
       const canonical = extractPostAuthor(reelContainer);
       if (canonical) return canonical;
@@ -3609,7 +3611,7 @@
   function extractReelCaption(reelContainer, postAuthor = '') {
     // 1. If on dedicated /reel/ or /reels/ URL, check canonical h1/og:desc/title/JSON-LD first
     const isDedicatedRoute = window.location.pathname.startsWith('/reel/') ||
-                             (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
+      (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
     if (isDedicatedRoute) {
       const canonical = extractPostCaption(reelContainer, postAuthor);
       if (canonical) return canonical;
@@ -3672,7 +3674,7 @@
 
     // 1. Check meta tags (authoritative for dedicated /reel/ and /reels/ routes)
     const ogImage = document.querySelector('meta[property="og:image"]')?.content ||
-                    document.querySelector('meta[name="twitter:image"]')?.content;
+      document.querySelector('meta[name="twitter:image"]')?.content;
     if (ogImage && ogImage.startsWith('http')) {
       thumbnailUrl = ogImage;
     }
@@ -3778,9 +3780,9 @@
     // 7. Fallback on dedicated single-post or reel URL
     if (isDedicatedPostOrReelRoute()) {
       return document.querySelector('article') ||
-             document.querySelector('main') ||
-             document.querySelector('div[role="main"]') ||
-             document.querySelector('.ig-post-card') || null;
+        document.querySelector('main') ||
+        document.querySelector('div[role="main"]') ||
+        document.querySelector('.ig-post-card') || null;
     }
 
     return null;
@@ -3887,9 +3889,9 @@
         }
 
         const commentItem = findCommentContainer(link) ||
-                            link.closest('li') ||
-                            link.closest('.ig-comment') ||
-                            link.closest('ul > div');
+          link.closest('li') ||
+          link.closest('.ig-comment') ||
+          link.closest('ul > div');
 
         if (!commentItem) continue;
 
@@ -3983,7 +3985,7 @@
     // 2. Open Graph description & document.title on dedicated post/reel URLs (authoritative)
     if (!standardCaption && isDedicatedPost) {
       const ogDesc = document.querySelector('meta[property="og:description"]')?.content ||
-                     document.querySelector('meta[name="description"]')?.content || '';
+        document.querySelector('meta[name="description"]')?.content || '';
       if (ogDesc) {
         // IG format: "1,234 likes, 56 comments - user on Date: \"Caption here\""
         const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{3,})[”"']/);
@@ -4028,7 +4030,7 @@
               }
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
@@ -4164,7 +4166,7 @@
     // 1. On dedicated post/reel URLs, document.title and Open Graph title are authoritative and unpolluted
     const pageTitle = (document.title || '').trim();
     const ogTitle = document.querySelector('meta[property="og:title"]')?.content ||
-                    document.querySelector('meta[name="twitter:title"]')?.content || '';
+      document.querySelector('meta[name="twitter:title"]')?.content || '';
 
     // Instagram title formats:
     // - "Name (@handle) on Instagram: ..."
@@ -4204,7 +4206,7 @@
           if (c) return c;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 3. Try post header links inside container or article (strictly inside header)
     const headerLinks = container.querySelectorAll(
@@ -4257,7 +4259,7 @@
    */
   function extractPostVisuals(container) {
     const isDedicatedPost = isDedicatedPostOrReelRoute();
-    
+
     // Find the closest article or media root
     let target = container ? (container.closest('article') || (container.matches && container.matches('article') ? container : null)) : null;
     if (!target && isDedicatedPost) {
@@ -4338,7 +4340,7 @@
     if (isDedicatedPost || !thumbnailUrl) {
       if (!thumbnailUrl) {
         const ogImage = document.querySelector('meta[property="og:image"]')?.content ||
-                        document.querySelector('meta[name="twitter:image"]')?.content;
+          document.querySelector('meta[name="twitter:image"]')?.content;
         if (ogImage && ogImage.startsWith('http')) {
           thumbnailUrl = ogImage;
         }
@@ -4396,7 +4398,7 @@
           }
         }
       }
-    } catch (_) {}
+    } catch (_) { }
     return '';
   }
 
@@ -4469,8 +4471,8 @@
     const currentPostId = contextType === 'story'
       ? extractStoryIdentifier(inputEl || triggerBtn, specificComment?.author)
       : (contextType === 'dm'
-          ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author)
-          : extractPostIdentifier(findPostContainer(inputEl || triggerBtn)));
+        ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author)
+        : extractPostIdentifier(findPostContainer(inputEl || triggerBtn)));
 
     // If card is already open on this input/comment for the SAME post/thread, toggle it closed
     if (
@@ -4519,6 +4521,7 @@
     currentTone = config.defaultTone || 'friendly';
     currentStance = config.defaultStance || 'positive';
     currentLanguage = config.replyLanguage || 'auto';
+    currentPersona = config.activePersona || 'auto';
     const shouldIncludeCaption = config.includePostCaption !== false;
 
     // 1. Locate standard post container (feed post, photo modal, reels, etc.) or story
@@ -4551,7 +4554,7 @@
           activeVideo.pause();
           activeVideo.dataset.instareplyPaused = 'true';
         }
-      } catch (_) {}
+      } catch (_) { }
     } else if (contextType === 'dm') {
       const threadContainer = findActiveDmThreadContainer(inputEl || triggerBtn);
       postAuthor = extractDmPartner(threadContainer, inputEl);
@@ -4602,8 +4605,8 @@
     const postId = contextType === 'story'
       ? extractStoryIdentifier(inputEl || triggerBtn, postAuthor)
       : (contextType === 'dm'
-          ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author || postAuthor)
-          : extractPostIdentifier(postContainer, postAuthor, postCaption));
+        ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author || postAuthor)
+        : extractPostIdentifier(postContainer, postAuthor, postCaption));
 
     // Extract Context
     let context;
@@ -4680,7 +4683,7 @@
         action: 'UPDATE_ACTIVE_REPLY_CONTEXT',
         context: lastContextData
       });
-    } catch (_) {}
+    } catch (_) { }
 
     // Create & Position Card
     activeCard = createCardDOM(context);
@@ -4868,7 +4871,7 @@
         toast.style.transform = 'translateY(12px)';
         setTimeout(() => toast.remove(), 300);
       }, 2200);
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /**
@@ -5014,6 +5017,7 @@
           variationIndex: 0,
           postId: contextData.postId || 'post',
           replyLanguage,
+          activePersona: config.activePersona || 'auto',
           myVoiceSamples: config.myVoiceSamples || '',
           enableSpamFilter: config.enableSpamFilter !== false
         };
@@ -5057,7 +5061,7 @@
         // Ensure focus on input so user can review or press Enter to post
         try {
           targetInput.focus();
-        } catch (_) {}
+        } catch (_) { }
 
         // Success indicator
         if (triggerBtn) {
@@ -5241,6 +5245,7 @@
     try {
       const config = await getConfig();
       payload.replyLanguage = currentLanguage || config.replyLanguage || 'auto';
+      payload.activePersona = currentPersona || config.activePersona || 'auto';
       payload.myVoiceSamples = config.myVoiceSamples || '';
       payload.enableSpamFilter = config.enableSpamFilter !== false;
 
@@ -5519,7 +5524,7 @@
 
         // Check if there is an active comments container (drawer or feed post)
         const commentsContainer = (activeInputTarget ? findPostContainer(activeInputTarget) : null) ||
-                                  document.querySelector('div[role="dialog"]');
+          document.querySelector('div[role="dialog"]');
         if (!commentsContainer) return;
 
         const seenItems = new Set();
@@ -5670,6 +5675,70 @@
       outputArea.focus();
       updateVariationDots(activeCard, currentVariation);
       updateCardCharCount(activeCard);
+    }
+
+    // Inline Bilingual Translation Preview
+    const translationBox = activeCard.querySelector('.instareply-translation-box');
+    if (translationBox) {
+      const inTrans = (data.incomingTranslation || '').trim();
+      const outTrans = (data.replyTranslation || '').trim();
+      if (inTrans || outTrans) {
+        translationBox.classList.remove('hidden');
+        translationBox.innerHTML = `
+          ${inTrans ? `<div class="instareply-trans-row"><span class="instareply-trans-badge">🌐 Incoming meaning:</span> <span class="instareply-trans-text">${escapeHTML(inTrans)}</span></div>` : ''}
+          ${outTrans ? `<div class="instareply-trans-row"><span class="instareply-trans-badge">🔍 Draft meaning:</span> <span class="instareply-trans-text">${escapeHTML(outTrans)}</span></div>` : ''}
+        `;
+      } else {
+        translationBox.classList.add('hidden');
+        translationBox.innerHTML = '';
+      }
+    }
+
+    // Multi-Post Thread Breakdown Parts List
+    const threadListEl = activeCard.querySelector('.instareply-thread-parts-list');
+    if (threadListEl) {
+      if (Array.isArray(data.threadParts) && data.threadParts.length > 0) {
+        threadListEl.classList.remove('hidden');
+        threadListEl.innerHTML = data.threadParts.map((part, idx) => `
+          <div class="instareply-thread-part-item">
+            <div class="instareply-thread-part-header">
+              <span class="instareply-thread-part-num">🧵 Part ${idx + 1}/${data.threadParts.length} (${part.length} chars)</span>
+              <div class="instareply-thread-part-actions">
+                <button type="button" class="instareply-thread-copy-btn" data-part-idx="${idx}">📋 Copy</button>
+                <button type="button" class="instareply-thread-insert-btn" data-part-idx="${idx}">↵ Insert</button>
+              </div>
+            </div>
+            <div class="instareply-thread-part-body">${escapeHTML(part)}</div>
+          </div>
+        `).join('');
+
+        threadListEl.querySelectorAll('.instareply-thread-copy-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pIdx = parseInt(btn.dataset.partIdx || '0', 10);
+            const partText = data.threadParts[pIdx] || '';
+            if (partText) {
+              navigator.clipboard.writeText(partText);
+              btn.textContent = '✓ Copied';
+              setTimeout(() => { btn.textContent = '📋 Copy'; }, 1400);
+            }
+          });
+        });
+
+        threadListEl.querySelectorAll('.instareply-thread-insert-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pIdx = parseInt(btn.dataset.partIdx || '0', 10);
+            const partText = data.threadParts[pIdx] || '';
+            if (partText && activeInputTarget) {
+              insertTextIntoInstagramInput(activeInputTarget, partText);
+              btn.textContent = '✓ Inserted';
+              setTimeout(() => { btn.textContent = '↵ Insert'; }, 1400);
+            }
+          });
+        });
+      } else {
+        threadListEl.classList.add('hidden');
+        threadListEl.innerHTML = '';
+      }
     }
 
     if (modelBadge) {
@@ -6091,6 +6160,9 @@
               <button type="button" class="instareply-stance-btn" data-stance="negative" title="Contrarian / Debate: Bold take or thought-provoking discussion">
                 🔥 Hot Take
               </button>
+              <button type="button" class="instareply-stance-btn" data-stance="thread" title="Thread Composer: Split long ideas into numbered multi-post thread parts (1/N, 2/N...)">
+                🧵 Thread
+              </button>
             ` : `
               <button type="button" class="instareply-stance-btn" data-stance="positive" title="Positive: Warm, supportive, agreeable">
                 🟢 Positive
@@ -6140,14 +6212,14 @@
           </div>
         </div>
 
-        <!-- Reply Language Preference -->
+        <!-- Reply Language & Persona Profile Row -->
         <div class="instareply-lang-wrapper">
           <div class="instareply-control-header">
-            <span class="instareply-control-label">Reply Language</span>
+            <span class="instareply-control-label">Language & Persona</span>
             <span class="instareply-lang-hint" id="instareply-lang-hint">Auto (Match Context)</span>
           </div>
-          <div class="instareply-lang-row">
-            <select class="instareply-lang-select" id="instareply-card-lang" title="Reply language preference">
+          <div class="instareply-lang-row" style="display: flex; gap: 6px;">
+            <select class="instareply-lang-select" id="instareply-card-lang" title="Reply language preference" style="flex: 1;">
               <option value="auto">🌐 Match Context Language (Auto-Detect)</option>
               <option value="en">🇺🇸 English</option>
               <option value="ja">🇯🇵 Japanese (日本語)</option>
@@ -6159,6 +6231,13 @@
               <option value="ko">🇰🇷 Korean (한국어)</option>
               <option value="pt">🇧🇷 Portuguese (Português)</option>
               <option value="it">🇮🇹 Italian (Italiano)</option>
+            </select>
+            <select class="instareply-lang-select instareply-persona-select" id="instareply-card-persona" title="Active Persona Profile" style="flex: 1;">
+              <option value="auto">🎭 Auto Persona (By Platform)</option>
+              <option value="creator">🎨 Creator Casual</option>
+              <option value="founder">🚀 Founder / Exec</option>
+              <option value="maintainer">🛠️ OSS Maintainer</option>
+              <option value="support">🎧 Customer Support</option>
             </select>
           </div>
         </div>
@@ -6175,7 +6254,9 @@
             <span class="instareply-loading-text">Crafting authentic AI reply...</span>
           </div>
           <div class="instareply-error-container hidden"></div>
+          <div class="instareply-translation-box hidden"></div>
           <textarea class="instareply-output-textarea" placeholder="${isPostDraft ? 'Drafting post...' : 'Drafting reply...'}"></textarea>
+          <div class="instareply-thread-parts-list hidden"></div>
         </div>
       </div>
 
@@ -6326,7 +6407,7 @@
           viewToggleBtn.title = isGrid ? 'Switch to 1-row scrollable ribbon' : 'Switch to expanded grid view';
           try {
             localStorage.setItem('instareply_tone_view', isGrid ? 'grid' : 'ribbon');
-          } catch (_) {}
+          } catch (_) { }
         });
 
         // Restore saved view preference
@@ -6335,7 +6416,7 @@
             tonesWrapper.classList.add('is-grid');
             viewToggleBtn.textContent = '↔ Ribbon';
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // Record drag distance to suppress chip click during drag
@@ -6378,7 +6459,21 @@
         setCardActiveLanguage(card, currentLanguage);
         try {
           chrome.storage?.sync?.set({ replyLanguage: currentLanguage });
-        } catch (_) {}
+        } catch (_) { }
+        currentVariation = 0;
+        executeReplyGeneration();
+      });
+    }
+
+    // Persona select change
+    const personaSelect = card.querySelector('#instareply-card-persona');
+    if (personaSelect) {
+      personaSelect.value = currentPersona || 'auto';
+      personaSelect.addEventListener('change', () => {
+        currentPersona = personaSelect.value;
+        try {
+          chrome.storage?.sync?.set({ activePersona: currentPersona });
+        } catch (_) { }
         currentVariation = 0;
         executeReplyGeneration();
       });
@@ -6536,7 +6631,9 @@
     });
     const hintEl = card.querySelector('#instareply-stance-hint');
     if (hintEl) {
-      if (stance === 'negative') {
+      if (stance === 'thread') {
+        hintEl.textContent = 'Numbered multi-post thread (1/N, 2/N...)';
+      } else if (stance === 'negative') {
         hintEl.textContent = 'Polite decline & firm boundary';
       } else if (stance === 'neutral') {
         hintEl.textContent = 'Objective, balanced & factual';
@@ -6692,7 +6789,7 @@
       if (element._valueTracker) {
         try {
           element._valueTracker.setValue('');
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // Dispatch InputEvent with data
@@ -6704,7 +6801,7 @@
           data: textToInsert
         });
         element.dispatchEvent(inputEvent);
-      } catch (_) {}
+      } catch (_) { }
 
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -6720,7 +6817,7 @@
           sel.addRange(range);
         }
         execSuccess = document.execCommand('insertText', false, textToInsert);
-      } catch (_) {}
+      } catch (_) { }
 
       // Only fall back to innerText if execCommand explicitly failed/returned false
       // to avoid duplicating text in Lexical / Draft.js editors
@@ -6744,7 +6841,7 @@
           range.collapse(false);
           sel.removeAllRanges();
           sel.addRange(range);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
@@ -6753,7 +6850,7 @@
     // Scroll comment input into view smoothly
     try {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /**
@@ -6900,9 +6997,9 @@
       const pausedVideo = document.querySelector('video[data-instareply-paused="true"]');
       if (pausedVideo) {
         delete pausedVideo.dataset.instareplyPaused;
-        pausedVideo.play().catch(() => {});
+        pausedVideo.play().catch(() => { });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     if (activeCard && activeCard.parentNode) {
       activeCard.parentNode.removeChild(activeCard);
@@ -7029,7 +7126,7 @@
           card.style.height = `${h}px`;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     function onPointerDown(e) {
       isResizing = true;
@@ -7072,7 +7169,7 @@
       try {
         localStorage.setItem('instareply_card_width', String(card.offsetWidth));
         localStorage.setItem('instareply_card_height', String(card.offsetHeight));
-      } catch (_) {}
+      } catch (_) { }
     }
 
     grip.addEventListener('pointerdown', onPointerDown);
@@ -7123,7 +7220,65 @@
         getConfig();
       });
     }
-  } catch (_) {}
+  } catch (_) { }
+
+  /**
+   * Scans the current page for visible comments, reviews, or discussion items for Inbox Zero Triage Mode
+   */
+  function scanPageForTriageQueue() {
+    const activePlat = typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram';
+    triageCandidateNodes = [];
+    const results = [];
+    const seenTexts = new Set();
+
+    const selectors = [
+      'ul li',
+      '.ig-comment',
+      'ytd-comment-thread-renderer',
+      'ytcp-comment-thread',
+      'shreddit-comment',
+      '.timeline-comment',
+      '.review-body',
+      '[data-testid="tweet"]',
+      '.commtext'
+    ];
+
+    const nodes = Array.from(document.querySelectorAll(selectors.join(', ')));
+    for (const node of nodes) {
+      if (results.length >= 15) break;
+      if (node.closest('.instareply-card-overlay') || node.closest('header, nav')) continue;
+
+      let author = '';
+      let text = '';
+
+      if (activePlat === 'instagram') {
+        author = extractAuthorFromCommentContainer(node) || '';
+        text = extractCommentTextFromContainer(node, author) || '';
+      } else {
+        const authorEl = node.querySelector('#author-text, .author, .hnuser, a[href*="/user/"], a[href^="/@"], strong, h3');
+        author = authorEl ? (authorEl.textContent || '').trim().replace(/^[@u/]+/, '') : '';
+        const bodyEl = node.querySelector('#content-text, .comment-body, [slot="comment"], [data-testid="tweetText"], p, span[dir="auto"]');
+        text = bodyEl ? (bodyEl.textContent || '').trim() : (node.textContent || '').trim();
+      }
+
+      text = text.replace(/\s+/g, ' ').trim();
+      if (!text || text.length < 4 || text.length > 600) continue;
+      const dedupeKey = `${author}:${text.slice(0, 60)}`.toLowerCase();
+      if (seenTexts.has(dedupeKey)) continue;
+      seenTexts.add(dedupeKey);
+
+      const index = triageCandidateNodes.length;
+      triageCandidateNodes.push({ node, author: author || 'commenter', text });
+      results.push({
+        index,
+        platform: activePlat,
+        author: author || 'commenter',
+        text: text.slice(0, 240)
+      });
+    }
+
+    return results;
+  }
 
   // Listener for messages from Side Panel or Popup
   if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
@@ -7142,6 +7297,40 @@
 
       if (message.action === 'GET_PAGE_REPLY_CONTEXT') {
         sendResponse({ success: true, context: lastContextData || null });
+        return true;
+      }
+
+      if (message.action === 'SCAN_UNANSWERED_COMMENTS') {
+        const items = scanPageForTriageQueue();
+        sendResponse({ success: true, items });
+        return true;
+      }
+
+      if (message.action === 'SELECT_TRIAGE_ITEM') {
+        const idx = typeof message.index === 'number' ? message.index : -1;
+        const entry = triageCandidateNodes[idx];
+        if (entry && entry.node && document.body.contains(entry.node)) {
+          try {
+            entry.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const origOutline = entry.node.style.outline;
+            entry.node.style.outline = '2px solid #8b5cf6';
+            setTimeout(() => { entry.node.style.outline = origOutline; }, 1800);
+          } catch (_) { }
+        }
+        const activePlat = typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram';
+        const baseCtx = entry ? {
+          platform: activePlat,
+          contextType: 'comment',
+          author: entry.author || 'user',
+          incomingText: entry.text || '',
+          postCaption: lastContextData?.postCaption || document.title || '',
+          postAuthor: lastContextData?.postAuthor || '',
+          isSpecificCommentReply: true
+        } : (lastContextData || null);
+        if (baseCtx) {
+          lastContextData = baseCtx;
+        }
+        sendResponse({ success: true, context: baseCtx });
         return true;
       }
 

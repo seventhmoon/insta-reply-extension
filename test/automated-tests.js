@@ -497,10 +497,10 @@ async function main() {
     let textareaSetterCalled = false;
 
     const mockInputProto = {
-      valueSetter: function(val) { inputSetterCalled = true; this.value = val; }
+      valueSetter: function (val) { inputSetterCalled = true; this.value = val; }
     };
     const mockTextareaProto = {
-      valueSetter: function(val) { textareaSetterCalled = true; this.value = val; }
+      valueSetter: function (val) { textareaSetterCalled = true; this.value = val; }
     };
 
     const mockInputEl = { tagName: 'INPUT', value: '' };
@@ -1276,8 +1276,8 @@ async function main() {
     function extractFromAria(btn) {
       const aria = btn.getAttribute('aria-label') || '';
       const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-                    aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
-                    aria.match(/@([a-zA-Z0-9._]+)/);
+        aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+        aria.match(/@([a-zA-Z0-9._]+)/);
       return match ? match[1] : '';
     }
 
@@ -2864,7 +2864,11 @@ Hope this helps!
       'meta-business-adapter.js',
       'github-adapter.js',
       'google-play-adapter.js',
-      'youtube-adapter.js'
+      'youtube-adapter.js',
+      'reddit-adapter.js',
+      'email-adapter.js',
+      'community-adapter.js',
+      'generic-adapter.js'
     ];
     for (const f of adapterFiles) {
       const code = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters', f), 'utf8');
@@ -3020,6 +3024,107 @@ Hope this helps!
     const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
     assert.ok(popupJs.includes('initLiveReplyWorkflow'), 'popup.js must implement initLiveReplyWorkflow');
     assert.ok(popupJs.includes('INSERT_REPLY_FROM_SIDEPANEL'), 'popup.js must send INSERT_REPLY_FROM_SIDEPANEL to active tab');
+  });
+
+  // =========================================================================
+  // SUITE 17: Knowledge Base, Multi-Persona, Triage Queue, Bilingual, Thread & New Adapters
+  // =========================================================================
+  console.log('\n🚀 Suite 17: Knowledge Base, Multi-Persona, Triage Queue, Bilingual, Thread & New Adapters');
+
+  runTest('KnowledgeBaseAndSlashMacros', 'Expands /slash snippet macros and injects Knowledge Base facts into prompt', () => {
+    const sw = require(path.join(ROOT_DIR, 'background/service-worker.js'));
+    const kb = '/discord = Join our Discord at https://discord.gg/instareply\n/pricing = Pro tier is $9/mo\nWe offer a 14-day free trial with no credit card.';
+    const res = sw.resolveKnowledgeAndMacros(kb, 'Hey check /discord for updates!', '');
+    assert.strictEqual(res.expandedMacros.length, 1, 'Must expand triggered /discord macro');
+    assert.strictEqual(res.expandedMacros[0].trigger, '/discord');
+    assert.ok(res.expandedMacros[0].expansion.includes('https://discord.gg/instareply'));
+    assert.strictEqual(res.facts.length, 1, 'Must extract factual grounding lines');
+
+    const prompt = sw.buildStructuredPrompt({
+      platform: 'instagram',
+      contextType: 'comment',
+      incomingText: 'Where can I join the community?',
+      userDraftHint: 'Share /discord link',
+      knowledgeBase: kb,
+      tone: 'friendly'
+    });
+    assert.ok(prompt.includes('EXPANDED /SLASH SNIPPET MACROS'), 'Prompt must include expanded slash macro section');
+    assert.ok(prompt.includes('https://discord.gg/instareply'), 'Prompt must include expanded macro URL');
+    assert.ok(prompt.includes('CREATOR KNOWLEDGE BASE & FACTS'), 'Prompt must include knowledge base facts section');
+  });
+
+  runTest('MultiPersonaProfileResolution', 'Auto-switches persona by platform and supports explicit persona selection', () => {
+    const sw = require(path.join(ROOT_DIR, 'background/service-worker.js'));
+    assert.strictEqual(sw.resolveEffectivePersona('auto', 'github').id, 'maintainer');
+    assert.strictEqual(sw.resolveEffectivePersona('auto', 'google_play').id, 'support');
+    assert.strictEqual(sw.resolveEffectivePersona('auto', 'linkedin').id, 'founder');
+    assert.strictEqual(sw.resolveEffectivePersona('auto', 'instagram').id, 'creator');
+    assert.strictEqual(sw.resolveEffectivePersona('founder', 'instagram').id, 'founder');
+
+    const prompt = sw.buildStructuredPrompt({
+      platform: 'github',
+      contextType: 'comment',
+      incomingText: 'Fixes #42',
+      activePersona: 'auto',
+      tone: 'professional'
+    });
+    assert.ok(prompt.includes('ACTIVE PERSONA PROFILE (Open-Source Maintainer / Engineer)'), 'Prompt must include resolved persona profile');
+  });
+
+  runTest('BilingualTranslationAndThreadComposer', 'Supports bilingual translation preview fields and numbered thread breakdown', () => {
+    const sw = require(path.join(ROOT_DIR, 'background/service-worker.js'));
+    const threadPrompt = sw.buildStructuredPrompt({
+      platform: 'x',
+      contextType: 'post_draft',
+      incomingText: '5 lessons from shipping a Manifest V3 extension',
+      stance: 'thread',
+      tone: 'professional'
+    });
+    assert.ok(threadPrompt.includes('MULTI-POST THREAD BREAKDOWN'), 'Thread stance must instruct multi-post breakdown');
+    assert.ok(threadPrompt.includes('"threadParts"'), 'Thread prompt must request threadParts JSON array');
+    assert.ok(threadPrompt.includes('"incomingTranslation"'), 'Prompt must request incomingTranslation');
+    assert.ok(threadPrompt.includes('"replyTranslation"'), 'Prompt must request replyTranslation');
+
+    const parsed = sw.parseAIResponse(JSON.stringify({
+      sentiment: 'positive',
+      sentimentLabel: '🟢 Positive',
+      topics: ['MV3'],
+      incomingTranslation: 'Great extension!',
+      replyTranslation: 'Thank you so much!',
+      threadParts: ['1/2 Hook post', '2/2 Takeaway post'],
+      reply: '1/2 Hook post\n\n2/2 Takeaway post'
+    }));
+    assert.strictEqual(parsed.incomingTranslation, 'Great extension!');
+    assert.strictEqual(parsed.replyTranslation, 'Thank you so much!');
+    assert.strictEqual(parsed.threadParts.length, 2);
+  });
+
+  runTest('InboxZeroTriageQueueAndNewAdapters', 'Registers Reddit, Email, and Community adapters and wires Inbox Zero Triage Queue', () => {
+    const detector = require(path.join(ROOT_DIR, 'content/adapters/platform-detector.js'));
+    const RedditAdapter = require(path.join(ROOT_DIR, 'content/adapters/reddit-adapter.js'));
+    const EmailAdapter = require(path.join(ROOT_DIR, 'content/adapters/email-adapter.js'));
+    const CommunityAdapter = require(path.join(ROOT_DIR, 'content/adapters/community-adapter.js'));
+
+    detector.registerAdapter(RedditAdapter);
+    detector.registerAdapter(EmailAdapter);
+    detector.registerAdapter(CommunityAdapter);
+
+    assert.strictEqual(detector.detectPlatform('www.reddit.com'), 'reddit');
+    assert.strictEqual(detector.detectPlatform('mail.google.com'), 'email');
+    assert.strictEqual(detector.detectPlatform('outlook.office.com'), 'email');
+    assert.strictEqual(detector.detectPlatform('news.ycombinator.com'), 'community');
+    assert.strictEqual(detector.detectPlatform('www.producthunt.com'), 'community');
+    assert.strictEqual(detector.detectPlatform('read.substack.com'), 'community');
+
+    const popupHtml = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.html'), 'utf8');
+    assert.ok(popupHtml.includes('id="inboxTriageCard"'), 'popup.html must include inboxTriageCard');
+    assert.ok(popupHtml.includes('id="scanPageQueueBtn"'), 'popup.html must include scanPageQueueBtn');
+    assert.ok(popupHtml.includes('id="activePersona"'), 'popup.html must include activePersona selector');
+    assert.ok(popupHtml.includes('id="knowledgeBase"'), 'popup.html must include knowledgeBase textarea');
+
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    assert.ok(contentJs.includes("message.action === 'SCAN_UNANSWERED_COMMENTS'"), 'content.js must handle SCAN_UNANSWERED_COMMENTS');
+    assert.ok(contentJs.includes("message.action === 'SELECT_TRIAGE_ITEM'"), 'content.js must handle SELECT_TRIAGE_ITEM');
   });
 
   console.log('=================================================');

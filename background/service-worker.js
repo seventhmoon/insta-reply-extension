@@ -26,6 +26,8 @@ const DEFAULT_CONFIG = {
   composerButtonMode: 'smart',
   commentButtonMode: 'auto',
   myVoiceSamples: '',
+  knowledgeBase: '',
+  activePersona: 'auto', // 'auto' | 'creator' | 'founder' | 'maintainer' | 'support'
   replyLanguage: 'auto',
   launchMode: 'popup', // 'popup' | 'sidepanel'
   customInstructions: ''
@@ -867,7 +869,8 @@ async function handleGenerateReply(payload) {
       stance = config.defaultStance || 'positive',
       tone = config.defaultTone || 'friendly',
       variationIndex = 0,
-      replyLanguage = payload.replyLanguage || config.replyLanguage || 'auto'
+      replyLanguage = payload.replyLanguage || config.replyLanguage || 'auto',
+      activePersona = payload.activePersona || config.activePersona || 'auto'
     } = payload;
 
     if (!incomingText && !postCaption && !userDraftHint && !postVisuals?.description) {
@@ -878,6 +881,9 @@ async function handleGenerateReply(payload) {
                      platform === 'github' ? 'GitHub Issue or Pull Request thread. Draft a clear, constructive, and helpful developer response.' :
                      platform === 'google_play' ? 'Google Play app review. Draft a courteous, helpful developer reply under 350 characters.' :
                      platform === 'youtube' ? 'YouTube video or comment thread. Draft an engaging, friendly creator or viewer comment.' :
+                     platform === 'reddit' ? 'Reddit thread or comment. Draft a witty, authentic, and community-savvy Reddit reply.' :
+                     platform === 'email' ? 'Email thread. Draft a clear, courteous, and well-structured email reply.' :
+                     platform === 'community' ? 'Community discussion on Hacker News, Product Hunt, or Substack. Draft an insightful, high-signal response.' :
                      platform === 'generic' ? 'Web page input field. Refine the user draft or craft a context-aware reply grounded in the page content.' :
                      'Instagram post or reel. Draft a warm, engaging, and friendly creator comment or question for this post.';
     }
@@ -942,7 +948,8 @@ async function handleGenerateReply(payload) {
         stance,
         tone,
         variationIndex,
-        replyLanguage
+        replyLanguage,
+        activePersona
       });
     } else if (provider === 'groq' || provider === 'openrouter' || provider === 'custom_openai' || provider === 'local_llm') {
       result = await generateWithOpenAiCompatible({
@@ -963,7 +970,8 @@ async function handleGenerateReply(payload) {
         stance,
         tone,
         variationIndex,
-        replyLanguage
+        replyLanguage,
+        activePersona
       });
     } else if (provider === 'edge_ai') {
       return {
@@ -1261,7 +1269,8 @@ async function generateWithGemini({
   stance,
   tone,
   variationIndex,
-  replyLanguage = 'auto'
+  replyLanguage = 'auto',
+  activePersona = 'auto'
 }) {
   if (!config.geminiApiKey || config.geminiApiKey.trim() === '') {
     return {
@@ -1314,6 +1323,8 @@ async function generateWithGemini({
     includeEmojis: config.includeEmojis,
     customInstructions: config.customInstructions,
     myVoiceSamples: config.myVoiceSamples || '',
+    knowledgeBase: config.knowledgeBase || '',
+    activePersona: activePersona || config.activePersona || 'auto',
     enableSpamFilter: config.enableSpamFilter !== false
   });
 
@@ -1401,7 +1412,8 @@ async function generateWithOpenAiCompatible({
   stance,
   tone,
   variationIndex,
-  replyLanguage = 'auto'
+  replyLanguage = 'auto',
+  activePersona = 'auto'
 }) {
   let openAiUrl = '';
   let rootUrl = '';
@@ -1491,6 +1503,8 @@ async function generateWithOpenAiCompatible({
       includeEmojis: config.includeEmojis,
       customInstructions: config.customInstructions,
       myVoiceSamples: config.myVoiceSamples || '',
+      knowledgeBase: config.knowledgeBase || '',
+      activePersona: activePersona || config.activePersona || 'auto',
       enableSpamFilter: config.enableSpamFilter !== false,
       hasMultimodalImage: withVision
     });
@@ -1655,9 +1669,11 @@ function buildStructuredPrompt({
   includeEmojis,
   customInstructions,
   myVoiceSamples = '',
+  knowledgeBase = '',
+  activePersona = 'auto',
   enableSpamFilter = true
 }) {
-  const isPostDraft = contextType === 'post_draft' || replyMode === 'post_draft';
+  const isPostDraft = contextType === 'post_draft' || replyMode === 'post_draft' || stance === 'thread';
   const isCommentReply = !isPostDraft && (replyMode === 'comment_reply' || Boolean(isSpecificCommentReply));
   const isStoryReply = !isPostDraft && (replyMode === 'story_reply' || contextType === 'story');
   const isPostComment = !isPostDraft && replyMode === 'post_comment' && !isCommentReply && !isStoryReply && contextType !== 'dm';
@@ -1730,6 +1746,22 @@ function buildStructuredPrompt({
     platformLengthConstraint = isPostDraft
       ? 'Hook subscribers immediately, keep paragraphs punchy, and end with a question for the comments.'
       : '1 to 3 enthusiastic, conversational, and authentic sentences suitable for YouTube comments.';
+  } else if (platform === 'reddit') {
+    platformIntro = isPostDraft
+      ? 'You are an experienced, authentic Reddit contributor drafting a subreddit post.'
+      : 'You are a witty, knowledgeable, and community-savvy Redditor replying to a thread or comment.';
+    platformGoal = isPostDraft
+      ? 'Your goal is to craft a high-value, authentic Reddit post that fits subreddit culture and sparks discussion.'
+      : 'Your goal is to craft a sharp, genuine, value-adding Reddit comment or reply.';
+    platformLengthConstraint = '1 to 4 natural sentences authentic to Reddit culture. Avoid corporate marketing speak or excessive hashtags; use natural Reddit conversational style.';
+  } else if (platform === 'email') {
+    platformIntro = 'You are an executive communication and email writing assistant.';
+    platformGoal = 'Your goal is to craft a clear, courteous, well-structured email reply or message.';
+    platformLengthConstraint = 'Concise, clear email body with a natural greeting, direct point-by-point response, and polite sign-off (2 to 5 sentences).';
+  } else if (platform === 'community') {
+    platformIntro = 'You are a thoughtful builder, maker, and technologist participating in a community discussion (Hacker News, Product Hunt, or Substack).';
+    platformGoal = 'Your goal is to craft an insightful, high-signal, constructive comment that adds technical or practical depth to the discussion.';
+    platformLengthConstraint = '2 to 4 substantive, intellectual, and conversational sentences with zero fluff.';
   } else if (platform === 'generic') {
     platformIntro = 'You are an expert AI writing & communication assistant embedded directly in the user\'s web browser.';
     platformGoal = userDraftHint
@@ -1760,6 +1792,29 @@ The creator provided these real sample replies they have written. Closely mirror
 ${myVoiceSamples.trim()}
 """
 Adopt this exact personal voice and style while drafting your response!\n`;
+  }
+
+  // Multi-Persona Profile Resolution
+  const resolvedPersona = resolveEffectivePersona(activePersona, platform);
+  const personaBlock = resolvedPersona.instruction
+    ? `### ACTIVE PERSONA PROFILE (${resolvedPersona.label}):\n${resolvedPersona.instruction}\n`
+    : '';
+
+  // Knowledge Base & /slash Snippet Macro Expansion
+  const kbResult = resolveKnowledgeAndMacros(knowledgeBase, userDraftHint, incomingText);
+  let knowledgeBlock = '';
+  if (kbResult.expandedMacros.length > 0) {
+    knowledgeBlock += `### EXPANDED /SLASH SNIPPET MACROS (MUST INCORPORATE):\nThe user triggered the following saved snippet macro(s) in their draft:\n${kbResult.expandedMacros.map(m => `- ${m.trigger} => ${m.expansion}`).join('\n')}\nNaturally weave the exact links, facts, or message from these triggered snippets into your drafted reply!\n`;
+  }
+  if (kbResult.facts.length > 0) {
+    knowledgeBlock += `### CREATOR KNOWLEDGE BASE & FACTS (GROUNDING):\nUse these verified creator facts, links, and FAQs whenever relevant to answer questions or ground your response accurately:\n${kbResult.facts.map(f => `- ${f}`).join('\n')}\n`;
+  }
+
+  // Thread / Multi-Post Breakdown Schema
+  let threadSchema = '';
+  if (stance === 'thread') {
+    const partLimit = platform === 'x' ? 280 : (platform === 'threads' ? 500 : 400);
+    threadSchema = `,\n  "threadParts": [\n    "1/3 First hook post (strictly under ${partLimit} chars)",\n    "2/3 Core insight or story body (strictly under ${partLimit} chars)",\n    "3/3 Key takeaway and call-to-action (strictly under ${partLimit} chars)"\n  ]`;
   }
 
   let spamShieldInstruction = '';
@@ -1881,6 +1936,14 @@ Writing a top-level engaging comment on the post described above.`;
    - Deliver a bold, counter-intuitive perspective that challenges conventional industry myths or habits.
    - Justify the take with sharp, grounded reasoning that invites conversation without toxic hostility.
    - Challenge readers to share their own take in the comments.`;
+    } else if (stance === 'thread') {
+      const partLimit = platform === 'x' ? 280 : (platform === 'threads' ? 500 : 400);
+      stanceGuidance = `2. POST ARCHITECTURE & FRAMEWORK: MULTI-POST THREAD BREAKDOWN (1/N, 2/N, 3/N...)
+   - Break the topic or draft into a cohesive, high-retention 3 to 5 part numbered thread ("1/3 ...", "2/3 ...", "3/3 ...").
+   - Post 1 MUST be a scroll-stopping hook that introduces the thread.
+   - Middle posts deliver concrete insights, examples, or narrative steps.
+   - Final post summarizes the takeaway and asks an engaging question.
+   - Each individual part in "threadParts" MUST be strictly under ${partLimit} characters! Also join the full thread with double newlines in "reply".`;
     } else {
       stanceGuidance = `2. POST ARCHITECTURE & FRAMEWORK: AUTHENTIC & COMPELLING
    - Deliver engaging storytelling, relatable insights, and a clear call-to-action.`;
@@ -1932,8 +1995,7 @@ ${userDraftHint}
 """
 You MUST prioritize and incorporate the user's draft intent or hint directly into your reply! Treat this draft as direction/inspiration for the response.
 ` : ''}
-${voiceMimicryBlock}
-### CRITICAL CONTEXT & STYLE REQUIREMENTS:
+${voiceMimicryBlock}${personaBlock}${knowledgeBlock}### CRITICAL CONTEXT & STYLE REQUIREMENTS:
 ${engagementRequirement}
 ${stanceGuidance}
 ${visualRequirement ? visualRequirement + '\n' : ''}4. DEEP POST RELEVANCE:
@@ -1956,10 +2018,83 @@ You MUST respond with valid JSON matching this exact structure:
   "sentiment": "positive" | "neutral" | "negative" | "question" | "praise" | "complaint",
   "sentimentLabel": "Friendly & Positive" (short 2-4 word summary with sentiment emoji),
   "topics": ["Key Topic 1", "Key Topic 2"],
-  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining."${spamShieldSchema},
-  "reply": "Your drafted reply text here${platform === 'x' ? ' strictly under 280 characters' : ''} in ${primaryTone} style"${multiToneSchema}
+  "visualAnalysis": "Brief 1-sentence description of what you see in the post image/visuals (subjects, setting, attire, colors, mood). If no visual or image is provided or visible, leave this as an empty string \"\" without apologizing or explaining.",
+  "incomingTranslation": "If the incoming comment/post is NOT in English, provide a natural English translation here so the user understands it; if already in English, leave as empty string \"\"",
+  "replyTranslation": "If your drafted reply is NOT in English, provide a natural English translation of your drafted reply here so the user can verify its exact meaning before sending; if the reply is in English, leave as empty string \"\""${spamShieldSchema},
+  "reply": "Your drafted reply text here${platform === 'x' ? ' strictly under 280 characters' : ''} in ${primaryTone} style"${threadSchema}${multiToneSchema}
 }
 Only output the JSON object. Do not include markdown code block backticks if possible.`;
+}
+
+/**
+ * Resolves the effective Persona profile based on user selection or platform auto-match
+ */
+function resolveEffectivePersona(activePersona = 'auto', platform = 'instagram') {
+  const personaKey = (!activePersona || activePersona === 'auto')
+    ? (platform === 'github' ? 'maintainer'
+      : (platform === 'google_play' || platform === 'meta_business') ? 'support'
+      : (platform === 'linkedin' || platform === 'email' || platform === 'community') ? 'founder'
+      : 'creator')
+    : activePersona;
+
+  switch (personaKey) {
+    case 'founder':
+      return {
+        id: 'founder',
+        label: 'Founder / Thought Leader',
+        instruction: 'Speak as an insightful founder, executive, and industry thought leader. Emphasize strategic clarity, first-principles thinking, high-signal takeaways, and authentic professional authority.'
+      };
+    case 'maintainer':
+      return {
+        id: 'maintainer',
+        label: 'Open-Source Maintainer / Engineer',
+        instruction: 'Speak as a pragmatic, collaborative software engineer and open-source maintainer. Focus on technical accuracy, reproducible details, clean Markdown formatting, and constructive developer camaraderie.'
+      };
+    case 'support':
+      return {
+        id: 'support',
+        label: 'Customer Support & Success Lead',
+        instruction: 'Speak as an empathetic, solution-oriented customer support and product success lead. Acknowledge user feedback warmly, de-escalate frustration, and provide clear, reassuring next steps.'
+      };
+    case 'creator':
+    default:
+      return {
+        id: 'creator',
+        label: 'Creator Casual & Authentic',
+        instruction: 'Speak as an approachable, charismatic content creator engaging directly with your community. Keep the vibe relatable, human, conversational, and high-engagement.'
+      };
+  }
+}
+
+/**
+ * Parses the user's Knowledge Base text for `/slash` macros and factual grounding lines
+ */
+function resolveKnowledgeAndMacros(knowledgeBase = '', userDraftHint = '', incomingText = '') {
+  if (!knowledgeBase || typeof knowledgeBase !== 'string' || !knowledgeBase.trim()) {
+    return { expandedMacros: [], facts: [], cleanedHint: userDraftHint || '' };
+  }
+
+  const lines = knowledgeBase.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const macros = [];
+  const facts = [];
+
+  for (const line of lines) {
+    const macroMatch = line.match(/^(\/[a-zA-Z0-9_-]+)\s*(?:=|:|->|-)\s*(.+)$/);
+    if (macroMatch) {
+      macros.push({ trigger: macroMatch[1].toLowerCase(), expansion: macroMatch[2].trim() });
+    } else {
+      facts.push(line);
+    }
+  }
+
+  const combinedInput = `${userDraftHint || ''} ${incomingText || ''}`.toLowerCase();
+  const expandedMacros = macros.filter(m => combinedInput.includes(m.trigger));
+
+  return {
+    expandedMacros,
+    facts,
+    macros
+  };
 }
 
 /**
@@ -2063,16 +2198,24 @@ function parseAIResponse(rawText) {
     const isSpam = Boolean(json.isSpamOrTroll);
     const spamReason = typeof json.spamReason === 'string' ? json.spamReason.trim() : '';
     const recommendedAction = typeof json.recommendedAction === 'string' ? json.recommendedAction.trim() : 'none';
+    const incomingTranslation = typeof json.incomingTranslation === 'string' ? json.incomingTranslation.trim() : '';
+    const replyTranslation = typeof json.replyTranslation === 'string' ? json.replyTranslation.trim() : '';
+    const threadParts = Array.isArray(json.threadParts)
+      ? json.threadParts.map(p => String(p || '').trim()).filter(Boolean)
+      : [];
 
     return {
       sentiment: json.sentiment || 'neutral',
       sentimentLabel: isSpam ? `🚨 Flagged (${spamReason ? spamReason.slice(0, 20) : 'Spam'})` : (json.sentimentLabel || formatSentimentLabel(json.sentiment)),
       topics: Array.isArray(json.topics) ? json.topics : [],
       visualAnalysis: json.visualAnalysis || '',
+      incomingTranslation,
+      replyTranslation,
+      threadParts,
       isSpamOrTroll: isSpam,
       spamReason,
       recommendedAction,
-      reply: json.reply || clean,
+      reply: json.reply || (threadParts.length > 0 ? threadParts.join('\n\n') : clean),
       toneDrafts: normalizedDrafts
     };
   } catch (err) {
@@ -2083,6 +2226,9 @@ function parseAIResponse(rawText) {
       sentimentLabel: '✨ Analyzed',
       topics: [],
       visualAnalysis: '',
+      incomingTranslation: '',
+      replyTranslation: '',
+      threadParts: [],
       isSpamOrTroll: false,
       spamReason: '',
       recommendedAction: 'none',
@@ -2115,6 +2261,8 @@ if (typeof module !== 'undefined' && module.exports) {
     isModelVisionSupported,
     isVisionRejectionError,
     checkOllamaVisionCapability,
+    resolveEffectivePersona,
+    resolveKnowledgeAndMacros,
     buildStructuredPrompt,
     parseAIResponse
   };

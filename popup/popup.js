@@ -72,7 +72,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const commentButtonMode = document.getElementById('commentButtonMode');
   const launchMode = document.getElementById('launchMode');
   const openSidePanelBtn = document.getElementById('openSidePanelBtn');
+  const activePersona = document.getElementById('activePersona');
   const myVoiceSamples = document.getElementById('myVoiceSamples');
+  const knowledgeBase = document.getElementById('knowledgeBase');
   const customInstructions = document.getElementById('customInstructions');
 
   const testConnectionBtn = document.getElementById('testConnectionBtn');
@@ -545,7 +547,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (composerButtonMode) composerButtonMode.value = cfg.composerButtonMode || 'smart';
     if (commentButtonMode) commentButtonMode.value = cfg.commentButtonMode || 'auto';
     if (launchMode && cfg.launchMode) launchMode.value = cfg.launchMode;
+    if (activePersona) activePersona.value = cfg.activePersona || 'auto';
     if (myVoiceSamples) myVoiceSamples.value = cfg.myVoiceSamples || '';
+    if (knowledgeBase) knowledgeBase.value = cfg.knowledgeBase || '';
     customInstructions.value = cfg.customInstructions || '';
   }
 
@@ -598,7 +602,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       composerButtonMode: composerButtonMode ? composerButtonMode.value : 'smart',
       commentButtonMode: commentButtonMode ? commentButtonMode.value : 'auto',
       launchMode: launchMode ? launchMode.value : 'popup',
+      activePersona: activePersona ? activePersona.value : 'auto',
       myVoiceSamples: myVoiceSamples ? myVoiceSamples.value.trim() : '',
+      knowledgeBase: knowledgeBase ? knowledgeBase.value.trim() : '',
       customInstructions: customInstructions.value.trim()
     };
   }
@@ -785,9 +791,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const regenerateReplyBtn = document.getElementById('regenerateReplyBtn');
   const copyLiveReplyBtn = document.getElementById('copyLiveReplyBtn');
   const liveReplyFeedback = document.getElementById('liveReplyFeedback');
+  const scanPageQueueBtn = document.getElementById('scanPageQueueBtn');
+  const triageNavRow = document.getElementById('triageNavRow');
+  const triagePrevBtn = document.getElementById('triagePrevBtn');
+  const triageNextBtn = document.getElementById('triageNextBtn');
+  const triageQueueCount = document.getElementById('triageQueueCount');
+  const triageQueueList = document.getElementById('triageQueueList');
 
   let activeLiveContext = null;
   let activeBundledTones = {};
+  let triageQueueItems = [];
+  let activeTriageIdx = -1;
 
   initLiveReplyWorkflow();
 
@@ -875,6 +889,104 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Check for cached reply context on mount
     fetchInitialLiveContext();
+
+    // Inbox Zero Triage Queue controls
+    if (scanPageQueueBtn) {
+      scanPageQueueBtn.addEventListener('click', async () => {
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab?.id) return;
+          chrome.tabs.sendMessage(tab.id, { action: 'SCAN_UNANSWERED_COMMENTS' }, (res) => {
+            if (chrome.runtime.lastError || !res?.success || !Array.isArray(res.items) || res.items.length === 0) {
+              triageQueueItems = [];
+              activeTriageIdx = -1;
+              if (triageNavRow) triageNavRow.classList.add('hidden');
+              if (triageQueueList) {
+                triageQueueList.innerHTML = '<p class="hint-text">No visible comments or reviews found on this page.</p>';
+              }
+              return;
+            }
+            triageQueueItems = res.items;
+            activeTriageIdx = 0;
+            renderTriageQueue();
+            selectTriageQueueItem(0);
+          });
+        } catch (_) {}
+      });
+    }
+
+    if (triagePrevBtn) {
+      triagePrevBtn.addEventListener('click', () => {
+        if (triageQueueItems.length === 0) return;
+        const nextIdx = (activeTriageIdx - 1 + triageQueueItems.length) % triageQueueItems.length;
+        selectTriageQueueItem(nextIdx);
+      });
+    }
+
+    if (triageNextBtn) {
+      triageNextBtn.addEventListener('click', () => {
+        if (triageQueueItems.length === 0) return;
+        const nextIdx = (activeTriageIdx + 1) % triageQueueItems.length;
+        selectTriageQueueItem(nextIdx);
+      });
+    }
+  }
+
+  function renderTriageQueue() {
+    if (!triageQueueList) return;
+    if (triageQueueItems.length === 0) {
+      if (triageNavRow) triageNavRow.classList.add('hidden');
+      triageQueueList.innerHTML = '<p class="hint-text">Queue is empty.</p>';
+      return;
+    }
+
+    if (triageNavRow) triageNavRow.classList.remove('hidden');
+    if (triageQueueCount) {
+      triageQueueCount.textContent = `${activeTriageIdx + 1} / ${triageQueueItems.length}`;
+    }
+
+    triageQueueList.innerHTML = '';
+    triageQueueItems.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = `history-item triage-queue-item${idx === activeTriageIdx ? ' active' : ''}`;
+      row.style.cursor = 'pointer';
+      row.style.borderLeft = idx === activeTriageIdx ? '3px solid #8b5cf6' : '3px solid transparent';
+      row.innerHTML = `
+        <div class="history-item-header">
+          <span class="history-meta">#${idx + 1} • @${escapeHtml(item.author || 'user')}</span>
+          <span class="history-meta">${idx === activeTriageIdx ? '🎯 Active' : 'Draft ↵'}</span>
+        </div>
+        <div class="history-item-text">${escapeHtml(item.text || '')}</div>
+      `;
+      row.addEventListener('click', () => selectTriageQueueItem(idx));
+      triageQueueList.appendChild(row);
+    });
+  }
+
+  async function selectTriageQueueItem(idx) {
+    if (idx < 0 || idx >= triageQueueItems.length) return;
+    activeTriageIdx = idx;
+    renderTriageQueue();
+    const item = triageQueueItems[idx];
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { action: 'SELECT_TRIAGE_ITEM', index: item.index }, (res) => {
+          if (!chrome.runtime.lastError && res?.context) {
+            applyLiveContext(res.context);
+          } else {
+            applyLiveContext({
+              platform: item.platform || 'instagram',
+              contextType: 'comment',
+              author: item.author,
+              incomingText: item.text,
+              isSpecificCommentReply: true
+            });
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   async function fetchInitialLiveContext() {

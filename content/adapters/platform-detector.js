@@ -64,6 +64,24 @@
       charLimit: null,
       defaultContextType: 'comment'
     },
+    reddit: {
+      id: 'reddit',
+      displayName: 'Reddit',
+      charLimit: null,
+      defaultContextType: 'comment'
+    },
+    email: {
+      id: 'email',
+      displayName: 'Email (Gmail & Outlook)',
+      charLimit: null,
+      defaultContextType: 'dm'
+    },
+    community: {
+      id: 'community',
+      displayName: 'Community (HN / Product Hunt / Substack)',
+      charLimit: null,
+      defaultContextType: 'comment'
+    },
     generic: {
       id: 'generic',
       displayName: 'Universal Web Page',
@@ -110,6 +128,24 @@
     if (target.includes('youtube.com') || target.includes('youtu.be')) {
       return 'youtube';
     }
+    if (target.includes('reddit.com')) {
+      return 'reddit';
+    }
+    if (
+      target.includes('mail.google.com') ||
+      target.includes('outlook.live.com') ||
+      target.includes('outlook.office.com') ||
+      target.includes('outlook.office365.com')
+    ) {
+      return 'email';
+    }
+    if (
+      target.includes('news.ycombinator.com') ||
+      target.includes('producthunt.com') ||
+      target.includes('substack.com')
+    ) {
+      return 'community';
+    }
     return 'generic';
   }
 
@@ -140,6 +176,9 @@
         github: window.GitHubAdapter,
         google_play: window.GooglePlayAdapter,
         youtube: window.YouTubeAdapter,
+        reddit: window.RedditAdapter,
+        email: window.EmailAdapter,
+        community: window.CommunityAdapter,
         generic: window.GenericPageAdapter
       };
       if (globalMap[plat]) {
