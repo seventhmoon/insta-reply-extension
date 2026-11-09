@@ -497,10 +497,10 @@ async function main() {
     let textareaSetterCalled = false;
 
     const mockInputProto = {
-      valueSetter: function (val) { inputSetterCalled = true; this.value = val; }
+      valueSetter: function(val) { inputSetterCalled = true; this.value = val; }
     };
     const mockTextareaProto = {
-      valueSetter: function (val) { textareaSetterCalled = true; this.value = val; }
+      valueSetter: function(val) { textareaSetterCalled = true; this.value = val; }
     };
 
     const mockInputEl = { tagName: 'INPUT', value: '' };
@@ -1276,8 +1276,8 @@ async function main() {
     function extractFromAria(btn) {
       const aria = btn.getAttribute('aria-label') || '';
       const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-        aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
-        aria.match(/@([a-zA-Z0-9._]+)/);
+                    aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+                    aria.match(/@([a-zA-Z0-9._]+)/);
       return match ? match[1] : '';
     }
 

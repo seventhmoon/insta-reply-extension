@@ -53,7 +53,7 @@
     try {
       const activeReel = findActiveReelContainer();
       if (activeReel && !searchRoots.includes(activeReel)) searchRoots.push(activeReel);
-    } catch (_) { }
+    } catch (_) {}
 
     for (const root of searchRoots) {
       if (!root) continue;
@@ -327,7 +327,7 @@
       script.src = chrome.runtime.getURL('content/page-bridge.js');
       (document.head || document.documentElement).appendChild(script);
       window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
-    } catch (_) { }
+    } catch (_) {}
   }
 
   /**
@@ -375,9 +375,9 @@
     const activePlatform = typeof SocialPlatformDetector !== 'undefined'
       ? SocialPlatformDetector.detectPlatform()
       : (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com') ? 'x' :
-        window.location.hostname.includes('linkedin.com') ? 'linkedin' :
-          window.location.hostname.includes('threads.net') ? 'threads' :
-            window.location.hostname.includes('facebook.com') || window.location.hostname.includes('fb.com') ? 'facebook' : 'instagram');
+         window.location.hostname.includes('linkedin.com') ? 'linkedin' :
+         window.location.hostname.includes('threads.net') ? 'threads' :
+         window.location.hostname.includes('facebook.com') || window.location.hostname.includes('fb.com') ? 'facebook' : 'instagram');
 
     if (activePlatform === 'instagram') {
       // 1. Instagram Stories Reply Inputs
@@ -958,7 +958,7 @@
       if (cloneText && !isCommentMetadata(cloneText, cleanAuthor) && cloneText.length > 1) {
         return cleanCommentString(cloneText, cleanAuthor);
       }
-    } catch (_) { }
+    } catch (_) {}
 
     // 3. Fallback: Search all spans for valid candidate texts and pick the richest/longest
     const candidates = [];
@@ -1061,8 +1061,8 @@
         const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
         if (!aria) continue;
         const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
-          aria.match(/@([a-zA-Z0-9._]+)/);
+                      aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+                      aria.match(/@([a-zA-Z0-9._]+)/);
         if (match && match[1] && !banned.has(match[1].toLowerCase())) {
           return match[1];
         }
@@ -1079,9 +1079,9 @@
         }
         const alt = img.getAttribute('alt') || '';
         const match = alt.match(/^([a-zA-Z0-9._]+)['’]s profile picture/i) ||
-          alt.match(/^([a-zA-Z0-9._]+) 的大頭貼照/i) ||
-          alt.match(/^([a-zA-Z0-9._]+) 的头像/i) ||
-          alt.match(/^([a-zA-Z0-9._]+)のプロフィール写真/i);
+                      alt.match(/^([a-zA-Z0-9._]+) 的大頭貼照/i) ||
+                      alt.match(/^([a-zA-Z0-9._]+) 的头像/i) ||
+                      alt.match(/^([a-zA-Z0-9._]+)のプロフィール写真/i);
         if (match && match[1] && !banned.has(match[1].toLowerCase())) {
           return match[1];
         }
@@ -1212,7 +1212,7 @@
       const aria = el.getAttribute('aria-label') || '';
       if (aria) {
         const ariaMatch = aria.match(/(?:replying to|reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
+                          aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
         if (ariaMatch && ariaMatch[1] && !banned.has(ariaMatch[1].toLowerCase())) {
           return ariaMatch[1];
         }
@@ -1222,7 +1222,7 @@
         const txt = el.textContent?.trim() || '';
         if (txt.length > 0 && txt.length < 60) {
           const txtMatch = txt.match(/(?:replying to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-            txt.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
+                           txt.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i);
           if (txtMatch && txtMatch[1] && !banned.has(txtMatch[1].toLowerCase())) {
             return txtMatch[1];
           }
@@ -1276,15 +1276,15 @@
       const text = el.textContent?.trim().replace(/^@/, '') || '';
       const href = el.getAttribute('href') || '';
       const matchesAuthor = text.toLowerCase() === clean.toLowerCase() ||
-        href.toLowerCase().includes(`/${clean.toLowerCase()}`);
+                            href.toLowerCase().includes(`/${clean.toLowerCase()}`);
 
       if (!matchesAuthor) continue;
 
       // Ensure this is a comment and NOT the post author header
       const commentItem = findCommentContainer(el) ||
-        el.closest('li') ||
-        el.closest('.ig-comment') ||
-        el.closest('ul > div');
+                          el.closest('li') ||
+                          el.closest('.ig-comment') ||
+                          el.closest('ul > div');
 
       if (!commentItem) continue;
 
@@ -1406,7 +1406,7 @@
             postId,
             timestamp: Date.now()
           };
-        } catch (_) { }
+        } catch (_) {}
       });
 
       async function resolveCommentContext() {
@@ -1415,7 +1415,7 @@
 
         try {
           targetReplyBtn.click();
-        } catch (_) { }
+        } catch (_) {}
 
         await new Promise(r => setTimeout(r, 60));
 
@@ -2799,7 +2799,7 @@
           btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly (Shift+Click for Assistant Dialog)`;
         }
       }
-    }).catch(() => { });
+    }).catch(() => {});
 
     actionsWrapper.appendChild(quickBtn);
     actionsWrapper.appendChild(btn);
@@ -2867,8 +2867,8 @@
       const form = btn.closest('form');
       if (form) {
         return form.querySelector('div[role="textbox"][contenteditable="true"]') ||
-          form.querySelector('textarea:not([aria-hidden="true"])') ||
-          form.querySelector('textarea');
+               form.querySelector('textarea:not([aria-hidden="true"])') ||
+               form.querySelector('textarea');
       }
       const container = btn.closest('article') || btn.closest('div[role="dialog"]');
       if (container) {
@@ -2876,27 +2876,27 @@
       }
     } else if (contextType === 'story') {
       const storyContainer = btn.closest('.ig-story-composer') ||
-        findStoryPillContainer(btn) ||
-        findActiveStoryContainer(btn) ||
-        btn.parentElement;
+                             findStoryPillContainer(btn) ||
+                             findActiveStoryContainer(btn) ||
+                             btn.parentElement;
       if (storyContainer) {
         return storyContainer.querySelector('textarea:not([aria-hidden="true"])') ||
-          storyContainer.querySelector('input[type="text"]') ||
-          storyContainer.querySelector('input:not([type])') ||
-          storyContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
-          storyContainer.querySelector('div[contenteditable="true"]') ||
-          storyContainer.querySelector('textarea') ||
-          storyContainer.querySelector('input');
+               storyContainer.querySelector('input[type="text"]') ||
+               storyContainer.querySelector('input:not([type])') ||
+               storyContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
+               storyContainer.querySelector('div[contenteditable="true"]') ||
+               storyContainer.querySelector('textarea') ||
+               storyContainer.querySelector('input');
       }
     } else if (contextType === 'dm') {
       const dmContainer = btn.closest('.ig-dm-composer') ||
-        findDmPillContainer(btn) ||
-        findChatContainerForElement(btn) ||
-        btn.parentElement;
+                          findDmPillContainer(btn) ||
+                          findChatContainerForElement(btn) ||
+                          btn.parentElement;
       if (dmContainer) {
         return dmContainer.querySelector('div[role="textbox"][contenteditable="true"]') ||
-          dmContainer.querySelector('div[contenteditable="true"]') ||
-          dmContainer.querySelector('textarea');
+               dmContainer.querySelector('div[contenteditable="true"]') ||
+               dmContainer.querySelector('textarea');
       }
     }
     return null;
@@ -2959,7 +2959,7 @@
           return `dm_t_${hrefMatch[1]}`;
         }
       }
-    } catch (_) { }
+    } catch (_) {}
 
     // 3. Floating PIP chat window or thread partner fallback
     const cleanAuthor = (partnerAuthor || '').trim().toLowerCase().replace(/^@/, '');
@@ -3082,7 +3082,7 @@
           return name;
         }
       }
-    } catch (_) { }
+    } catch (_) {}
 
     // 5. Check document.title: e.g. "Jane Doe (@janedoe) • Direct" or "janedoe • Direct"
     if (document.title && document.title.includes('Direct')) {
@@ -3485,7 +3485,7 @@
           maxVisibleArea = visibleArea;
           bestVideo = v;
         }
-      } catch (_) { }
+      } catch (_) {}
     }
 
     return bestVideo || candidateList[0] || videos[0];
@@ -3540,7 +3540,7 @@
   function extractReelAuthor(reelContainer) {
     // 1. If on dedicated /reel/ or /reels/ URL, check canonical title/og/JSON-LD first
     const isDedicatedRoute = window.location.pathname.startsWith('/reel/') ||
-      (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
+                             (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
     if (isDedicatedRoute) {
       const canonical = extractPostAuthor(reelContainer);
       if (canonical) return canonical;
@@ -3611,7 +3611,7 @@
   function extractReelCaption(reelContainer, postAuthor = '') {
     // 1. If on dedicated /reel/ or /reels/ URL, check canonical h1/og:desc/title/JSON-LD first
     const isDedicatedRoute = window.location.pathname.startsWith('/reel/') ||
-      (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
+                             (window.location.pathname.startsWith('/reels/') && !window.location.pathname.startsWith('/reels/videos'));
     if (isDedicatedRoute) {
       const canonical = extractPostCaption(reelContainer, postAuthor);
       if (canonical) return canonical;
@@ -3674,7 +3674,7 @@
 
     // 1. Check meta tags (authoritative for dedicated /reel/ and /reels/ routes)
     const ogImage = document.querySelector('meta[property="og:image"]')?.content ||
-      document.querySelector('meta[name="twitter:image"]')?.content;
+                    document.querySelector('meta[name="twitter:image"]')?.content;
     if (ogImage && ogImage.startsWith('http')) {
       thumbnailUrl = ogImage;
     }
@@ -3780,9 +3780,9 @@
     // 7. Fallback on dedicated single-post or reel URL
     if (isDedicatedPostOrReelRoute()) {
       return document.querySelector('article') ||
-        document.querySelector('main') ||
-        document.querySelector('div[role="main"]') ||
-        document.querySelector('.ig-post-card') || null;
+             document.querySelector('main') ||
+             document.querySelector('div[role="main"]') ||
+             document.querySelector('.ig-post-card') || null;
     }
 
     return null;
@@ -3889,9 +3889,9 @@
         }
 
         const commentItem = findCommentContainer(link) ||
-          link.closest('li') ||
-          link.closest('.ig-comment') ||
-          link.closest('ul > div');
+                            link.closest('li') ||
+                            link.closest('.ig-comment') ||
+                            link.closest('ul > div');
 
         if (!commentItem) continue;
 
@@ -3985,7 +3985,7 @@
     // 2. Open Graph description & document.title on dedicated post/reel URLs (authoritative)
     if (!standardCaption && isDedicatedPost) {
       const ogDesc = document.querySelector('meta[property="og:description"]')?.content ||
-        document.querySelector('meta[name="description"]')?.content || '';
+                     document.querySelector('meta[name="description"]')?.content || '';
       if (ogDesc) {
         // IG format: "1,234 likes, 56 comments - user on Date: \"Caption here\""
         const quoteMatch = ogDesc.match(/:\s*[“"']([^”"']{3,})[”"']/);
@@ -4030,7 +4030,7 @@
               }
             }
           }
-        } catch (_) { }
+        } catch (_) {}
       }
     }
 
@@ -4166,7 +4166,7 @@
     // 1. On dedicated post/reel URLs, document.title and Open Graph title are authoritative and unpolluted
     const pageTitle = (document.title || '').trim();
     const ogTitle = document.querySelector('meta[property="og:title"]')?.content ||
-      document.querySelector('meta[name="twitter:title"]')?.content || '';
+                    document.querySelector('meta[name="twitter:title"]')?.content || '';
 
     // Instagram title formats:
     // - "Name (@handle) on Instagram: ..."
@@ -4206,7 +4206,7 @@
           if (c) return c;
         }
       }
-    } catch (_) { }
+    } catch (_) {}
 
     // 3. Try post header links inside container or article (strictly inside header)
     const headerLinks = container.querySelectorAll(
@@ -4259,7 +4259,7 @@
    */
   function extractPostVisuals(container) {
     const isDedicatedPost = isDedicatedPostOrReelRoute();
-
+    
     // Find the closest article or media root
     let target = container ? (container.closest('article') || (container.matches && container.matches('article') ? container : null)) : null;
     if (!target && isDedicatedPost) {
@@ -4340,7 +4340,7 @@
     if (isDedicatedPost || !thumbnailUrl) {
       if (!thumbnailUrl) {
         const ogImage = document.querySelector('meta[property="og:image"]')?.content ||
-          document.querySelector('meta[name="twitter:image"]')?.content;
+                        document.querySelector('meta[name="twitter:image"]')?.content;
         if (ogImage && ogImage.startsWith('http')) {
           thumbnailUrl = ogImage;
         }
@@ -4398,7 +4398,7 @@
           }
         }
       }
-    } catch (_) { }
+    } catch (_) {}
     return '';
   }
 
@@ -4471,8 +4471,8 @@
     const currentPostId = contextType === 'story'
       ? extractStoryIdentifier(inputEl || triggerBtn, specificComment?.author)
       : (contextType === 'dm'
-        ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author)
-        : extractPostIdentifier(findPostContainer(inputEl || triggerBtn)));
+          ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author)
+          : extractPostIdentifier(findPostContainer(inputEl || triggerBtn)));
 
     // If card is already open on this input/comment for the SAME post/thread, toggle it closed
     if (
@@ -4554,7 +4554,7 @@
           activeVideo.pause();
           activeVideo.dataset.instareplyPaused = 'true';
         }
-      } catch (_) { }
+      } catch (_) {}
     } else if (contextType === 'dm') {
       const threadContainer = findActiveDmThreadContainer(inputEl || triggerBtn);
       postAuthor = extractDmPartner(threadContainer, inputEl);
@@ -4605,8 +4605,8 @@
     const postId = contextType === 'story'
       ? extractStoryIdentifier(inputEl || triggerBtn, postAuthor)
       : (contextType === 'dm'
-        ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author || postAuthor)
-        : extractPostIdentifier(postContainer, postAuthor, postCaption));
+          ? extractDmIdentifier(inputEl || triggerBtn, specificComment?.author || postAuthor)
+          : extractPostIdentifier(postContainer, postAuthor, postCaption));
 
     // Extract Context
     let context;
@@ -4683,7 +4683,7 @@
         action: 'UPDATE_ACTIVE_REPLY_CONTEXT',
         context: lastContextData
       });
-    } catch (_) { }
+    } catch (_) {}
 
     // Create & Position Card
     activeCard = createCardDOM(context);
@@ -4871,7 +4871,7 @@
         toast.style.transform = 'translateY(12px)';
         setTimeout(() => toast.remove(), 300);
       }, 2200);
-    } catch (_) { }
+    } catch (_) {}
   }
 
   /**
@@ -5061,7 +5061,7 @@
         // Ensure focus on input so user can review or press Enter to post
         try {
           targetInput.focus();
-        } catch (_) { }
+        } catch (_) {}
 
         // Success indicator
         if (triggerBtn) {
@@ -5524,7 +5524,7 @@
 
         // Check if there is an active comments container (drawer or feed post)
         const commentsContainer = (activeInputTarget ? findPostContainer(activeInputTarget) : null) ||
-          document.querySelector('div[role="dialog"]');
+                                  document.querySelector('div[role="dialog"]');
         if (!commentsContainer) return;
 
         const seenItems = new Set();
@@ -6407,7 +6407,7 @@
           viewToggleBtn.title = isGrid ? 'Switch to 1-row scrollable ribbon' : 'Switch to expanded grid view';
           try {
             localStorage.setItem('instareply_tone_view', isGrid ? 'grid' : 'ribbon');
-          } catch (_) { }
+          } catch (_) {}
         });
 
         // Restore saved view preference
@@ -6416,7 +6416,7 @@
             tonesWrapper.classList.add('is-grid');
             viewToggleBtn.textContent = '↔ Ribbon';
           }
-        } catch (_) { }
+        } catch (_) {}
       }
 
       // Record drag distance to suppress chip click during drag
@@ -6459,7 +6459,7 @@
         setCardActiveLanguage(card, currentLanguage);
         try {
           chrome.storage?.sync?.set({ replyLanguage: currentLanguage });
-        } catch (_) { }
+        } catch (_) {}
         currentVariation = 0;
         executeReplyGeneration();
       });
@@ -6473,7 +6473,7 @@
         currentPersona = personaSelect.value;
         try {
           chrome.storage?.sync?.set({ activePersona: currentPersona });
-        } catch (_) { }
+        } catch (_) {}
         currentVariation = 0;
         executeReplyGeneration();
       });
@@ -6789,7 +6789,7 @@
       if (element._valueTracker) {
         try {
           element._valueTracker.setValue('');
-        } catch (_) { }
+        } catch (_) {}
       }
 
       // Dispatch InputEvent with data
@@ -6801,7 +6801,7 @@
           data: textToInsert
         });
         element.dispatchEvent(inputEvent);
-      } catch (_) { }
+      } catch (_) {}
 
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -6817,7 +6817,7 @@
           sel.addRange(range);
         }
         execSuccess = document.execCommand('insertText', false, textToInsert);
-      } catch (_) { }
+      } catch (_) {}
 
       // Only fall back to innerText if execCommand explicitly failed/returned false
       // to avoid duplicating text in Lexical / Draft.js editors
@@ -6841,7 +6841,7 @@
           range.collapse(false);
           sel.removeAllRanges();
           sel.addRange(range);
-        } catch (_) { }
+        } catch (_) {}
       }
     }
 
@@ -6850,7 +6850,7 @@
     // Scroll comment input into view smoothly
     try {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } catch (_) { }
+    } catch (_) {}
   }
 
   /**
@@ -6997,9 +6997,9 @@
       const pausedVideo = document.querySelector('video[data-instareply-paused="true"]');
       if (pausedVideo) {
         delete pausedVideo.dataset.instareplyPaused;
-        pausedVideo.play().catch(() => { });
+        pausedVideo.play().catch(() => {});
       }
-    } catch (_) { }
+    } catch (_) {}
 
     if (activeCard && activeCard.parentNode) {
       activeCard.parentNode.removeChild(activeCard);
@@ -7126,7 +7126,7 @@
           card.style.height = `${h}px`;
         }
       }
-    } catch (_) { }
+    } catch (_) {}
 
     function onPointerDown(e) {
       isResizing = true;
@@ -7169,7 +7169,7 @@
       try {
         localStorage.setItem('instareply_card_width', String(card.offsetWidth));
         localStorage.setItem('instareply_card_height', String(card.offsetHeight));
-      } catch (_) { }
+      } catch (_) {}
     }
 
     grip.addEventListener('pointerdown', onPointerDown);
@@ -7220,7 +7220,7 @@
         getConfig();
       });
     }
-  } catch (_) { }
+  } catch (_) {}
 
   /**
    * Scans the current page for visible comments, reviews, or discussion items for Inbox Zero Triage Mode
@@ -7315,7 +7315,7 @@
             const origOutline = entry.node.style.outline;
             entry.node.style.outline = '2px solid #8b5cf6';
             setTimeout(() => { entry.node.style.outline = origOutline; }, 1800);
-          } catch (_) { }
+          } catch (_) {}
         }
         const activePlat = typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram';
         const baseCtx = entry ? {
