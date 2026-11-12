@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Detect Side Panel Mode and adapt styling
   initSidePanelMode();
 
-  function initSidePanelMode() {
+  async function initSidePanelMode() {
     let isSidePanel = false;
     try {
       if (chrome.extension?.getViews) {
@@ -142,15 +142,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.body.classList.add('is-sidepanel');
     }
 
-    if (typeof chrome !== 'undefined' && chrome.runtime?.getContexts) {
-      chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }).then(contexts => {
-        if (contexts && contexts.length > 0) {
-          if (contexts.some(c => c.documentUrl?.includes('popup.html'))) {
-            document.body.classList.add('is-sidepanel');
-          }
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.getContexts) {
+        const contexts = await chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] });
+        if (contexts && contexts.length > 0 && contexts.some(c => c.documentUrl?.includes('popup.html'))) {
+          document.body.classList.add('is-sidepanel');
         }
-      }).catch(() => {});
-    }
+      }
+    } catch (_) {}
   }
 
   // Open Side Panel button

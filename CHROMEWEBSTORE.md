@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — InstaReply AI
 
-> Last Updated: 2026-09-28
+> Last Updated: 2026-11-11
 
 ---
 
@@ -9,51 +9,50 @@
 **Extension Name** [REQUIRED] (50 / 75 chars)
 InstaReply AI - Social Media Assistant for Instagram
 
-**Short Description** [REQUIRED] (63 / 132 chars)
-Draft smart, context-aware replies and posts on Instagram with AI.
+**Short Description** [REQUIRED] (105 / 132 chars)
+Draft context-aware replies, posts, and messages across social platforms and editable web fields with AI.
 
 **Detailed Description** [REQUIRED]
-InstaReply AI is a fast, privacy-first Chrome Extension that drafts authentic, context-aware responses and posts directly inside Instagram.
+InstaReply AI is a fast, privacy-first Chrome Extension that drafts authentic, context-aware responses, posts, and message refinements across major social platforms and any editable text field on the web.
 
-Connect your own AI model (Google Gemini, Groq, OpenRouter, local Ollama, or custom OpenAI endpoints) and craft personalized, high-engagement replies with one click.
+Connect your own AI model (Google Gemini, Groq, OpenRouter, local Ollama, custom OpenAI endpoints, or Chrome Built-in AI) and craft personalized, high-engagement replies with one click.
 
 KEY FEATURES
-• Instagram Stories Support — Injects a shortcut button directly into the Story reply composer. Accurately extracts story context, detects shared Reels/Posts, pauses story playback while drafting, and automatically excludes emoji trays or navigation buttons.
-• Post & Reel Comments — Injects an inline shortcut button next to "Post" and "✨ AI Reply" chips next to individual comment replies. Automatically distinguishes whether you are the post creator or an engaging visitor.
-• Fullscreen & Floating PIP DMs — Works in both fullscreen Direct Messages and floating mini-windows, with instant reply chips on received messages.
-• Visual Scene Awareness — Incorporates post/reel imagery, video posters, and accessibility alt descriptions so the AI understands what the photo or video actually depicts.
-• Universal Rich-Text Insertion — Seamlessly integrates with React and ContentEditable editors without breaking undo history, cursor position, or internal state.
-• 10+ Tone Presets — Friendly, Funny, Playful, Savage, Geek, Spicy, Hyped, Professional, Empathetic, and Short.
-• Zero-Latency Multi-Tone Bundling — Generates all tone variations in a single request for instantaneous tone switching.
-• 1-Click Stance Control — Toggle between Positive (supportive/warm), Neutral (balanced/objective), and Negative (firm boundary/polite decline).
-• Multi-Language Replies — Auto-detects the conversation language or select from 10+ languages (English, Spanish, French, German, Italian, Portuguese, Japanese, Traditional/Simplified Chinese, Korean).
-• Draft Hint Guidance — Type keywords or guidelines into the input box (e.g. "ask for email" or "mention discount code") to direct the AI draft.
+• Context-Aware Comments, DMs & Stories — Injects lightweight reply shortcuts next to composers and comments so you stay focused in your feed or inbox. Automatically distinguishes whether you are the original creator or a visitor.
+• Universal Right-Click Refine & Reply — Highlight text or right-click inside any editable text box on any website and choose "✨ InstaReply AI" to rewrite, polish, or draft a response using visible page context.
+• Persistent Side Panel & Inbox Zero Triage — Dock InstaReply AI in Chrome's Side Panel, scan visible unanswered comments/reviews into a keyboard-navigable queue, and insert drafts side-by-side without losing focus.
+• Custom Knowledge Base, Personas & /Slash Macros — Switch between Creator, Founder, Maintainer, and Customer Support personas, attach verified FAQ facts, and expand `/slash` snippet macros directly in your drafts.
+• Visual Scene Awareness — Incorporates post/reel imagery, video posters, and accessibility descriptions so your AI drafts reflect what the media actually shows.
+• 1-Click Stance, Multi-Tone Bundling & Translation — Toggle Positive, Neutral, or Negative stance, switch tones instantly (Friendly, Witty, Professional, Empathetic, Concise, and more), preview bilingual translations, or generate numbered multi-part threads.
+• Voice Style Mimicry ("Learn My Voice") & Anti-Troll Shield — Teach the assistant your writing style with sample replies and spot spam/troll bait before drafting.
 
 SUPPORTED AI PROVIDERS
-• Google Gemini API (gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro, gemini-1.5-flash-8b) with dynamic model fetching
-• Groq Cloud API (high-speed LPU inference with Llama 3.3 70B, Llama 3.1 8B, Mixtral 8x7B)
-• OpenRouter (free tier access to Llama, DeepSeek R1, Qwen 2.5, Mistral)
-• Custom OpenAI-Compatible Endpoints (GitHub Models, Mistral AI, Azure, DeepSeek, Cerebras)
-• Local LLMs (Ollama or LM Studio on localhost for 100% offline private processing)
-• Chrome Built-in Prompt API (Gemini Nano on-device AI)
+• Google Gemini API (with dynamic model fetching)
+• Groq Cloud API (Llama, Mixtral)
+• OpenRouter (multi-model free & paid tiers)
+• Custom OpenAI-Compatible Endpoints (Azure, GitHub Models, Mistral, DeepSeek, etc.)
+• Local LLMs (Ollama or LM Studio on localhost for 100% offline processing)
+• Chrome Built-in AI (Gemini Nano on-device processing)
 
 HOW TO USE
-1. Click the InstaReply AI icon in your Chrome toolbar to open Settings.
-2. Select your AI provider and paste your API key (or configure local Ollama).
-3. Open Instagram (Comments, Reels, DMs, or Stories).
-4. Click the InstaReply AI shortcut button or inline "✨ AI Reply" chip.
-5. Select your desired stance or tone, review the AI draft, and click "Insert Reply" to populate the text box.
+1. Click the InstaReply AI icon in your Chrome toolbar (or open the persistent Side Panel) to open Settings.
+2. Select your AI provider and enter your API key (or configure local Ollama).
+3. Browse supported social feeds, inboxes, or right-click inside any text field on the web.
+4. Click the InstaReply AI shortcut button, inline "✨ AI Reply" chip, or right-click menu item.
+5. Choose your stance, tone, or persona, review the draft, and click "Insert Reply".
 
 PRIVACY & SECURITY
-InstaReply AI is built with a direct client-to-API architecture. Your data and API keys are stored locally on your device via Chrome's secure storage. We do NOT operate any proxy servers, we do NOT collect or track your browsing activity, and we NEVER sell your data. All AI requests travel directly from your browser to your selected AI provider over HTTPS.
+InstaReply AI runs directly in your browser with no intermediate developer servers. Sensitive API keys are isolated locally on your device, and we do NOT collect, log, track, or sell your browsing history or data. All AI requests travel directly from your browser to your selected AI provider over HTTPS (or stay 100% offline for Local LLMs / Built-in AI).
 
 PERMISSIONS EXPLAINED
-• "storage" — Saves your API keys, preferences, and custom tone instructions locally in Chrome.
-• "declarativeNetRequest" — Strips origin headers strictly for requests to local offline endpoints (localhost / 127.0.0.1) so local LLMs (Ollama / LM Studio) work seamlessly.
-• Host Permissions — Scoped strictly to communicate with your chosen AI API endpoints (Google Gemini, Groq, OpenRouter) and Instagram assets for visual analysis, with optional on-demand permissions for custom OpenAI-compatible endpoints.
+• "storage" — Saves your API keys locally, syncs preferences/personas, and keeps temporary session caches.
+• "declarativeNetRequest" — Adjusts origin headers strictly for local offline endpoints (`localhost` / `127.0.0.1`) so local LLMs connect reliably.
+• "sidePanel" — Enables docking the assistant alongside any tab for side-by-side drafting and triage.
+• "contextMenus" — Powers the right-click "✨ InstaReply AI" menu in editable text fields and selected text on any page.
+• Host & Optional Host Permissions — Strictly scoped to Instagram, your chosen AI endpoints, localhost servers, and on-demand custom OpenAI URLs.
 
 DOCUMENTATION
-For usage guides, setup instructions, and feature roadmap, please visit:
+For setup instructions, FAQ, and open-source code, visit:
 https://github.com/seventhmoon/insta-reply-extension
 
 SUPPORT & FEEDBACK
@@ -61,13 +60,13 @@ Questions, feedback, or bug reports?
 • Email: fung@androidfung.com
 • GitHub: https://github.com/seventhmoon/insta-reply-extension/issues
 
-Version 1.4.3 — Enhanced security, resilience, and performance release featuring scoped host permissions, local credential isolation, exponential backoff retries, header authentication, session caching, and History tab.
+Version 1.4.3 — Features Side Panel Live Reply & Inbox Zero Triage, Knowledge Base & Multi-Persona profiles, /slash snippet macros, Bilingual preview, Thread Composer, universal right-click text refinement, scoped credential isolation, header API auth, and code quality hardening.
 
 **Category** [REQUIRED]
 Social & Communication
 
 **Single Purpose** [REQUIRED]
-Drafts contextual, tone-customized responses and posts directly inside Instagram.
+Drafts contextual, tone-customized replies, posts, and text refinements across social feeds, inboxes, and editable web fields with AI.
 
 **Primary Language** [REQUIRED]
 English
@@ -98,13 +97,13 @@ English
 
 | Permission | Type | Exact Justification for Chrome Web Store Reviewers |
 | :--- | :--- | :--- |
-| `storage` | `permissions` | Required to securely persist the user's API keys (Gemini, Groq, OpenRouter), default tone and stance preferences, custom persona rules, and locally cached reply drafts. |
-| `declarativeNetRequest` | `permissions` | Required strictly to modify the `Origin` header on requests to `http://localhost:*` and `http://127.0.0.1:*`, allowing users to connect to local offline LLMs (such as Ollama or LM Studio) without encountering CORS origin rejections. |
-| `sidePanel` | `permissions` | Required to let users dock InstaReply AI in Chrome's persistent Side Panel to draft and refine replies side-by-side while browsing. |
-| `contextMenus` | `permissions` | Required to provide the right-click "✨ InstaReply AI" context menu on editable text fields and selected text, enabling users to refine drafts or generate replies using page context on any website. |
-| `https://*.instagram.com/*` | `host_permissions` / `content_scripts` | Required to inject the assistant shortcut button, inline comment reply chips, and floating assistant card into Instagram's web interface, and to read comment/DM/story context when triggered by the user. |
-| `https://*/*` | `host_permissions` | Required to dispatch AI generation requests to user-configured third-party AI endpoints (including Google Gemini, Groq, OpenRouter, or custom OpenAI-compatible server URLs), and to fetch public image thumbnails from Instagram CDNs for AI vision analysis. |
-| `http://localhost:*/*`, `http://127.0.0.1:*/*` | `host_permissions` | Required to allow users who select "Local LLM" to send prompt generation requests directly to locally hosted Ollama or LM Studio servers. |
+| `storage` | `permissions` | Required to store sensitive API keys strictly locally in `chrome.storage.local`, sync non-sensitive user preferences, personas, and `/slash` macros via `chrome.storage.sync`, and maintain ephemeral draft caches in `chrome.storage.session`. |
+| `declarativeNetRequest` | `permissions` | Required strictly to strip the `Origin` header on requests to `http://localhost:*` and `http://127.0.0.1:*`, allowing users who choose "Local LLM" to connect to local Ollama or LM Studio servers without CORS rejections. |
+| `sidePanel` | `permissions` | Required to let users dock InstaReply AI in Chrome's persistent Side Panel to draft replies, run Inbox Zero triage, and refine text side-by-side while browsing. |
+| `contextMenus` | `permissions` | Required to provide the right-click "✨ InstaReply AI" context menu on editable text fields and selected text, enabling users to refine drafts or generate replies using visible page context on any website. |
+| `https://*.instagram.com/*`, AI API hosts, `http://localhost:*/*` | `host_permissions` | Scoped to Instagram and the built-in AI API endpoints (Google Gemini, Groq, OpenRouter, localhost Ollama/LM Studio) for contextual reading and direct user-configured API requests. |
+| `https://*/*` | `optional_host_permissions` | Requested interactively only when the user configures a custom OpenAI-compatible server URL and clicks Save, enabling direct API calls to their self-hosted endpoint. |
+| `https://*/*`, `http://*/*` | `content_scripts` / `web_accessible_resources` | Injects lightweight shortcut UI on supported community/social platforms and enables the user-triggered right-click "✨ InstaReply AI" assistant on any website's editable inputs. Remains dormant until explicitly triggered by the user. |
 
 ---
 
@@ -112,19 +111,19 @@ English
 
 ### Data Collection Disclosure
 
-**Does the extension collect user data?** Yes (Transmitted directly to third-party AI APIs chosen by the user).
+**Does the extension collect user data?** Yes (Transmitted directly from the user's browser only to the third-party AI API selected by the user, on explicit click/trigger).
 
 | Data Type | Collected? | Transmitted Off-Device? | Purpose | Shared with Third Parties? |
 | :--- | :--- | :--- | :--- | :--- |
 | Personally identifiable info | No | No | N/A | No |
 | Health info | No | No | N/A | No |
 | Financial info | No | No | N/A | No |
-| Authentication info | Yes (API Keys) | No (Stored locally in `chrome.storage`) | Used only for authenticating requests to the user's selected AI provider. | No. Never shared with our servers. |
-| Personal communications | Yes (Only when triggered) | Yes (Sent to selected AI API) | The text of the comment, DM message, or story sticker being replied to is sent to the AI model to generate a relevant draft. | Shared only with the user's selected AI provider (Google, Groq, OpenRouter, or custom endpoint). |
+| Authentication info | Yes (User's own API Keys) | No (Isolated in `chrome.storage.local`, sent only in auth headers to the user's chosen AI provider) | Used strictly to authenticate requests to the user's selected AI provider. | No developer servers. Authenticated directly with chosen AI provider only. |
+| Personal communications | Yes (Only when triggered) | Yes (Sent directly to chosen AI API; never for Local LLM / Built-in AI) | Comment, DM, email, review, or user draft text being replied to is sent to generate a contextual draft. | Sent only to the user's configured AI provider. |
 | Location | No | No | N/A | No |
 | Web history | No | No | N/A | No |
 | User activity | No | No | N/A | No |
-| Website content | Yes (Only on user click) | Yes (Sent to selected AI API) | Post caption, image alt text, and comment text on the active Instagram interaction (Comments, Reels, DMs, or Stories) are read to provide context for AI generation. | Sent only to the AI provider chosen by the user. |
+| Website content | Yes (Only on user click / right-click) | Yes (Sent directly to chosen AI API) | Visible post caption, thread context, page title/summary, or media alt text around the target composer is read only when the user activates the assistant. | Sent only to the user's configured AI provider. |
 
 ### Data Use Certification
 - [x] Data is NOT sold to third parties.

@@ -244,24 +244,37 @@ if (typeof chrome !== 'undefined' && chrome.contextMenus?.onClicked) {
 
     const delivered = await sendTrigger();
     if (!delivered) {
-      // Fallback for arbitrary websites without content script loaded:
-      // Open the Chrome Side Panel (or Popup) with the user's selected/typed text
+      // Fallback for arbitrary websites without content script active:
+      // Prefer info.pageUrl from contextMenus click payload since tab.url requires "tabs" permission
+      const pageUrl = info.pageUrl || tab.url || '';
+      const pageTitle = tab.title || pageUrl || 'Web Page';
       const fallbackContext = {
         platform: 'generic',
         contextType: 'comment',
         postId: `generic_${Date.now()}`,
-        author: tab.title || 'Web Page',
-        postAuthor: tab.title || 'Web Page',
-        postCaption: tab.title ? `Page Title: ${tab.title}\nURL: ${tab.url || ''}` : '',
-        incomingText: info.selectionText || tab.title || '',
+        author: pageTitle,
+        postAuthor: pageTitle,
+        postCaption: pageUrl ? `Page: ${pageTitle}\nURL: ${pageUrl}` : `Page: ${pageTitle}`,
+        incomingText: info.selectionText || pageTitle,
         userDraftHint: info.selectionText || ''
       };
       activeReplyContext = fallbackContext;
       if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-        chrome.storage.session.set({ activeReplyContext: fallbackContext }).catch(() => { });
+        await chrome.storage.session.set({ activeReplyContext: fallbackContext }).catch(() => { });
       }
+      let panelOpened = false;
       if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && (tab.id || tab.windowId)) {
-        chrome.sidePanel.open({ tabId: tab.id || undefined, windowId: !tab.id ? tab.windowId : undefined }).catch(() => { });
+        try {
+          await chrome.sidePanel.open({ tabId: tab.id || undefined, windowId: !tab.id ? tab.windowId : undefined });
+          panelOpened = true;
+        } catch (panelErr) {
+          console.warn('[InstaReply AI] Side panel fallback could not open after async check:', panelErr);
+        }
+      }
+      // Show clear action badge cue if content script wasn't active and side panel didn't open
+      if (!panelOpened && typeof chrome !== 'undefined' && chrome.action?.setBadgeText) {
+        await chrome.action.setBadgeText({ text: '1', tabId: tab.id }).catch(() => { });
+        await chrome.action.setBadgeBackgroundColor({ color: '#7c3aed', tabId: tab.id }).catch(() => { });
       }
     }
   });
@@ -434,6 +447,9 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
         }
 
         if (request.action === 'GET_ACTIVE_REPLY_CONTEXT') {
+          if (typeof chrome !== 'undefined' && chrome.action?.setBadgeText) {
+            chrome.action.setBadgeText({ text: '' }).catch(() => { });
+          }
           if (activeReplyContext) {
             sendResponse({ success: true, context: activeReplyContext });
             return;

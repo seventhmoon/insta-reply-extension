@@ -1,6 +1,6 @@
 # Privacy Policy for InstaReply AI
 
-**Last updated:** October 3, 2026
+**Last updated:** November 11, 2026
 
 InstaReply AI ("we", "our", or "the extension") is committed to protecting your privacy. This Privacy Policy explains how information is handled when you use the InstaReply AI Google Chrome Extension.
 
@@ -8,7 +8,7 @@ InstaReply AI ("we", "our", or "the extension") is committed to protecting your 
 
 ## 1. Single Purpose & Overview
 
-InstaReply AI is a browser productivity tool designed to help you draft contextual responses to Instagram comments, Direct Messages (DMs), Reels, and Stories. 
+InstaReply AI is a browser productivity tool designed to help you draft contextual replies, posts, and refined messages across social platforms, community forums, email/review inboxes, and user-triggered editable fields on the web. 
 
 **We operate with a strict privacy-first, client-only architecture:**
 - We do **NOT** own, operate, or route your data through any intermediate server.
@@ -21,19 +21,19 @@ InstaReply AI is a browser productivity tool designed to help you draft contextu
 
 InstaReply AI only handles the minimum data necessary to generate relevant reply drafts when you explicitly interact with the extension:
 
-1. **User Configuration & Preferences**:
+1. **User Configuration, Personas & Knowledge Base**:
    - Your API keys (e.g., Google Gemini, Groq, OpenRouter, or custom OpenAI endpoints).
-   - Your preferences (default tone, stance, language, custom persona rules).
-   - *Storage:* Stored locally on your device via Chrome's secure `chrome.storage.local` and `chrome.storage.sync` APIs.
+   - Your preferences (default tone, stance, language, active persona profile, custom voice samples, custom `/slash` snippet macros, and FAQ/Knowledge Base entries).
+   - *Storage:* Sensitive API keys are isolated locally on your device via `chrome.storage.local` (never synced to Google servers), while non-sensitive preferences and personas are stored via `chrome.storage.sync` (with automatic local fallback).
 
-2. **On-Page Instagram Context (Ephemeral & User-Triggered)**:
-   - When you click the InstaReply AI shortcut button or reply chip, the extension reads the immediate context of that specific interaction:
-     - The target comment or DM message text.
-     - The post caption or story text sticker (if enabled).
-     - Visual description (accessibility alt text or video poster) to understand the scene.
-     - Any draft hint keywords you type into the reply input.
-   - *Processing:* This context is assembled into a prompt and transmitted directly to your configured AI provider over HTTPS.
-   - *Retention:* This context is cached temporarily in memory (`chrome.storage.local`) solely to avoid duplicate API calls if you regenerate or switch tones. It is not transmitted anywhere else.
+2. **On-Page Context (Ephemeral & User-Triggered Only)**:
+   - InstaReply AI **never** scrapes or transmits browsing history in the background. Only when you click the InstaReply AI shortcut button, inline reply chip, Inbox Zero Triage scan, or right-click **✨ InstaReply AI** context menu item does the extension read the immediate interaction context:
+     - The target comment, DM message, email thread, review, issue, or story text.
+     - Related post caption, page title/summary, or nearby conversation context (if enabled).
+     - Visual description (accessibility alt text or video poster) to understand media context.
+     - Any draft text or hint keywords you typed into the editable field or highlighted before invoking the menu.
+   - *Processing:* This context is assembled into a prompt and transmitted directly to your configured AI provider over HTTPS (or processed on-device via Local LLM / Chrome Built-in AI).
+   - *Retention:* Generated drafts are cached ephemerally in session/local memory (`chrome.storage.session` / `chrome.storage.local` reply history) solely to avoid duplicate API calls and let you review recent drafts. Nothing is transmitted to any server operated by us.
 
 ---
 
@@ -53,12 +53,13 @@ We encourage you to review the privacy policy of your selected AI provider.
 
 ## 4. Permissions & Justifications
 
-- **`storage`**: Used to save your API keys, default tones, and user preferences locally in your browser.
+- **`storage`**: Used to save your API keys locally (`chrome.storage.local`), user preferences, personas, and `/slash` macros (`chrome.storage.sync`), plus temporary session reply caches (`chrome.storage.session`).
 - **`declarativeNetRequest`**: Used strictly to strip the `Origin` header when sending requests to local offline endpoints (`http://localhost:*` and `http://127.0.0.1:*`) so that Ollama and LM Studio CORS policies succeed.
-- **`sidePanel`**: Used to optionally dock the InstaReply AI assistant in Chrome's Side Panel when chosen by the user.
-- **`contextMenus`**: Used to provide the right-click "✨ InstaReply AI" menu inside editable text fields and on selected text so you can refine messages or draft replies on any webpage.
-- **Host Permissions (`https://*.instagram.com/*`)**: Required to inject shortcut buttons and read context on Instagram pages when requested by the user.
-- **Host Permissions (`https://*/*`)**: Required to communicate with your chosen AI API endpoints (Google, Groq, OpenRouter, or custom self-hosted endpoints) and to load post media thumbnails for visual analysis.
+- **`sidePanel`**: Used to dock the InstaReply AI assistant in Chrome's Side Panel for persistent side-by-side drafting and Inbox Zero triage.
+- **`contextMenus`**: Used to provide the right-click "✨ InstaReply AI" menu inside editable text fields and on selected text so you can refine drafts or generate contextual replies on any webpage.
+- **Host Permissions (`https://*.instagram.com/*`, AI API domains, and `http://localhost:*/*` / `http://127.0.0.1:*/*`)**: Required to support Instagram interactions and dispatch AI requests directly to user-selected providers (Gemini, Groq, OpenRouter, or local Ollama/LM Studio).
+- **Optional Host Permissions (`https://*/*`)**: Requested at runtime only when a user configures a custom self-hosted OpenAI-compatible API endpoint URL.
+- **Content Scripts (`https://*/*` and `http://*/*`)**: Loaded strictly to support dedicated platform adapters (such as Instagram, Threads, X, LinkedIn, Facebook, Reddit, YouTube, GitHub, Google Play, Gmail/Outlook, and community sites) and to handle user-triggered right-click text refinement and editable field insertion on any page. Content scripts remain dormant and transmit no data until explicitly invoked by the user.
 
 ---
 

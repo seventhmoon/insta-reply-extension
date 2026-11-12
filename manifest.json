@@ -3,7 +3,7 @@
   "name": "InstaReply AI - Social Media Assistant for Instagram",
   "version": "1.4.3",
   "default_locale": "en",
-  "description": "Draft smart, context-aware replies and posts on Instagram with AI.",
+  "description": "Draft context-aware replies, posts, and messages across social platforms and editable web fields with AI.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

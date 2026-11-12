@@ -4,7 +4,7 @@
     "description": "The title of the extension"
   },
   "appDesc": {
-    "message": "Draft smart, context-aware replies and posts on Instagram with AI.",
+    "message": "Draft context-aware replies, posts, and messages across social platforms and editable web fields with AI.",
     "description": "The description of the extension"
   },
   "actionReply": {

@@ -2799,22 +2799,25 @@
     // Determine layout: 'smart' (single 26px button) vs 'dual' (compact 26px + 26px icon pair)
     quickBtn.classList.add('instareply-hidden');
     quickBtn.style.display = 'none'; // Default hidden in smart mode to keep edittext area maximum width
-    getConfig().then(cfg => {
-      const isDual = cfg && cfg.composerButtonMode === 'dual' && cfg.enableQuickReply !== false;
-      if (isDual) {
-        quickBtn.classList.remove('instareply-hidden');
-        quickBtn.style.display = 'inline-flex';
-        btn.title = `✨ Customize ${contextLabel}: Open full AI Assistant dialog`;
-      } else {
-        quickBtn.classList.add('instareply-hidden');
-        quickBtn.style.display = 'none';
-        if (cfg && cfg.shortcutClickAction === 'dialog') {
-          btn.title = `✨ Open Assistant Dialog (${contextLabel}) (Shift+Click for 1-Click Quick Reply)`;
+    (async () => {
+      try {
+        const cfg = await getConfig();
+        const isDual = cfg && cfg.composerButtonMode === 'dual' && cfg.enableQuickReply !== false;
+        if (isDual) {
+          quickBtn.classList.remove('instareply-hidden');
+          quickBtn.style.display = 'inline-flex';
+          btn.title = `✨ Customize ${contextLabel}: Open full AI Assistant dialog`;
         } else {
-          btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly (Shift+Click for Assistant Dialog)`;
+          quickBtn.classList.add('instareply-hidden');
+          quickBtn.style.display = 'none';
+          if (cfg && cfg.shortcutClickAction === 'dialog') {
+            btn.title = `✨ Open Assistant Dialog (${contextLabel}) (Shift+Click for 1-Click Quick Reply)`;
+          } else {
+            btn.title = `⚡ 1-Click Quick Reply (${contextLabel}): Generate & insert directly (Shift+Click for Assistant Dialog)`;
+          }
         }
-      }
-    }).catch(() => {});
+      } catch (_) {}
+    })();
 
     actionsWrapper.appendChild(quickBtn);
     actionsWrapper.appendChild(btn);
@@ -7260,10 +7263,13 @@
   }
 
   // Pre-load configuration into memory and invalidate local reply cache when persona/voice/KB settings change
-  try {
-    getConfig().then(cfg => {
+  (async () => {
+    try {
+      const cfg = await getConfig();
       if (cfg?.activePersona) currentPersona = cfg.activePersona;
-    }).catch(() => {});
+    } catch (_) {}
+  })();
+  try {
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes) => {
         if (
