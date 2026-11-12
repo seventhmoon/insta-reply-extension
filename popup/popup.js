@@ -443,7 +443,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (res && res.success) {
         connectionStatus.className = 'connection-status-msg success';
-        connectionStatus.innerHTML = `✓ ${res.message || 'Connected successfully!'} <span class="connection-latency-badge">${elapsed}ms</span>`;
+        connectionStatus.innerHTML = `✓ ${escapeHtml(res.message || 'Connected successfully!')} <span class="connection-latency-badge">${elapsed}ms</span>`;
       } else {
         connectionStatus.className = 'connection-status-msg error';
         connectionStatus.textContent = res?.error || 'Connection failed.';
@@ -1080,6 +1080,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       author: activeLiveContext?.author || '',
       isSpecificCommentReply: activeLiveContext?.isSpecificCommentReply || false,
       userDraftHint: hint || activeLiveContext?.userDraftHint || '',
+      activePersona: activePersona ? activePersona.value : 'auto',
       stance,
       tone,
       variationIndex: 0
@@ -1093,7 +1094,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (res && res.success && res.reply) {
         liveDraftText.value = res.reply;
-        activeBundledTones = res.toneReplies || {};
+        const primaryToneKey = (tone || 'friendly').toLowerCase().trim();
+        activeBundledTones = {
+          ...(res.toneDrafts || res.toneReplies || {}),
+          [primaryToneKey]: res.reply
+        };
         updateLiveCharCount();
       } else {
         liveDraftText.value = '';
@@ -1106,10 +1111,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function resolveLivePlatformLimit(ctx) {
+    if (ctx?.charLimit) return ctx.charLimit;
+    const plat = (ctx?.platform || 'instagram').toLowerCase();
+    if (plat === 'x') return 280;
+    if (plat === 'google_play') return 350;
+    if (plat === 'threads') return 500;
+    return 2200;
+  }
+
   function updateLiveCharCount() {
     if (!liveDraftText || !liveCharCounter) return;
     const len = liveDraftText.value.length;
-    const limit = activeLiveContext?.charLimit || (activeLiveContext?.platform === 'x' ? 280 : activeLiveContext?.platform === 'threads' ? 500 : activeLiveContext?.platform === 'google_play' ? 350 : 2200);
+    const limit = resolveLivePlatformLimit(activeLiveContext);
 
     liveCharCounter.textContent = `${len} / ${limit}`;
     liveCharCounter.classList.remove('warning', 'overlimit');

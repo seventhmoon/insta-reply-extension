@@ -5,6 +5,7 @@
 
   // State
   let activeCard = null;
+  let cardAbortController = null;
   let activeInputTarget = null;
   let lastContextMenuTarget = null;
   let currentTone = 'friendly';
@@ -121,7 +122,7 @@
     return ['friendly', 'humorous', 'playful', 'savage', 'flirting', 'concise'].filter(t => t !== primary);
   }
 
-  function getReplyCacheKey(postId, postAuthor, incomingAuthor, incomingText, stance, tone, language) {
+  function getReplyCacheKey(postId, postAuthor, incomingAuthor, incomingText, stance, tone, language, persona = 'auto') {
     const textSnippet = (incomingText || '').trim().toLowerCase().slice(0, 80);
     const cleanTone = normalizeToneName(tone);
     const cleanStance = (stance || 'positive').toLowerCase().trim();
@@ -129,7 +130,8 @@
     const cleanPostId = (postId || 'post').trim();
     const cleanPostAuthor = (postAuthor || '').toLowerCase().trim();
     const cleanInAuthor = (incomingAuthor || '').toLowerCase().trim();
-    return `${cleanPostId}|${cleanPostAuthor}|${cleanInAuthor}|${textSnippet}|${cleanStance}|${cleanTone}|${cleanLang}`;
+    const cleanPersona = (persona || 'auto').toLowerCase().trim();
+    return `${cleanPostId}|${cleanPostAuthor}|${cleanInAuthor}|${textSnippet}|${cleanStance}|${cleanTone}|${cleanLang}|${cleanPersona}`;
   }
 
   const SPARKLE_SVG = `
@@ -314,17 +316,25 @@
   }
 
   /**
-   * Injects the main world bridge script so Edge AI Prompt API can be called
+   * Authenticates with the MAIN world bridge (and injects script fallback only if Edge AI needs it)
    */
-  function ensurePageBridgeInjected() {
+  function ensurePageBridgeInjected(forceScriptFallback = false) {
     window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
-    if (document.getElementById('instareply-page-bridge') || window.__INSTAREPLY_BRIDGE_ACTIVE__) {
+    if (
+      document.getElementById('instareply-page-bridge') ||
+      window.__INSTAREPLY_BRIDGE_ACTIVE__ ||
+      document.documentElement?.getAttribute('data-instareply-bridge') === 'ready' ||
+      !forceScriptFallback
+    ) {
       return;
     }
     try {
       const script = document.createElement('script');
       script.id = 'instareply-page-bridge';
       script.src = chrome.runtime.getURL('content/page-bridge.js');
+      script.addEventListener('load', () => {
+        window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
+      }, { once: true });
       (document.head || document.documentElement).appendChild(script);
       window.postMessage({ type: 'INSTAREPLY_INIT_BRIDGE_AUTH', token: BRIDGE_AUTH_TOKEN }, '*');
     } catch (_) {}
@@ -508,7 +518,7 @@
       : null;
 
     if (activeAdapter && typeof activeAdapter.findComposerElements === 'function') {
-      const defaultCtxType = activePlatform === 'meta_business' ? 'dm' : 'comment';
+      const defaultCtxType = activePlatform === 'meta_business' || activePlatform === 'email' ? 'dm' : 'comment';
       const platformInputs = activeAdapter.findComposerElements();
       platformInputs.forEach((el) => {
         if (
@@ -517,15 +527,20 @@
           el.classList.contains('instareply-textarea') ||
           el.id === 'instareply-output-text'
         ) return;
-        const ctx = activeAdapter.extractContext ? activeAdapter.extractContext(el) : {};
-        injectShortcutButton(el, ctx.contextType || defaultCtxType);
 
-        if (!el.dataset.instareplyListenerBound) {
-          el.dataset.instareplyListenerBound = 'true';
-          const triggerScan = () => setTimeout(scanAndInjectShortcuts, 80);
-          el.addEventListener('focus', triggerScan);
-          el.addEventListener('click', triggerScan);
+        // Fast-path: skip expensive full-DOM extractContext if shortcut button is already mounted in toolbar
+        if (el.dataset.instareplyInjected === 'true' && typeof activeAdapter.findToolbarContainer === 'function') {
+          const existingTb = activeAdapter.findToolbarContainer(el);
+          if (existingTb && existingTb.querySelector('.instareply-shortcut-btn')) {
+            return;
+          }
         }
+
+        const cachedCtxType = el.dataset.instareplyCtxType;
+        const resolvedCtxType = cachedCtxType ||
+          ((activeAdapter.extractContext ? activeAdapter.extractContext(el)?.contextType : null) || defaultCtxType);
+        el.dataset.instareplyCtxType = resolvedCtxType;
+        injectShortcutButton(el, resolvedCtxType);
       });
     }
   }
@@ -4980,6 +4995,7 @@
       let replyText = '';
 
       // Cache lookup
+      const quickPersona = config.activePersona || 'auto';
       const cacheKey = getReplyCacheKey(
         contextData.postId || 'post',
         contextData.postAuthor || '',
@@ -4987,7 +5003,8 @@
         contextData.incomingText || '',
         quickStance,
         quickTone,
-        replyLanguage
+        replyLanguage,
+        quickPersona
       );
 
       if (!contextData.userDraftHint && replyCache.has(cacheKey)) {
@@ -5110,7 +5127,7 @@
    * Quick Reply helper for Edge AI Prompt API
    */
   async function generateQuickReplyViaEdgeAI(payload, cacheKey) {
-    ensurePageBridgeInjected();
+    ensurePageBridgeInjected(true);
     const requestId = 'edge_quick_' + Math.random().toString(36).substring(2, 10);
     return new Promise((resolve, reject) => {
       let timeoutId = setTimeout(() => {
@@ -5194,6 +5211,8 @@
       postId: lastContextData.postId || 'post'
     };
 
+    const effectivePersona = currentPersona || cachedConfig?.activePersona || 'auto';
+
     const cacheKey = getReplyCacheKey(
       lastContextData.postId,
       lastContextData.postAuthor,
@@ -5201,7 +5220,8 @@
       lastContextData.incomingText,
       normalizedStance,
       normalizedTone,
-      currentLanguage
+      currentLanguage,
+      effectivePersona
     );
 
     // 1. Instant Cache Hit: Return cached reply immediately without spinner flash if user hasn't asked for a new variation or custom draft
@@ -5222,6 +5242,7 @@
       activeGenerationContext.postId === lastContextData.postId &&
       activeGenerationContext.author === lastContextData.author &&
       activeGenerationContext.stance === normalizedStance &&
+      (activeGenerationContext.persona || 'auto') === effectivePersona &&
       Array.isArray(activeGenerationContext.bundledTones) &&
       activeGenerationContext.bundledTones.includes(normalizedTone)
     ) {
@@ -5268,6 +5289,7 @@
           postId: lastContextData.postId,
           author: lastContextData.author,
           stance: normalizedStance,
+          persona: payload.activePersona || effectivePersona,
           bundledTones: currentBundled
         };
       }
@@ -5280,7 +5302,17 @@
 
       if (response && response.success) {
         if (!lastContextData.userDraftHint) {
-          setReplyCacheEntry(cacheKey, response);
+          const finalPrimaryKey = getReplyCacheKey(
+            lastContextData.postId,
+            lastContextData.postAuthor,
+            lastContextData.author,
+            lastContextData.incomingText,
+            normalizedStance,
+            normalizedTone,
+            payload.replyLanguage || currentLanguage,
+            payload.activePersona || effectivePersona
+          );
+          setReplyCacheEntry(finalPrimaryKey, response);
 
           // Ingest any bundled alternative tone drafts into cache for instant switching
           if (response.toneDrafts && typeof response.toneDrafts === 'object') {
@@ -5294,7 +5326,8 @@
                 lastContextData.incomingText,
                 normalizedStance,
                 canonicalAltTone,
-                payload.replyLanguage || currentLanguage
+                payload.replyLanguage || currentLanguage,
+                payload.activePersona || effectivePersona
               );
               if (!replyCache.has(altKey)) {
                 setReplyCacheEntry(altKey, {
@@ -5335,7 +5368,7 @@
    * Edge AI on-device generation via Main World Bridge (Prompt API / Gemini Nano)
    */
   async function generateViaEdgeAI(payload, cacheKey, genId) {
-    ensurePageBridgeInjected();
+    ensurePageBridgeInjected(true);
     const requestId = 'edge_ai_' + Math.random().toString(36).substring(2, 10);
 
     return new Promise((resolve) => {
@@ -5753,17 +5786,19 @@
         .replace('qwen/qwen-2.5-72b-instruct:free', 'Qwen 2.5 72B')
         .replace('mistralai/mistral-7b-instruct:free', 'Mistral 7B')
         .replace(':free', '');
-      modelBadge.innerHTML = isFromCache ? `${baseModel} &bull; <span style="color: #34d399; font-weight: 600;">⚡ Instant</span>` : baseModel;
+      const safeModel = escapeHTML(baseModel);
+      modelBadge.innerHTML = isFromCache ? `${safeModel} &bull; <span style="color: #34d399; font-weight: 600;">⚡ Instant</span>` : safeModel;
     }
 
     // Sentiment Pill
     let sentimentClass = 'positive';
+    if (data.sentiment === 'neutral') sentimentClass = 'neutral';
     if (data.sentiment === 'question') sentimentClass = 'question';
     if (data.sentiment === 'negative' || data.sentiment === 'complaint') sentimentClass = 'negative';
 
     let pillsHTML = `
       <span class="instareply-sentiment-pill ${sentimentClass}">
-        ${data.sentimentLabel || '✨ Analyzed'}
+        ${escapeHTML(data.sentimentLabel || '✨ Analyzed')}
       </span>
       ${isFromCache ? `<span class="instareply-sentiment-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);" title="Loaded instantly from predictive reply cache">⚡ Instant Cache</span>` : ''}
     `;
@@ -5986,6 +6021,12 @@
    * Constructs the Floating AI Card DOM
    */
   function createCardDOM(context) {
+    if (cardAbortController) {
+      cardAbortController.abort();
+    }
+    cardAbortController = new AbortController();
+    const cardSignal = cardAbortController.signal;
+
     const card = document.createElement('div');
     card.className = 'instareply-card-overlay';
 
@@ -6354,11 +6395,12 @@
         }
       }, { passive: false });
 
-      // 2. Desktop Click-and-Drag / Grab-to-Scroll
+      // 2. Desktop Click-and-Drag / Grab-to-Scroll (abortable via cardSignal to prevent window listener leaks)
       let isDraggingTone = false;
       let toneStartX = 0;
       let toneStartScroll = 0;
       let toneDragDist = 0;
+      tonesRibbon.dataset.dragDist = '0';
 
       tonesRibbon.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return;
@@ -6375,14 +6417,18 @@
         const deltaX = e.pageX - toneStartX;
         toneDragDist += Math.abs(deltaX);
         tonesRibbon.scrollLeft = toneStartScroll - deltaX;
-      });
+        tonesRibbon.dataset.dragDist = String(toneDragDist);
+      }, { signal: cardSignal });
 
       window.addEventListener('mouseup', () => {
         if (isDraggingTone) {
           isDraggingTone = false;
           if (tonesRibbon) tonesRibbon.classList.remove('is-dragging');
         }
-      });
+        setTimeout(() => {
+          if (tonesRibbon) tonesRibbon.dataset.dragDist = '0';
+        }, 120);
+      }, { signal: cardSignal });
 
       // 3. Arrow buttons (‹ and ›)
       if (prevToneBtn) {
@@ -6418,19 +6464,6 @@
           }
         } catch (_) {}
       }
-
-      // Record drag distance to suppress chip click during drag
-      tonesRibbon.dataset.dragDist = '0';
-      window.addEventListener('mousemove', () => {
-        if (isDraggingTone && tonesRibbon) {
-          tonesRibbon.dataset.dragDist = String(toneDragDist);
-        }
-      });
-      window.addEventListener('mouseup', () => {
-        setTimeout(() => {
-          if (tonesRibbon) tonesRibbon.dataset.dragDist = '0';
-        }, 120);
-      });
     }
 
     // Tone chip clicks
@@ -6735,14 +6768,19 @@
 
     const ctx = contextOverride || lastContextData;
 
-    // Prepend or correct @author mention if replying to an individual comment (skip on Google Play reviews where reviewer mentions are not @handles)
+    // Prepend or correct @author mention ONLY on platforms that use flat @handle replies (Instagram & Threads)
+    // and only when targetAuthor is a valid single-token handle (prevents '@Full Name • Title' corruption on LinkedIn/Email/Reddit/Google Play)
     const activePlat = ctx?.platform || (typeof SocialPlatformDetector !== 'undefined' ? SocialPlatformDetector.detectPlatform() : 'instagram');
     let textToInsert = text;
-    if (ctx?.author && ctx.contextType === 'comment' && activePlat !== 'google_play' && activePlat !== 'generic') {
+    const isHandleMentionPlatform = typeof InstaReplyUtils !== 'undefined' && typeof InstaReplyUtils.shouldAutoPrependMention === 'function'
+      ? InstaReplyUtils.shouldAutoPrependMention(activePlat, ctx?.author)
+      : ((activePlat === 'instagram' || activePlat === 'threads') && Boolean(ctx?.author && /^[a-zA-Z0-9._-]+$/.test(ctx.author.trim().replace(/^@/, ''))));
+
+    if (ctx?.author && ctx.contextType === 'comment' && isHandleMentionPlatform) {
       const targetAuthor = ctx.author.trim().replace(/^@/, '');
       const authorMention = `@${targetAuthor}`;
-      const shouldPrepend = (ctx.isSpecificCommentReply && activePlat !== 'github') ||
-        (ctx.postAuthor && targetAuthor.toLowerCase() !== ctx.postAuthor.toLowerCase() && activePlat === 'instagram');
+      const shouldPrepend = Boolean(ctx.isSpecificCommentReply) ||
+        Boolean(ctx.postAuthor && targetAuthor.toLowerCase() !== ctx.postAuthor.trim().replace(/^@/, '').toLowerCase() && activePlat === 'instagram');
 
       if (shouldPrepend) {
         // If text already begins with an @mention, ensure it matches targetAuthor
@@ -6992,6 +7030,11 @@
     currentGenerationId++;
     activeGenerationContext = null;
 
+    if (cardAbortController) {
+      cardAbortController.abort();
+      cardAbortController = null;
+    }
+
     // Resume video if paused by InstaReply
     try {
       const pausedVideo = document.querySelector('video[data-instareply-paused="true"]');
@@ -7059,8 +7102,10 @@
       card.dataset.userDragged = 'true';
       card.classList.add('is-dragging');
 
-      document.addEventListener('pointermove', onPointerMove, { passive: false });
-      document.addEventListener('pointerup', onPointerUp, { once: true });
+      const moveOpts = cardAbortController ? { passive: false, signal: cardAbortController.signal } : { passive: false };
+      const upOpts = cardAbortController ? { once: true, signal: cardAbortController.signal } : { once: true };
+      document.addEventListener('pointermove', onPointerMove, moveOpts);
+      document.addEventListener('pointerup', onPointerUp, upOpts);
       e.preventDefault();
     }
 
@@ -7136,8 +7181,10 @@
       startH = card.offsetHeight;
 
       card.classList.add('is-resizing');
-      document.addEventListener('pointermove', onPointerMove, { passive: false });
-      document.addEventListener('pointerup', onPointerUp, { once: true });
+      const moveOpts = cardAbortController ? { passive: false, signal: cardAbortController.signal } : { passive: false };
+      const upOpts = cardAbortController ? { once: true, signal: cardAbortController.signal } : { once: true };
+      document.addEventListener('pointermove', onPointerMove, moveOpts);
+      document.addEventListener('pointerup', onPointerUp, upOpts);
       e.preventDefault();
       e.stopPropagation();
     }
@@ -7212,11 +7259,22 @@
     }
   }
 
-  // Pre-load configuration into memory
+  // Pre-load configuration into memory and invalidate local reply cache when persona/voice/KB settings change
   try {
-    getConfig();
+    getConfig().then(cfg => {
+      if (cfg?.activePersona) currentPersona = cfg.activePersona;
+    }).catch(() => {});
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-      chrome.storage.onChanged.addListener(() => {
+      chrome.storage.onChanged.addListener((changes) => {
+        if (
+          changes &&
+          (changes.activePersona || changes.myVoiceSamples || changes.knowledgeBase || changes.customInstructions || changes.provider)
+        ) {
+          replyCache.clear();
+          if (changes.activePersona?.newValue) {
+            currentPersona = changes.activePersona.newValue;
+          }
+        }
         getConfig();
       });
     }

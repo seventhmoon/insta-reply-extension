@@ -34,6 +34,7 @@ zip -r "$OUTPUT" . \
   -x "CONTRIBUTING.md" \
   -x "CHANGELOG.md" \
   -x "SECURITY.md" \
+  -x "LICENSE.md" \
   -x "promo/*" \
   -x "dist/*" \
   -x ".DS_Store" \

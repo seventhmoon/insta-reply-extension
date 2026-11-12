@@ -84,6 +84,42 @@ async function main() {
     execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/generic-adapter.js')}"`, { stdio: 'pipe' });
   });
 
+  runTest('Syntax', 'content/utils/adapter-utils.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/utils/adapter-utils.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/platform-detector.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/platform-detector.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/x-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/x-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/linkedin-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/linkedin-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/facebook-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/facebook-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/threads-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/threads-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/reddit-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/reddit-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/email-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/email-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
+  runTest('Syntax', 'content/adapters/community-adapter.js syntax valid', () => {
+    execSync(`node -c "${path.join(ROOT_DIR, 'content/adapters/community-adapter.js')}"`, { stdio: 'pipe' });
+  });
+
   runTest('Scope', 'content/content.js scopes requestPromise before try-finally block', () => {
     const code = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
     const execReplyDef = code.indexOf('async function executeReplyGeneration()');
@@ -497,10 +533,10 @@ async function main() {
     let textareaSetterCalled = false;
 
     const mockInputProto = {
-      valueSetter: function(val) { inputSetterCalled = true; this.value = val; }
+      valueSetter: function (val) { inputSetterCalled = true; this.value = val; }
     };
     const mockTextareaProto = {
-      valueSetter: function(val) { textareaSetterCalled = true; this.value = val; }
+      valueSetter: function (val) { textareaSetterCalled = true; this.value = val; }
     };
 
     const mockInputEl = { tagName: 'INPUT', value: '' };
@@ -1276,8 +1312,8 @@ async function main() {
     function extractFromAria(btn) {
       const aria = btn.getAttribute('aria-label') || '';
       const match = aria.match(/(?:reply to|responder a|antworten an|répondre à|rispondi a|回覆|回复|返信|답글(?:\s*달기)?)\s+@?([a-zA-Z0-9._]+)/i) ||
-                    aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
-                    aria.match(/@([a-zA-Z0-9._]+)/);
+        aria.match(/@?([a-zA-Z0-9._]+)(?:님에게\s*답글|에게\s*답글|에\s*답글|に返信)/i) ||
+        aria.match(/@([a-zA-Z0-9._]+)/);
       return match ? match[1] : '';
     }
 
@@ -3125,6 +3161,111 @@ Hope this helps!
     const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
     assert.ok(contentJs.includes("message.action === 'SCAN_UNANSWERED_COMMENTS'"), 'content.js must handle SCAN_UNANSWERED_COMMENTS');
     assert.ok(contentJs.includes("message.action === 'SELECT_TRIAGE_ITEM'"), 'content.js must handle SELECT_TRIAGE_ITEM');
+  });
+
+  // =========================================================================
+  // SUITE 18: Deep Code Quality, Security, Memory Safety & Cache Integrity
+  // =========================================================================
+  console.log('\n🛡️ Suite 18: Deep Code Quality, Security, Memory Safety & Cache Integrity');
+
+  runTest('AdapterUtilsModule', 'Shared InstaReplyUtils handles HTML escaping, mention rules, and DOM deduplication', () => {
+    const utils = require(path.join(ROOT_DIR, 'content/utils/adapter-utils.js'));
+    assert.strictEqual(utils.escapeHTML('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
+    assert.strictEqual(utils.getPlatformCharLimit('x'), 280);
+    assert.strictEqual(utils.getPlatformCharLimit('google_play'), 350);
+    assert.strictEqual(utils.enforceCharLimit('a '.repeat(200).trim(), 'x').length <= 280, true);
+
+    assert.strictEqual(utils.isValidMentionHandle('grace_hop.1'), true);
+    assert.strictEqual(utils.isValidMentionHandle('@grace_hop.1'), true);
+    assert.strictEqual(utils.isValidMentionHandle('Sarah Connor • Senior Engineering Director'), false);
+
+    assert.strictEqual(utils.shouldAutoPrependMention('instagram', 'grace_hop'), true);
+    assert.strictEqual(utils.shouldAutoPrependMention('threads', 'grace_hop'), true);
+    assert.strictEqual(utils.shouldAutoPrependMention('instagram', 'Invalid Handle With Spaces'), false);
+    assert.strictEqual(utils.shouldAutoPrependMention('linkedin', 'Sarah Connor • Senior Engineering Director'), false);
+    assert.strictEqual(utils.shouldAutoPrependMention('email', 'Alice Smith'), false);
+    assert.strictEqual(utils.shouldAutoPrependMention('reddit', 'spez'), false);
+
+    const parent = { contains: (other) => other === child };
+    const child = { contains: () => false };
+    const deduped = utils.deduplicateInnermostElements([parent, child]);
+    assert.strictEqual(deduped.length, 1);
+    assert.strictEqual(deduped[0], child);
+  });
+
+  runTest('XssSanitizationAudit', 'content.js and popup.js sanitize model names, sentiment labels, and connection messages before innerHTML', () => {
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    const popupJs = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+
+    assert.ok(contentJs.includes('const safeModel = escapeHTML(baseModel);'), 'renderAIResult must escape baseModel before innerHTML');
+    assert.ok(contentJs.includes("escapeHTML(data.sentimentLabel || '✨ Analyzed')"), 'renderAIResult must escape sentimentLabel before innerHTML');
+    assert.ok(popupJs.includes("escapeHtml(res.message || 'Connected successfully!')"), 'popup.js must escape res.message in testConnectionBtn');
+  });
+
+  runTest('GeminiApiKeyHeaderSecurity', 'background/service-worker.js passes Gemini API keys via x-goog-api-key header instead of URL query string', () => {
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(!swCode.includes('?key=${'), 'Gemini API key must never be interpolated into ?key= URL query parameters');
+    const headerMatches = swCode.match(/'x-goog-api-key'/g) || [];
+    assert.ok(headerMatches.length >= 3, `Expected x-goog-api-key header in test, model list, and generate calls (found ${headerMatches.length})`);
+  });
+
+  runTest('PageBridgeStrictAuthGuard', 'content/page-bridge.js rejects unauthenticated messages before handshake and exposes ready attribute', () => {
+    const bridgeCode = fs.readFileSync(path.join(ROOT_DIR, 'content/page-bridge.js'), 'utf8');
+    assert.ok(
+      bridgeCode.includes('if (!bridgeSecurityToken || !event.data.token || event.data.token !== bridgeSecurityToken)'),
+      'page-bridge.js must reject messages when bridgeSecurityToken is unset or mismatched'
+    );
+    assert.ok(
+      bridgeCode.includes("setAttribute('data-instareply-bridge', 'ready')"),
+      'page-bridge.js must mark documentElement with data-instareply-bridge=ready'
+    );
+  });
+
+  runTest('CardAbortControllerLifecycle', 'content/content.js cleans up window and document card listeners via AbortController on closeCard', () => {
+    const contentJs = fs.readFileSync(path.join(ROOT_DIR, 'content/content.js'), 'utf8');
+    assert.ok(contentJs.includes('cardAbortController = new AbortController();'), 'createCardDOM must initialize cardAbortController');
+    assert.ok(contentJs.includes('{ signal: cardSignal }'), 'Tone ribbon window listeners must bind with { signal: cardSignal }');
+    assert.ok(contentJs.includes('cardAbortController.abort();'), 'closeCard must abort cardAbortController');
+  });
+
+  runTest('PersonaAwareCacheAndInvalidation', 'Service worker and popup isolate cache keys by persona/platform and clear cache on SAVE_CONFIG', () => {
+    const sw = require(path.join(ROOT_DIR, 'background/service-worker.js'));
+    const basePayload = {
+      postId: 'post_123',
+      postAuthor: 'alice',
+      author: 'bob',
+      incomingText: 'Broken login on mobile',
+      stance: 'helpful',
+      tone: 'Friendly',
+      replyLanguage: 'auto'
+    };
+    const keySupport = sw.getSwReplyCacheKey({ ...basePayload, platform: 'reddit', activePersona: 'support' });
+    const keyFounder = sw.getSwReplyCacheKey({ ...basePayload, platform: 'reddit', activePersona: 'founder' });
+    const keyInsta = sw.getSwReplyCacheKey({ ...basePayload, platform: 'instagram', activePersona: 'support' });
+
+    assert.notStrictEqual(keySupport, keyFounder, 'Cache key must isolate different personas');
+    assert.notStrictEqual(keySupport, keyInsta, 'Cache key must isolate different platforms');
+
+    const swCode = fs.readFileSync(path.join(ROOT_DIR, 'background/service-worker.js'), 'utf8');
+    assert.ok(swCode.includes('clearSwReplyCache();'), 'SAVE_CONFIG must clear stale service-worker reply cache');
+
+    const popupCode = fs.readFileSync(path.join(ROOT_DIR, 'popup/popup.js'), 'utf8');
+    assert.ok(popupCode.includes('res.toneDrafts'), 'popup.js Live Reply panel must read res.toneDrafts from service worker');
+  });
+
+  runTest('MetaBusinessAndFacebookAdapterFixes', 'MetaBusinessAdapter maps incomingText/postCaption and FacebookAdapter filters extension UI', () => {
+    const MetaBusinessAdapter = require(path.join(ROOT_DIR, 'content/adapters/meta-business-adapter.js'));
+    const FacebookAdapter = require(path.join(ROOT_DIR, 'content/adapters/facebook-adapter.js'));
+
+    const mockCtx = MetaBusinessAdapter.extractContext({ value: 'Draft reply check', closest: () => null });
+    assert.strictEqual(mockCtx.platform, 'meta_business');
+    assert.strictEqual(mockCtx.incomingText, 'Draft reply check');
+    assert.ok(typeof mockCtx.postCaption === 'string', 'MetaBusinessAdapter.extractContext must populate postCaption string');
+    assert.ok(mockCtx.postId && mockCtx.postId.startsWith('mbs_'), 'MetaBusinessAdapter.extractContext must populate postId');
+
+    const fbCode = fs.readFileSync(path.join(ROOT_DIR, 'content/adapters/facebook-adapter.js'), 'utf8');
+    assert.ok(fbCode.includes('.instareply-card-overlay') || fbCode.includes('isExtensionElement'), 'FacebookAdapter.findComposerElements must exclude InstaReply card elements');
+    assert.strictEqual(typeof FacebookAdapter.findComposerElements, 'function');
   });
 
   console.log('=================================================');

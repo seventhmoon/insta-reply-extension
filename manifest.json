@@ -102,6 +102,7 @@
         "http://127.0.0.1:*/*"
       ],
       "js": [
+        "content/utils/adapter-utils.js",
         "content/adapters/platform-detector.js",
         "content/adapters/threads-adapter.js",
         "content/adapters/x-adapter.js",

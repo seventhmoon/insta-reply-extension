@@ -72,11 +72,11 @@ async function saveEffectiveConfig(newConfig) {
   if (chrome.storage.sync && Object.keys(syncObj).length > 0) {
     try {
       await chrome.storage.sync.set(syncObj);
-      await chrome.storage.sync.remove(SENSITIVE_CONFIG_KEYS).catch(() => {});
+      await chrome.storage.sync.remove(SENSITIVE_CONFIG_KEYS).catch(() => { });
     } catch (syncErr) {
       console.warn('[InstaReply AI] chrome.storage.sync quota exceeded, falling back to local storage:', syncErr);
       if (chrome.storage.local) {
-        await chrome.storage.local.set(syncObj).catch(() => {});
+        await chrome.storage.local.set(syncObj).catch(() => { });
       }
     }
   }
@@ -135,10 +135,10 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
         }
       }
       if (Object.keys(keysToMigrate).length > 0 && chrome.storage.local) {
-        await chrome.storage.local.set(keysToMigrate).catch(() => {});
+        await chrome.storage.local.set(keysToMigrate).catch(() => { });
       }
       if (keysToRemove.length > 0 && chrome.storage.sync) {
-        await chrome.storage.sync.remove(keysToRemove).catch(() => {});
+        await chrome.storage.sync.remove(keysToRemove).catch(() => { });
       }
 
       // Purge any bloated non-config keys (e.g. history) that may have leaked into sync storage
@@ -147,7 +147,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
         const validConfigKeySet = new Set(Object.keys(DEFAULT_CONFIG));
         const bloatedSyncKeys = syncKeys.filter(k => !validConfigKeySet.has(k) || SENSITIVE_CONFIG_KEYS.includes(k));
         if (bloatedSyncKeys.length > 0) {
-          await chrome.storage.sync.remove(bloatedSyncKeys).catch(() => {});
+          await chrome.storage.sync.remove(bloatedSyncKeys).catch(() => { });
         }
       }
 
@@ -258,10 +258,10 @@ if (typeof chrome !== 'undefined' && chrome.contextMenus?.onClicked) {
       };
       activeReplyContext = fallbackContext;
       if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-        chrome.storage.session.set({ activeReplyContext: fallbackContext }).catch(() => {});
+        chrome.storage.session.set({ activeReplyContext: fallbackContext }).catch(() => { });
       }
       if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && (tab.id || tab.windowId)) {
-        chrome.sidePanel.open({ tabId: tab.id || undefined, windowId: !tab.id ? tab.windowId : undefined }).catch(() => {});
+        chrome.sidePanel.open({ tabId: tab.id || undefined, windowId: !tab.id ? tab.windowId : undefined }).catch(() => { });
       }
     }
   });
@@ -329,6 +329,7 @@ const serviceWorkerReplyCache = new Map();
 
 function getSwReplyCacheKey(payload) {
   if (!payload) return '';
+  const cleanPlatform = (payload.platform || 'instagram').toLowerCase().trim();
   const cleanPostId = (payload.postId || 'post').trim();
   const cleanPostAuthor = (payload.postAuthor || '').toLowerCase().trim();
   const cleanAuthor = (payload.author || '').toLowerCase().trim();
@@ -336,7 +337,16 @@ function getSwReplyCacheKey(payload) {
   const cleanStance = (payload.stance || 'positive').toLowerCase().trim();
   const cleanTone = normalizeToneName(payload.tone);
   const cleanLang = (payload.replyLanguage || 'auto').toLowerCase().trim();
-  return `${cleanPostId}|${cleanPostAuthor}|${cleanAuthor}|${textSnippet}|${cleanStance}|${cleanTone}|${cleanLang}`;
+  const cleanPersona = (payload.activePersona || 'auto').toLowerCase().trim();
+  return `${cleanPlatform}|${cleanPostId}|${cleanPostAuthor}|${cleanAuthor}|${textSnippet}|${cleanStance}|${cleanTone}|${cleanLang}|${cleanPersona}`;
+}
+
+async function clearSwReplyCache() {
+  const cachedKeys = Array.from(serviceWorkerReplyCache.keys());
+  serviceWorkerReplyCache.clear();
+  if (cachedKeys.length > 0 && typeof chrome !== 'undefined' && chrome.storage?.session) {
+    await chrome.storage.session.remove(cachedKeys).catch(() => { });
+  }
 }
 
 function setSwReplyCacheEntry(key, value) {
@@ -347,7 +357,7 @@ function setSwReplyCacheEntry(key, value) {
   }
   serviceWorkerReplyCache.set(key, value);
   if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-    chrome.storage.session.set({ [key]: value }).catch(() => {});
+    chrome.storage.session.set({ [key]: value }).catch(() => { });
   }
 }
 
@@ -357,140 +367,141 @@ let activeReplyContext = null;
 // Listener for messages from content scripts and popup
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'GET_CONFIG') {
-      getEffectiveConfig().then(sendResponse);
-      return true;
+    if (!request || !request.action) {
+      return false;
     }
 
-    if (request.action === 'SAVE_CONFIG') {
-      saveEffectiveConfig(request.config).then(async () => {
-        if (request.config?.launchMode) {
-          await applyLaunchMode(request.config.launchMode);
+    (async () => {
+      try {
+        if (request.action === 'GET_CONFIG') {
+          sendResponse(await getEffectiveConfig());
+          return;
         }
-        sendResponse({ success: true });
-      }).catch(err => {
-        sendResponse({ success: false, error: err.message });
-      });
-      return true;
-    }
 
-    if (request.action === 'SET_LAUNCH_MODE') {
-      const mode = request.mode === 'sidepanel' ? 'sidepanel' : 'popup';
-      applyLaunchMode(mode).then(() => {
-        return saveEffectiveConfig({ launchMode: mode });
-      }).then(() => {
-        sendResponse({ success: true, mode });
-      }).catch(err => {
-        sendResponse({ success: false, error: err.message });
-      });
-      return true;
-    }
-
-    if (request.action === 'OPEN_SIDE_PANEL_FOR_REPLY') {
-      const tabId = sender.tab?.id;
-      const windowId = sender.tab?.windowId;
-      if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && (tabId || windowId)) {
-        chrome.sidePanel.open({ tabId: tabId || undefined, windowId: !tabId ? windowId : undefined }).catch(err => {
-          console.warn('[InstaReply AI] Could not open side panel:', err);
-        });
-      }
-      activeReplyContext = request.context || null;
-      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-        chrome.storage.session.set({ activeReplyContext: request.context || null }).catch(() => {});
-      }
-      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-        chrome.runtime.sendMessage({
-          action: 'ACTIVE_REPLY_CONTEXT_UPDATED',
-          context: request.context
-        }).catch(() => {});
-      }
-      sendResponse({ success: true });
-      return true;
-    }
-
-    if (request.action === 'UPDATE_ACTIVE_REPLY_CONTEXT') {
-      activeReplyContext = request.context || null;
-      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-        chrome.storage.session.set({ activeReplyContext: request.context || null }).catch(() => {});
-      }
-      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-        chrome.runtime.sendMessage({
-          action: 'ACTIVE_REPLY_CONTEXT_UPDATED',
-          context: request.context
-        }).catch(() => {});
-      }
-      sendResponse({ success: true });
-      return true;
-    }
-
-    if (request.action === 'GET_ACTIVE_REPLY_CONTEXT') {
-      if (activeReplyContext) {
-        sendResponse({ success: true, context: activeReplyContext });
-        return true;
-      }
-      if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-        chrome.storage.session.get('activeReplyContext').then(data => {
-          sendResponse({ success: true, context: data.activeReplyContext || null });
-        }).catch(() => {
-          sendResponse({ success: true, context: null });
-        });
-        return true;
-      }
-      sendResponse({ success: true, context: null });
-      return true;
-    }
-
-    if (request.action === 'GET_REPLY_HISTORY') {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        chrome.storage.local.get('instareply_history').then(data => {
-          sendResponse({ success: true, history: data.instareply_history || [] });
-        });
-      } else {
-        sendResponse({ success: true, history: [] });
-      }
-      return true;
-    }
-
-    if (request.action === 'CLEAR_REPLY_HISTORY') {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        chrome.storage.local.set({ instareply_history: [] }).then(() => {
+        if (request.action === 'SAVE_CONFIG') {
+          await saveEffectiveConfig(request.config);
+          await clearSwReplyCache();
+          if (request.config?.launchMode) {
+            await applyLaunchMode(request.config.launchMode);
+          }
           sendResponse({ success: true });
-        });
-      } else {
-        sendResponse({ success: true });
+          return;
+        }
+
+        if (request.action === 'SET_LAUNCH_MODE') {
+          const mode = request.mode === 'sidepanel' ? 'sidepanel' : 'popup';
+          await applyLaunchMode(mode);
+          await saveEffectiveConfig({ launchMode: mode });
+          sendResponse({ success: true, mode });
+          return;
+        }
+
+        if (request.action === 'OPEN_SIDE_PANEL_FOR_REPLY') {
+          const tabId = sender.tab?.id;
+          const windowId = sender.tab?.windowId;
+          if (typeof chrome !== 'undefined' && chrome.sidePanel?.open && (tabId || windowId)) {
+            chrome.sidePanel.open({ tabId: tabId || undefined, windowId: !tabId ? windowId : undefined }).catch(err => {
+              console.warn('[InstaReply AI] Could not open side panel:', err);
+            });
+          }
+          activeReplyContext = request.context || null;
+          if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+            await chrome.storage.session.set({ activeReplyContext: request.context || null }).catch(() => { });
+          }
+          if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            chrome.runtime.sendMessage({
+              action: 'ACTIVE_REPLY_CONTEXT_UPDATED',
+              context: request.context
+            }).catch(() => { });
+          }
+          sendResponse({ success: true });
+          return;
+        }
+
+        if (request.action === 'UPDATE_ACTIVE_REPLY_CONTEXT') {
+          activeReplyContext = request.context || null;
+          if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+            await chrome.storage.session.set({ activeReplyContext: request.context || null }).catch(() => { });
+          }
+          if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            chrome.runtime.sendMessage({
+              action: 'ACTIVE_REPLY_CONTEXT_UPDATED',
+              context: request.context
+            }).catch(() => { });
+          }
+          sendResponse({ success: true });
+          return;
+        }
+
+        if (request.action === 'GET_ACTIVE_REPLY_CONTEXT') {
+          if (activeReplyContext) {
+            sendResponse({ success: true, context: activeReplyContext });
+            return;
+          }
+          if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+            const data = await chrome.storage.session.get('activeReplyContext').catch(() => ({}));
+            sendResponse({ success: true, context: data?.activeReplyContext || null });
+            return;
+          }
+          sendResponse({ success: true, context: null });
+          return;
+        }
+
+        if (request.action === 'GET_REPLY_HISTORY') {
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const data = await chrome.storage.local.get('instareply_history');
+            sendResponse({ success: true, history: data?.instareply_history || [] });
+          } else {
+            sendResponse({ success: true, history: [] });
+          }
+          return;
+        }
+
+        if (request.action === 'CLEAR_REPLY_HISTORY') {
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            await chrome.storage.local.set({ instareply_history: [] });
+          }
+          sendResponse({ success: true });
+          return;
+        }
+
+        if (request.action === 'FETCH_GEMINI_MODELS') {
+          sendResponse(await handleFetchGeminiModels(request.apiKey));
+          return;
+        }
+
+        if (request.action === 'FETCH_GROQ_MODELS') {
+          sendResponse(await handleFetchGroqModels(request.apiKey));
+          return;
+        }
+
+        if (request.action === 'FETCH_OPENROUTER_MODELS') {
+          sendResponse(await handleFetchOpenRouterModels(request.apiKey));
+          return;
+        }
+
+        if (request.action === 'FETCH_LOCAL_MODELS') {
+          sendResponse(await handleFetchLocalModels(request.url));
+          return;
+        }
+
+        if (request.action === 'TEST_CONNECTION') {
+          sendResponse(await handleTestConnection(request.config));
+          return;
+        }
+
+        if (request.action === 'GENERATE_REPLY') {
+          sendResponse(await handleGenerateReply(request.payload));
+          return;
+        }
+
+        sendResponse({ success: false, error: `Unsupported action: ${request.action}` });
+      } catch (err) {
+        sendResponse({ success: false, error: err?.message || 'Unexpected service worker error.' });
       }
-      return true;
-    }
+    })();
 
-    if (request.action === 'FETCH_GEMINI_MODELS') {
-      handleFetchGeminiModels(request.apiKey).then(sendResponse);
-      return true;
-    }
-
-    if (request.action === 'FETCH_GROQ_MODELS') {
-      handleFetchGroqModels(request.apiKey).then(sendResponse);
-      return true;
-    }
-
-    if (request.action === 'FETCH_OPENROUTER_MODELS') {
-      handleFetchOpenRouterModels(request.apiKey).then(sendResponse);
-      return true;
-    }
-
-    if (request.action === 'FETCH_LOCAL_MODELS') {
-      handleFetchLocalModels(request.url).then(sendResponse);
-      return true;
-    }
-
-    if (request.action === 'TEST_CONNECTION') {
-      handleTestConnection(request.config).then(sendResponse);
-      return true;
-    }
-
-    if (request.action === 'GENERATE_REPLY') {
-      handleGenerateReply(request.payload).then(sendResponse);
-      return true;
-    }
+    return true;
   });
 }
 
@@ -646,11 +657,14 @@ async function handleTestConnection(config) {
         return { success: false, error: 'Gemini API key is required.' };
       }
       const model = resolveGeminiModel(config.geminiModel);
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.geminiApiKey.trim())}`;
-      
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': config.geminiApiKey.trim()
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'Respond with the single word "OK".' }] }]
         })
@@ -875,17 +889,17 @@ async function handleGenerateReply(payload) {
 
     if (!incomingText && !postCaption && !userDraftHint && !postVisuals?.description) {
       incomingText = platform === 'x' ? 'Post on X / Twitter. Draft a punchy, engaging tweet reply.' :
-                     platform === 'threads' ? 'Meta Threads post. Draft a witty, engaging, conversational thread reply.' :
-                     platform === 'linkedin' ? 'LinkedIn post. Draft an insightful, professional comment.' :
-                     platform === 'facebook' ? 'Facebook post. Draft a friendly, community-oriented comment.' :
-                     platform === 'github' ? 'GitHub Issue or Pull Request thread. Draft a clear, constructive, and helpful developer response.' :
-                     platform === 'google_play' ? 'Google Play app review. Draft a courteous, helpful developer reply under 350 characters.' :
-                     platform === 'youtube' ? 'YouTube video or comment thread. Draft an engaging, friendly creator or viewer comment.' :
-                     platform === 'reddit' ? 'Reddit thread or comment. Draft a witty, authentic, and community-savvy Reddit reply.' :
-                     platform === 'email' ? 'Email thread. Draft a clear, courteous, and well-structured email reply.' :
-                     platform === 'community' ? 'Community discussion on Hacker News, Product Hunt, or Substack. Draft an insightful, high-signal response.' :
-                     platform === 'generic' ? 'Web page input field. Refine the user draft or craft a context-aware reply grounded in the page content.' :
-                     'Instagram post or reel. Draft a warm, engaging, and friendly creator comment or question for this post.';
+        platform === 'threads' ? 'Meta Threads post. Draft a witty, engaging, conversational thread reply.' :
+          platform === 'linkedin' ? 'LinkedIn post. Draft an insightful, professional comment.' :
+            platform === 'facebook' ? 'Facebook post. Draft a friendly, community-oriented comment.' :
+              platform === 'github' ? 'GitHub Issue or Pull Request thread. Draft a clear, constructive, and helpful developer response.' :
+                platform === 'google_play' ? 'Google Play app review. Draft a courteous, helpful developer reply under 350 characters.' :
+                  platform === 'youtube' ? 'YouTube video or comment thread. Draft an engaging, friendly creator or viewer comment.' :
+                    platform === 'reddit' ? 'Reddit thread or comment. Draft a witty, authentic, and community-savvy Reddit reply.' :
+                      platform === 'email' ? 'Email thread. Draft a clear, courteous, and well-structured email reply.' :
+                        platform === 'community' ? 'Community discussion on Hacker News, Product Hunt, or Substack. Draft an insightful, high-signal response.' :
+                          platform === 'generic' ? 'Web page input field. Refine the user draft or craft a context-aware reply grounded in the page content.' :
+                            'Instagram post or reel. Draft a warm, engaging, and friendly creator comment or question for this post.';
     }
 
     console.log('[InstaReply AI] Generating reply:', {
@@ -906,13 +920,15 @@ async function handleGenerateReply(payload) {
 
     const isCacheEligible = variationIndex === 0 && !userDraftHint;
     const cacheKey = isCacheEligible ? getSwReplyCacheKey({
+      platform,
       postId: payload.postId,
       postAuthor,
       author,
       incomingText,
       stance,
       tone,
-      replyLanguage
+      replyLanguage,
+      activePersona
     }) : null;
 
     if (isCacheEligible && cacheKey) {
@@ -1004,13 +1020,15 @@ async function handleGenerateReply(payload) {
           if (!altReply || typeof altReply !== 'string' || !altReply.trim()) continue;
           const altTone = normalizeToneName(rawAltTone);
           const altKey = getSwReplyCacheKey({
+            platform,
             postId: payload.postId,
             postAuthor,
             author,
             incomingText,
             stance,
             tone: altTone,
-            replyLanguage
+            replyLanguage,
+            activePersona
           });
           if (!serviceWorkerReplyCache.has(altKey)) {
             setSwReplyCacheEntry(altKey, {
@@ -2033,8 +2051,8 @@ function resolveEffectivePersona(activePersona = 'auto', platform = 'instagram')
   const personaKey = (!activePersona || activePersona === 'auto')
     ? (platform === 'github' ? 'maintainer'
       : (platform === 'google_play' || platform === 'meta_business') ? 'support'
-      : (platform === 'linkedin' || platform === 'email' || platform === 'community') ? 'founder'
-      : 'creator')
+        : (platform === 'linkedin' || platform === 'email' || platform === 'community') ? 'founder'
+          : 'creator')
     : activePersona;
 
   switch (personaKey) {
@@ -2261,6 +2279,11 @@ if (typeof module !== 'undefined' && module.exports) {
     isModelVisionSupported,
     isVisionRejectionError,
     checkOllamaVisionCapability,
+    normalizeToneName,
+    getBundledTonesFor,
+    getSwReplyCacheKey,
+    clearSwReplyCache,
+    enforcePlatformLengthLimit,
     resolveEffectivePersona,
     resolveKnowledgeAndMacros,
     buildStructuredPrompt,

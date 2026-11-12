@@ -180,61 +180,64 @@
       let lastReceivedText = '';
 
       try {
-        // 1. Extract contact/customer name or handle from thread header
-        const headerCandidate = document.querySelector(
-          '[data-testid*="thread-header" i], [data-testid*="inbox-header" i], div[role="main"] header, div[role="main"] h2, div[role="main"] h3, header h2, header span[dir="auto"]'
-        );
-        if (headerCandidate) {
-          const rawName = headerCandidate.textContent.trim().split('\n')[0];
-          if (rawName && rawName.length < 50) {
-            author = rawName.replace(/^@/, '');
-          }
-        }
-
-        // Fallback: Selected conversation item in the inbox thread list
-        if (!author) {
-          const selectedThread = document.querySelector(
-            'div[aria-selected="true"] [dir="auto"], div[data-testid*="thread-row"][aria-selected="true"]'
+        const rootDoc = (inputEl && inputEl.ownerDocument) || (typeof document !== 'undefined' ? document : null);
+        if (rootDoc) {
+          // 1. Extract contact/customer name or handle from thread header
+          const headerCandidate = rootDoc.querySelector(
+            '[data-testid*="thread-header" i], [data-testid*="inbox-header" i], div[role="main"] header, div[role="main"] h2, div[role="main"] h3, header h2, header span[dir="auto"]'
           );
-          if (selectedThread) {
-            const raw = selectedThread.textContent.trim().split('\n')[0];
-            if (raw && raw.length < 50) {
-              author = raw.replace(/^@/, '');
+          if (headerCandidate) {
+            const rawName = headerCandidate.textContent.trim().split('\n')[0];
+            if (rawName && rawName.length < 50) {
+              author = rawName.replace(/^@/, '');
             }
           }
-        }
 
-        // 2. Extract last received message or comment text
-        if (isCommentSection) {
-          // Find the customer's comment
-          const commentContainers = document.querySelectorAll(
-            'div[data-testid*="comment" i], div[aria-label*="comment" i], div[role="article"]'
-          );
-          if (commentContainers.length > 0) {
-            const targetComment = commentContainers[commentContainers.length - 1];
-            const textEl = targetComment.querySelector('div[dir="auto"], span[dir="auto"], p');
-            if (textEl) {
-              lastReceivedText = textEl.innerText.trim();
+          // Fallback: Selected conversation item in the inbox thread list
+          if (!author) {
+            const selectedThread = rootDoc.querySelector(
+              'div[aria-selected="true"] [dir="auto"], div[data-testid*="thread-row"][aria-selected="true"]'
+            );
+            if (selectedThread) {
+              const raw = selectedThread.textContent.trim().split('\n')[0];
+              if (raw && raw.length < 50) {
+                author = raw.replace(/^@/, '');
+              }
             }
           }
-        } else {
-          // Direct message thread: find message bubbles
-          const messageElements = document.querySelectorAll(
-            'div[role="row"] div[dir="auto"], div[data-testid*="message" i] div[dir="auto"], div[class*="message"] div[dir="auto"]'
-          );
 
-          // Traverse backwards from newest to oldest to find the last message
-          for (let i = messageElements.length - 1; i >= 0; i--) {
-            const el = messageElements[i];
-            const text = (el.innerText || el.textContent || '').trim();
-            // Filter out timestamps, system notices, and ultra-short texts
-            if (
-              text &&
-              !text.match(/^(\d{1,2}:\d{2}|\d{1,2}\/\d{1,2}|yesterday|today|seen|delivered)/i) &&
-              !el.closest('.instareply-card')
-            ) {
-              lastReceivedText = text;
-              break;
+          // 2. Extract last received message or comment text
+          if (isCommentSection) {
+            // Find the customer's comment
+            const commentContainers = rootDoc.querySelectorAll(
+              'div[data-testid*="comment" i], div[aria-label*="comment" i], div[role="article"]'
+            );
+            if (commentContainers.length > 0) {
+              const targetComment = commentContainers[commentContainers.length - 1];
+              const textEl = targetComment.querySelector('div[dir="auto"], span[dir="auto"], p');
+              if (textEl) {
+                lastReceivedText = textEl.innerText.trim();
+              }
+            }
+          } else {
+            // Direct message thread: find message bubbles
+            const messageElements = rootDoc.querySelectorAll(
+              'div[role="row"] div[dir="auto"], div[data-testid*="message" i] div[dir="auto"], div[class*="message"] div[dir="auto"]'
+            );
+
+            // Traverse backwards from newest to oldest to find the last message
+            for (let i = messageElements.length - 1; i >= 0; i--) {
+              const el = messageElements[i];
+              const text = (el.innerText || el.textContent || '').trim();
+              // Filter out timestamps, system notices, and ultra-short texts
+              if (
+                text &&
+                !text.match(/^(\d{1,2}:\d{2}|\d{1,2}\/\d{1,2}|yesterday|today|seen|delivered)/i) &&
+                !el.closest('.instareply-card')
+              ) {
+                lastReceivedText = text;
+                break;
+              }
             }
           }
         }
@@ -242,13 +245,23 @@
         console.warn('[InstaReply] Meta Business Suite context extraction error:', err);
       }
 
+      const resolvedAuthor = author || 'Customer';
+      const existingDraft = (inputEl && (inputEl.value || inputEl.textContent) || '').trim();
+      const postId = `mbs_${resolvedAuthor.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+
       return {
         platform: 'meta_business',
         contextType,
-        author: author || 'Customer',
-        recipientName: author || 'Customer',
+        postId,
+        author: resolvedAuthor,
+        postAuthor: resolvedAuthor,
+        recipientName: resolvedAuthor,
+        incomingText: lastReceivedText || existingDraft || '',
+        postCaption: lastReceivedText || '',
         lastReceivedText,
         postText: lastReceivedText || '',
+        draftNotes: existingDraft,
+        isSpecificCommentReply: Boolean(lastReceivedText),
         isDM: !isCommentSection
       };
     },

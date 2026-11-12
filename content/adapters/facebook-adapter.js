@@ -33,7 +33,30 @@
         'div[aria-label*="Write a comment" i] div[role="textbox"]',
         'div[aria-label*="Write an answer" i] div[role="textbox"]'
       ];
-      return Array.from(root.querySelectorAll(selectors.join(', ')));
+      const results = Array.from(root.querySelectorAll(selectors.join(', '))).filter(el => {
+        if (
+          el.closest?.('.instareply-card-overlay') ||
+          el.closest?.('.instareply-card') ||
+          el.classList?.contains('instareply-textarea') ||
+          el.id === 'instareply-output-text'
+        ) {
+          return false;
+        }
+        const ariaLabel = (el.getAttribute?.('aria-label') || '').toLowerCase();
+        const placeholder = (el.getAttribute?.('placeholder') || '').toLowerCase();
+        if (
+          ariaLabel.includes('search') ||
+          placeholder.includes('search') ||
+          el.closest?.('header, nav, [role="navigation"], [role="search"]')
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      return results.filter((el, idx) => {
+        return !results.some((other, oIdx) => oIdx !== idx && typeof el.contains === 'function' && el.contains(other));
+      });
     },
 
     /**

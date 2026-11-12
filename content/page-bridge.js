@@ -4,6 +4,12 @@
   'use strict';
 
   let bridgeSecurityToken = null;
+  window.__INSTAREPLY_BRIDGE_ACTIVE__ = true;
+  try {
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.setAttribute('data-instareply-bridge', 'ready');
+    }
+  } catch (_) {}
 
   // Listen for requests from the content script (isolated world)
   window.addEventListener('message', async (event) => {
@@ -13,7 +19,7 @@
 
     // Secure token handshake from isolated content script
     if (event.data.type === 'INSTAREPLY_INIT_BRIDGE_AUTH') {
-      if (!bridgeSecurityToken && event.data.token) {
+      if (!bridgeSecurityToken && typeof event.data.token === 'string' && event.data.token.startsWith('ir_')) {
         bridgeSecurityToken = event.data.token;
       }
       return;
@@ -23,8 +29,8 @@
       return;
     }
 
-    // Guard against cross-context message spoofing: reject unauthorized callers
-    if (bridgeSecurityToken && event.data.token !== bridgeSecurityToken) {
+    // Guard against cross-context message spoofing: strictly require initialized & matching auth token
+    if (!bridgeSecurityToken || !event.data.token || event.data.token !== bridgeSecurityToken) {
       console.warn('[InstaReply AI] Unauthorized Prompt API execution attempt blocked.');
       return;
     }
